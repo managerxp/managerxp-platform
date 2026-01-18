@@ -122,18 +122,17 @@ npm run dev
 ---
 
 ## Contributing
-
 We are building this as a team project.
 
-✅ Read contribution rules here:
-➡️ **CONTRIBUTING.md**
+Read contribution rules here:  
+➡️ [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ---
 
 ## Access & Permissions
 If you cannot push code / create branches / access repository settings:
 
-➡️ Check **ACCESS.md**
+➡️ Check: [ACCESS.md](./ACCESS.md)  
 It explains what each role means and who to contact.
 
 ---
