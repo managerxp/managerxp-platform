@@ -222,5 +222,5 @@ If workflow fails:
 ## Need Help?
 
 If you are blocked by permissions or cannot push/merge:
-➡️ Check `ACCESS.md` or contact the admin.
+➡️ Check [ACCESS.md](./ACCESS.md) or contact the admin.
 ---
