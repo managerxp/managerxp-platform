@@ -142,7 +142,8 @@ It explains what each role means and who to contact.
 ### Phase 1
 
 * Customer CRM
-* Rig sessions
+* Website + Booking
+* Rig sessions + Game Control & Telemerty (AC,F1,ACR,iRacing,Le Mans)
 * Payments + ledger
 * Live dashboard + basic reporting
 
