@@ -1,0 +1,467 @@
+[
+    {
+        "name":  "Access",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\MSACCESS.EXE"
+    },
+    {
+        "name":  "Administrative Tools",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\control.exe"
+    },
+    {
+        "name":  "Application Stack Builder",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PostgreSQL\\18\\bin\\stackbuilder.exe"
+    },
+    {
+        "name":  "Character Map",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\charmap.exe"
+    },
+    {
+        "name":  "Command Prompt",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\cmd.exe"
+    },
+    {
+        "name":  "Component Services",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\comexp.msc"
+    },
+    {
+        "name":  "Computer Management",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\compmgmt.msc"
+    },
+    {
+        "name":  "DBeaver",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\dbeaver.exe"
+    },
+    {
+        "name":  "dfrgui",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\dfrgui.exe"
+    },
+    {
+        "name":  "Disk Cleanup",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\cleanmgr.exe"
+    },
+    {
+        "name":  "Event Viewer",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\eventvwr.msc"
+    },
+    {
+        "name":  "Excel",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE"
+    },
+    {
+        "name":  "Git",
+        "version":  "2.51.1",
+        "launch":  "C:\\Program Files\\Git\\mingw64\\share\\git\\git-for-windows.ico"
+    },
+    {
+        "name":  "Git Bash",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Git\\git-bash.exe"
+    },
+    {
+        "name":  "Git CMD",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Git\\git-cmd.exe"
+    },
+    {
+        "name":  "Git GUI",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Git\\cmd\\git-gui.exe"
+    },
+    {
+        "name":  "Git Release Notes",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Git\\ReleaseNotes.html"
+    },
+    {
+        "name":  "Google Chrome",
+        "version":  "144.0.7559.97",
+        "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    },
+    {
+        "name":  "HP Audio Switch",
+        "version":  "1.0.179.0",
+        "launch":  null
+    },
+    {
+        "name":  "HP Connection Optimizer",
+        "version":  "2.0.17.0",
+        "launch":  "C:\\Program Files\\HPCommRecovery\\HPCommRecovery.exe"
+    },
+    {
+        "name":  "HP Documentation",
+        "version":  "1.0.0.1",
+        "launch":  "C:\\Program Files\\HP\\Documentation\\elements\\hp.ico"
+    },
+    {
+        "name":  "IDLE (Python 3.14)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\pythonw.exe"
+    },
+    {
+        "name":  "Install Additional Tools for Node.js",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "Internet Download Manager",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Tonec\\IDMan.exe"
+    },
+    {
+        "name":  "Internet Download Manager version 7.1",
+        "version":  "7.1",
+        "launch":  "C:\\Program Files (x86)\\Tonec\\IDMan.exe"
+    },
+    {
+        "name":  "iSCSI Initiator",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\iscsicpl.exe"
+    },
+    {
+        "name":  "LiveCaptions",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\LiveCaptions.exe"
+    },
+    {
+        "name":  "Magnify",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\magnify.exe"
+    },
+    {
+        "name":  "Memory Diagnostics Tool",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\MdSched.exe"
+    },
+    {
+        "name":  "Microsoft 365 - en-us",
+        "version":  "16.0.19530.20184",
+        "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
+    },
+    {
+        "name":  "Microsoft Edge",
+        "version":  "144.0.3719.92",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.92\\msedge.exe"
+    },
+    {
+        "name":  "Microsoft OneDrive",
+        "version":  "25.243.1211.0001",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\25.243.1211.0001\\OneDriveSetup.exe"
+    },
+    {
+        "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
+        "version":  "14.44.35211.0",
+        "launch":  "C:\\ProgramData\\Package Cache\\{d8bbe9f9-7c5b-42c6-b715-9ee898a2e515}\\VC_redist.x64.exe"
+    },
+    {
+        "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211",
+        "version":  "14.44.35211.0",
+        "launch":  "C:\\ProgramData\\Package Cache\\{0b5169e3-39da-4313-808e-1f9c0407f3bf}\\VC_redist.x86.exe"
+    },
+    {
+        "name":  "MiKTeX Console",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\miktex-console.exe"
+    },
+    {
+        "name":  "MongoDB 8.2.1 2008R2Plus SSL (64 bit)",
+        "version":  "8.2.1",
+        "launch":  null
+    },
+    {
+        "name":  "MongoDB Compass",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\MongoDBCompass\\MongoDBCompass.exe"
+    },
+    {
+        "name":  "Narrator",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\narrator.exe"
+    },
+    {
+        "name":  "Node.js",
+        "version":  "22.20.0",
+        "launch":  null
+    },
+    {
+        "name":  "Node.js command prompt",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "ODBC Data Sources (32-bit)",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\syswow64\\odbcad32.exe"
+    },
+    {
+        "name":  "ODBC Data Sources (64-bit)",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\odbcad32.exe"
+    },
+    {
+        "name":  "Office Language Preferences",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\SETLANG.EXE"
+    },
+    {
+        "name":  "OneDrive",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\OneDrive.exe"
+    },
+    {
+        "name":  "OneNote",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\ONENOTE.EXE"
+    },
+    {
+        "name":  "On-Screen Keyboard",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\osk.exe"
+    },
+    {
+        "name":  "Outlook (classic)",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE"
+    },
+    {
+        "name":  "Pandoc 3.8.2.1",
+        "version":  "3.8.2.1",
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Pandoc\\pandoc.exe"
+    },
+    {
+        "name":  "Pandoc User’s Guide",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Pandoc\\Pandoc User\u0027s Guide.html"
+    },
+    {
+        "name":  "Performance Monitor",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\perfmon.msc"
+    },
+    {
+        "name":  "pgAdmin 4",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PostgreSQL\\18\\pgAdmin 4\\runtime\\pgAdmin4.exe"
+    },
+    {
+        "name":  "PostgreSQL 18 ",
+        "version":  "18.0-2",
+        "launch":  "C:\\Program Files\\PostgreSQL\\18\\uninstall-postgresql.exe"
+    },
+    {
+        "name":  "PowerPoint",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE"
+    },
+    {
+        "name":  "Publisher",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\MSPUB.EXE"
+    },
+    {
+        "name":  "PyDoc (Python 3.14)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
+    },
+    {
+        "name":  "Python 3.14",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
+    },
+    {
+        "name":  "Python 3.14 Manuals",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\Doc\\html\\index.html"
+    },
+    {
+        "name":  "RecoveryDrive",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\RecoveryDrive.exe"
+    },
+    {
+        "name":  "Registry Editor",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\regedit.exe"
+    },
+    {
+        "name":  "Reload Configuration",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe"
+    },
+    {
+        "name":  "Remote Desktop Connection",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\mstsc.exe"
+    },
+    {
+        "name":  "Resource Monitor",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\perfmon.exe"
+    },
+    {
+        "name":  "services",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\services.msc"
+    },
+    {
+        "name":  "SQL Shell (psql)",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PostgreSQL\\18\\scripts\\runpsql.bat"
+    },
+    {
+        "name":  "Steps Recorder",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\psr.exe"
+    },
+    {
+        "name":  "Sticky Notes (new)",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\ONENOTE.EXE"
+    },
+    {
+        "name":  "System Configuration",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\msconfig.exe"
+    },
+    {
+        "name":  "System Information",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\msinfo32.exe"
+    },
+    {
+        "name":  "Task Manager",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\taskmgr.exe"
+    },
+    {
+        "name":  "Task Scheduler",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\taskschd.msc"
+    },
+    {
+        "name":  "TeXworks",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\miktex-texworks.exe"
+    },
+    {
+        "name":  "Uninstall",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\Uninstall.exe"
+    },
+    {
+        "name":  "Uninstall Internet Download Manager",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Tonec\\unins000.exe"
+    },
+    {
+        "name":  "Uninstall Node.js",
+        "version":  null,
+        "launch":  "C:\\Windows\\SysWOW64\\msiexec.exe"
+    },
+    {
+        "name":  "Uninstall XAMPP",
+        "version":  null,
+        "launch":  "C:\\xampp\\uninstall.exe"
+    },
+    {
+        "name":  "Visual Studio Code",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+    },
+    {
+        "name":  "VoiceAccess",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\voiceaccess.exe"
+    },
+    {
+        "name":  "WebAdvisor by McAfee",
+        "version":  "4.1.1.1086",
+        "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
+    },
+    {
+        "name":  "WildTangent Games",
+        "version":  "1.1.1.47",
+        "launch":  "C:\\Program Files (x86)\\WildGames\\Uninstall.exe"
+    },
+    {
+        "name":  "Windows Defender Firewall with Advanced Security",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\WF.msc"
+    },
+    {
+        "name":  "Windows Fax and Scan",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\WFS.exe"
+    },
+    {
+        "name":  "Windows Media Player Legacy",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Media Player\\wmplayer.exe"
+    },
+    {
+        "name":  "Windows PowerShell",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"
+    },
+    {
+        "name":  "Windows PowerShell (x86)",
+        "version":  null,
+        "launch":  "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe"
+    },
+    {
+        "name":  "Windows PowerShell ISE",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\PowerShell_ISE.exe"
+    },
+    {
+        "name":  "Windows PowerShell ISE (x86)",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\syswow64\\WindowsPowerShell\\v1.0\\PowerShell_ISE.exe"
+    },
+    {
+        "name":  "Word",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
+    },
+    {
+        "name":  "WSL",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\Installer\\{B637A6A6-5591-4503-AFD8-776164EB837A}\\wsl.ico"
+    },
+    {
+        "name":  "WSL Settings",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\Installer\\{B637A6A6-5591-4503-AFD8-776164EB837A}\\wsl.ico"
+    },
+    {
+        "name":  "XAMPP",
+        "version":  "8.2.12-0",
+        "launch":  "C:\\xampp/install/xampp.ico"
+    },
+    {
+        "name":  "XAMPP Control Panel",
+        "version":  null,
+        "launch":  "C:\\xampp\\xampp-control.exe"
+    },
+    {
+        "name":  "XAMPP htdocs folder",
+        "version":  null,
+        "launch":  "C:\\xampp\\htdocs"
+    },
+    {
+        "name":  "XPS Viewer",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\xpsrchvw.exe"
+    }
+]

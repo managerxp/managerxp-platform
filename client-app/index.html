@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Sim Client</title>
+  <style>
+    body {
+      font-family: Arial;
+      background: #0f172a;
+      color: white;
+      margin: 0;
+      padding: 15px;
+    }
+    #status {
+      padding: 10px;
+      font-weight: bold;
+    }
+    .connected { color: #22c55e; }
+    .disconnected { color: #ef4444; }
+    #logs {
+      background: #020617;
+      margin-top: 10px;
+      padding: 10px;
+      height: 250px;
+      overflow-y: auto;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Sim Client Agent</h2>
+  <div id="status" class="disconnected">DISCONNECTED</div>
+
+  <div id="logs"></div>
+
+  <script src="renderer.js"></script>
+</body>
+</html>
