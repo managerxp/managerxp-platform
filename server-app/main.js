@@ -104,4 +104,21 @@ app.whenReady().then(() => {
     const client = clients.get(simId);
     return client ? client.apps : [];
   });
+
+  // Handle close app request from UI
+  ipcMain.handle("close-app", async (_, data) => {
+    const { simId, appName, appPath } = data;
+    const client = clients.get(simId);
+    
+    if (client && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(JSON.stringify({
+        type: "CLOSE_APP",
+        appName: appName,
+        appPath: appPath
+      }));
+      log(`Sent close command to ${simId}: ${appName}`);
+      return true;
+    }
+    return false;
+  });
 });

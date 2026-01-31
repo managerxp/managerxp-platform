@@ -86,7 +86,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "144.0.7559.97",
+        "version":  "144.0.7559.110",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -151,13 +151,13 @@
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "144.0.3719.92",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.92\\msedge.exe"
+        "version":  "144.0.3719.104",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.104\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "25.243.1211.0001",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\25.243.1211.0001\\OneDriveSetup.exe"
+        "version":  "26.002.0105.0001",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.002.0105.0001\\OneDriveSetup.exe"
     },
     {
         "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",

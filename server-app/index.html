@@ -110,6 +110,96 @@
       background: #2563eb;
     }
     
+    .timer-section {
+      margin-top: 10px;
+      padding: 10px;
+      background: #1e293b;
+      border-radius: 4px;
+      display: none;
+    }
+    
+    .timer-section.active {
+      display: block;
+    }
+    
+    .timer-input-group {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .timer-input-group label {
+      font-size: 13px;
+    }
+    
+    .timer-input-group input {
+      width: 80px;
+      padding: 5px;
+      border-radius: 3px;
+      border: 1px solid #475569;
+      background: #0f172a;
+      color: white;
+      font-size: 13px;
+    }
+    
+    .timer-display {
+      font-size: 24px;
+      font-weight: bold;
+      color: #22c55e;
+      margin: 10px 0;
+      text-align: center;
+    }
+    
+    .timer-display.warning {
+      color: #f59e0b;
+    }
+    
+    .timer-display.danger {
+      color: #ef4444;
+    }
+    
+    .timer-controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+    }
+    
+    .timer-controls button {
+      padding: 8px 15px;
+      background: #3b82f6;
+      border: none;
+      color: white;
+      border-radius: 3px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    
+    .timer-controls button:hover {
+      background: #2563eb;
+    }
+    
+    .timer-controls button.stop {
+      background: #ef4444;
+    }
+    
+    .timer-controls button.stop:hover {
+      background: #dc2626;
+    }
+    
+    .running-app {
+      padding: 10px;
+      background: #0f172a;
+      border-radius: 4px;
+      margin-bottom: 10px;
+      border-left: 3px solid #22c55e;
+    }
+    
+    .running-app-name {
+      font-weight: bold;
+      margin-bottom: 5px;
+    }
+    
     #logs {
       margin-top: 10px;
       height: 150px;
@@ -141,6 +231,21 @@
     <h3>Applications <span id="selected-client"></span></h3>
     <div id="apps-container">
       <div class="no-apps">Select a client to view applications</div>
+    </div>
+  </div>
+
+  <div class="timer-section" id="timer-section">
+    <div class="running-app" id="running-app-info"></div>
+    <div class="timer-input-group" id="timer-input-group">
+      <label>Set Timer (minutes):</label>
+      <input type="number" id="timer-minutes" min="1" max="1440" value="5" />
+      <button onclick="startTimer()">Start Timer</button>
+    </div>
+    <div id="timer-display" class="timer-display" style="display: none;"></div>
+    <div class="timer-controls" id="timer-controls" style="display: none;">
+      <button onclick="pauseTimer()">Pause</button>
+      <button onclick="resumeTimer()">Resume</button>
+      <button class="stop" onclick="stopTimer()">Stop & Close App</button>
     </div>
   </div>
 

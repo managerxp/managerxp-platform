@@ -10,6 +10,7 @@ const SERVER_URL = "ws://localhost:8080";
 
 let win;
 let ws;
+let runningProcesses = new Map(); // appName -> { pid, appPath }
 
 function createWindow() {
   win = new BrowserWindow({
@@ -113,13 +114,22 @@ function connect() {
     if (msg.type === "LAUNCH_APP") {
       log(`Launching: ${msg.appName}`);
       if (msg.appPath) {
-        exec(`"${msg.appPath}"`, (err) => {
+        const child = exec(`"${msg.appPath}"`, (err) => {
           if (err) {
             log(`Error launching app: ${err.message}`);
           } else {
             log(`Successfully launched: ${msg.appName}`);
           }
         });
+        
+        // Store the process info
+        if (child.pid) {
+          runningProcesses.set(msg.appName, {
+            pid: child.pid,
+            appPath: msg.appPath
+          });
+          log(`Tracking process PID: ${child.pid}`);
+        }
       }
     }
     
@@ -138,6 +148,77 @@ function connect() {
           log(`Error refreshing apps: ${err.message}`);
         });
     }
+    
+    if (msg.type === "CLOSE_APP") {
+      log(`Closing application: ${msg.appName}`);
+      closeApplication(msg.appName);
+    }
+  });
+}
+
+function closeApplication(appName) {
+  const processInfo = runningProcesses.get(appName);
+  
+  if (processInfo) {
+    // Try to close by PID and also kill child processes
+    const pid = processInfo.pid;
+    const command = `powershell -Command "Get-Process -Id ${pid} -ErrorAction SilentlyContinue | ForEach-Object { $processName = $_.ProcessName; $_.Kill(); Write-Output \\"Killed process: $processName (PID: ${pid})\\" }; Get-CimInstance Win32_Process | Where-Object { $_.ParentProcessId -eq ${pid} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"`;
+    
+    exec(command, (err, stdout, stderr) => {
+      if (err) {
+        log(`Process ${pid} may have already exited`);
+        // Try alternative method - close by executable name
+        closeByExecutableName(processInfo.appPath, appName);
+      } else {
+        log(`Successfully closed: ${appName} (PID: ${pid})`);
+        runningProcesses.delete(appName);
+      }
+    });
+  } else {
+    // No tracked PID, try to close by executable name
+    log(`No tracked PID for ${appName}, trying by executable name...`);
+    closeByExecutableName(null, appName);
+  }
+}
+
+function closeByExecutableName(appPath, appName) {
+  let exeName = appName.split(' ')[0];
+  
+  // If we have the path, extract the actual executable name
+  if (appPath) {
+    const pathParts = appPath.split(/[\\/]/);
+    const executable = pathParts[pathParts.length - 1];
+    exeName = executable.replace('.exe', '');
+  }
+  
+  // Try multiple methods to close the application
+  const command = `powershell -Command "
+    $found = $false;
+    Get-Process -Name '${exeName}' -ErrorAction SilentlyContinue | ForEach-Object { 
+      $_.Kill(); 
+      Write-Output \\"Killed: ${exeName}\\";
+      $found = $true;
+    };
+    if (-not $found) {
+      Get-Process | Where-Object { $_.ProcessName -like '*${exeName}*' } | ForEach-Object {
+        $_.Kill();
+        Write-Output \\"Killed: $($_.ProcessName)\\";
+        $found = $true;
+      };
+    };
+    if (-not $found) {
+      Write-Output \\"No process found matching: ${exeName}\\";
+    }
+  "`;
+  
+  exec(command, (err, stdout, stderr) => {
+    if (stdout) {
+      log(stdout.trim());
+    }
+    if (err && !stdout.includes('Killed')) {
+      log(`Could not find process for: ${appName}`);
+    }
+    runningProcesses.delete(appName);
   });
 }
 
