@@ -1,0 +1,11 @@
+{
+  "name": "sim-client",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "dependencies": {
+    "electron": "^30.0.0",
+    "ws": "^8.16.0"
+  }
+}
