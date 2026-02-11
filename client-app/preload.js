@@ -5,8 +5,6 @@ contextBridge.exposeInMainWorld("api", {
   onStatus: (cb) => ipcRenderer.on("status", (_, status) => cb(status)),
   hideStatusBar: () => ipcRenderer.send("hide-statusbar"),
   showStatusBar: () => ipcRenderer.send("show-statusbar"),
-  setAssignedTime: (minutes) => ipcRenderer.send("set-assigned-time", minutes),
-  onAssignedTime: (cb) => ipcRenderer.on("assigned-time", (_, minutes) => cb(minutes)),
   onStartTimer: (cb) => ipcRenderer.on("start-timer", (_, data) => cb(data)),
   timerExpired: (appName) => ipcRenderer.send("timer-expired", appName)
 });

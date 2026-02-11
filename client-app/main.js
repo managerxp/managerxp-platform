@@ -51,13 +51,6 @@ function createWindow() {
     }
   });
   
-  // IPC handler for setting assigned timer
-  ipcMain.on('set-assigned-time', (event, minutes) => {
-    if (win && !win.isDestroyed()) {
-      win.webContents.send("assigned-time", minutes);
-    }
-  });
-  
   // IPC handler for timer expiry - close the app
   ipcMain.on('timer-expired', (event, appName) => {
     log(`Timer expired for ${appName}, closing application...`);
@@ -67,7 +60,7 @@ function createWindow() {
   // Create main client application window
   win = new BrowserWindow({
     width: 600,
-    height: 500,
+    height: 400,
     y: 100,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
