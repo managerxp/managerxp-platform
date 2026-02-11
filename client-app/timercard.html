@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Timer Card</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: Arial, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      -webkit-app-region: drag;
+      cursor: move;
+    }
+    .timer-card {
+      width: 150px;
+      padding: 12px;
+      background: rgba(15, 23, 42, 0.95);
+      backdrop-filter: blur(10px);
+      border-radius: 10px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: white;
+    }
+    .timer-display {
+      font-size: 36px;
+      font-family: 'Courier New', monospace;
+      font-weight: bold;
+      text-align: center;
+      color: #22c55e;
+      text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+    }
+    .timer-display.warning {
+      color: #f59e0b;
+      text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
+    }
+    .timer-display.danger {
+      color: #ef4444;
+      animation: pulse 1s infinite;
+      text-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
+    }
+    @keyframes pulse {
+      0%, 100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+      50% {
+        opacity: 0.8;
+        transform: scale(1.05);
+      }
+    }
+    .label {
+      font-size: 9px;
+      text-align: center;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div class="timer-card">
+    <div class="label">TIME LEFT</div>
+    <div class="timer-display" id="timerDisplay">00:00</div>
+  </div>
+
+  <script src="timercard.js"></script>
+</body>
+</html>

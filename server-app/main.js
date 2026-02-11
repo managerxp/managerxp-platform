@@ -70,16 +70,17 @@ app.whenReady().then(() => {
 
   // Handle launch request from UI
   ipcMain.handle("launch-app", async (_, data) => {
-    const { simId, appName, appPath } = data;
+    const { simId, appName, appPath, timerMinutes } = data;
     const client = clients.get(simId);
     
     if (client && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(JSON.stringify({
         type: "LAUNCH_APP",
         appName: appName,
-        appPath: appPath
+        appPath: appPath,
+        timerMinutes: timerMinutes || 0
       }));
-      log(`Sent launch command to ${simId}: ${appName}`);
+      log(`Sent launch command to ${simId}: ${appName}${timerMinutes ? ` (Timer: ${timerMinutes} min)` : ''}`);
       return true;
     }
     return false;

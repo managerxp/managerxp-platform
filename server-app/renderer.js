@@ -128,7 +128,8 @@ async function launchApp(app) {
   const success = await window.api.launchApp({
     simId: selectedClient,
     appName: app.name,
-    appPath: app.launch
+    appPath: app.launch,
+    timerMinutes: 0 // Will be set when user starts timer
   });
 
   if (success) {
@@ -163,6 +164,16 @@ function startTimer() {
 
   timerSeconds = minutes * 60;
   isPaused = false;
+  
+  // Send timer to client
+  if (currentRunningApp) {
+    window.api.launchApp({
+      simId: currentRunningApp.simId,
+      appName: currentRunningApp.appName,
+      appPath: currentRunningApp.appPath,
+      timerMinutes: minutes
+    });
+  }
   
   timerInputGroup.style.display = 'none';
   timerDisplay.style.display = 'block';
