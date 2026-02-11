@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Status Bar</title>
+  <style>
+    body {
+      font-family: Arial;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      -webkit-app-region: drag;
+    }
+    #statusBar {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px 30px;
+      font-weight: bold;
+      font-size: 18px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      -webkit-app-region: no-drag;
+    }
+    #statusBar.connected {
+      background: #22c55e;
+      color: white;
+    }
+    #statusBar.disconnected {
+      background: #ef4444;
+      color: white;
+    }
+    #statusText {
+      flex: 1;
+      text-align: center;
+      font-size: 24px;
+      letter-spacing: 2px;
+    }
+    #timer {
+      font-size: 18px;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="statusBar" class="disconnected">
+    <div id="timer">00:00:00</div>
+    <div id="statusText">SIM OFFLINE</div>
+    <div style="width: 100px;"></div>
+  </div>
+
+  <script src="statusbar.js"></script>
+</body>
+</html>

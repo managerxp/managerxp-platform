@@ -15,6 +15,16 @@
         "launch":  "C:\\Program Files\\PostgreSQL\\18\\bin\\stackbuilder.exe"
     },
     {
+        "name":  "Application Verifier (WOW)",
+        "version":  null,
+        "launch":  "C:\\Windows\\SysWOW64\\appverif.exe"
+    },
+    {
+        "name":  "Application Verifier (X64)",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\appverif.exe"
+    },
+    {
         "name":  "Character Map",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\charmap.exe"
@@ -40,6 +50,16 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\dbeaver.exe"
     },
     {
+        "name":  "Developer Command Prompt for VS",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "Developer PowerShell for VS",
+        "version":  null,
+        "launch":  "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe"
+    },
+    {
         "name":  "dfrgui",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\dfrgui.exe"
@@ -48,6 +68,16 @@
         "name":  "Disk Cleanup",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\cleanmgr.exe"
+    },
+    {
+        "name":  "Documentation for Desktop Apps",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\DesktopAppsDocumentation.url"
+    },
+    {
+        "name":  "Documentation for UWP Apps",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\UWPAppsDocumentation.url"
     },
     {
         "name":  "Event Viewer",
@@ -86,7 +116,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "144.0.7559.110",
+        "version":  "144.0.7559.133",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -103,6 +133,11 @@
         "name":  "HP Documentation",
         "version":  "1.0.0.1",
         "launch":  "C:\\Program Files\\HP\\Documentation\\elements\\hp.ico"
+    },
+    {
+        "name":  "IDLE (Python 3.11 64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\pythonw.exe"
     },
     {
         "name":  "IDLE (Python 3.14)",
@@ -146,28 +181,33 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19530.20184",
+        "version":  "16.0.19628.20150",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "144.0.3719.104",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.104\\msedge.exe"
+        "version":  "144.0.3719.115",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.115\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.002.0105.0001",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.002.0105.0001\\OneDriveSetup.exe"
+        "version":  "26.007.0112.0002",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.007.0112.0002\\OneDriveSetup.exe"
     },
     {
-        "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
-        "version":  "14.44.35211.0",
-        "launch":  "C:\\ProgramData\\Package Cache\\{d8bbe9f9-7c5b-42c6-b715-9ee898a2e515}\\VC_redist.x64.exe"
+        "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
+        "version":  "14.50.35719.0",
+        "launch":  "C:\\ProgramData\\Package Cache\\{91ee571b-0e8a-4c65-9eaf-2e2f5fc60c00}\\VC_redist.x64.exe"
     },
     {
-        "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211",
-        "version":  "14.44.35211.0",
-        "launch":  "C:\\ProgramData\\Package Cache\\{0b5169e3-39da-4313-808e-1f9c0407f3bf}\\VC_redist.x86.exe"
+        "name":  "Microsoft Visual C++ v14 Redistributable (x86) - 14.50.35719",
+        "version":  "14.50.35719.0",
+        "launch":  "C:\\ProgramData\\Package Cache\\{0e4ccf1b-d073-4cfe-8a24-e86185719b56}\\VC_redist.x86.exe"
+    },
+    {
+        "name":  "Microsoft Visual Studio Installer",
+        "version":  "4.0.2168.39045",
+        "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\setup.exe"
     },
     {
         "name":  "MiKTeX Console",
@@ -275,6 +315,21 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
     },
     {
+        "name":  "Python 3.11 (64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+    },
+    {
+        "name":  "Python 3.11 Manuals (64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\Doc\\html\\index.html"
+    },
+    {
+        "name":  "Python 3.11 Module Docs (64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+    },
+    {
         "name":  "Python 3.14",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
@@ -283,6 +338,11 @@
         "name":  "Python 3.14 Manuals",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\Doc\\html\\index.html"
+    },
+    {
+        "name":  "Python Launcher",
+        "version":  "3.11.9150.0",
+        "launch":  null
     },
     {
         "name":  "RecoveryDrive",
@@ -308,6 +368,16 @@
         "name":  "Resource Monitor",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\perfmon.exe"
+    },
+    {
+        "name":  "Sample Desktop Apps",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\DesktopAppsSamples.url"
+    },
+    {
+        "name":  "Sample UWP Apps",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\UWPAppsSamples.url"
     },
     {
         "name":  "services",
@@ -355,6 +425,16 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\miktex-texworks.exe"
     },
     {
+        "name":  "Tools for Desktop Apps",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\DesktopAppsToolsDocumentation.url"
+    },
+    {
+        "name":  "Tools for UWP Apps",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\UWPAppsToolsDocumentation.url"
+    },
+    {
         "name":  "Uninstall",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\Uninstall.exe"
@@ -375,9 +455,19 @@
         "launch":  "C:\\xampp\\uninstall.exe"
     },
     {
+        "name":  "Visual Studio Build Tools 2026",
+        "version":  "18.2.1",
+        "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\IDE\\devenv.ico"
+    },
+    {
         "name":  "Visual Studio Code",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
+    },
+    {
+        "name":  "Visual Studio Installer",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\setup.exe"
     },
     {
         "name":  "VoiceAccess",
@@ -393,6 +483,11 @@
         "name":  "WildTangent Games",
         "version":  "1.1.1.47",
         "launch":  "C:\\Program Files (x86)\\WildGames\\Uninstall.exe"
+    },
+    {
+        "name":  "Windows App Cert Kit",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\App Certification Kit\\appcertui.exe"
     },
     {
         "name":  "Windows Defender Firewall with Advanced Security",
@@ -430,6 +525,21 @@
         "launch":  "C:\\WINDOWS\\syswow64\\WindowsPowerShell\\v1.0\\PowerShell_ISE.exe"
     },
     {
+        "name":  "Windows SDK AddOn",
+        "version":  "10.1.0.0",
+        "launch":  null
+    },
+    {
+        "name":  "Windows Software Development Kit",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\explorer.exe"
+    },
+    {
+        "name":  "Windows Software Development Kit - Windows 10.0.26100.7175",
+        "version":  "10.1.26100.7175",
+        "launch":  "C:\\ProgramData\\Package Cache\\{b5ab6bbd-62a1-45bd-af43-2ea6ac4c3486}\\winsdksetup.exe"
+    },
+    {
         "name":  "Word",
         "version":  null,
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
@@ -443,6 +553,26 @@
         "name":  "WSL Settings",
         "version":  null,
         "launch":  "C:\\WINDOWS\\Installer\\{B637A6A6-5591-4503-AFD8-776164EB837A}\\wsl.ico"
+    },
+    {
+        "name":  "x64 Native Tools Command Prompt for VS",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "x64_x86 Cross Tools Command Prompt for VS",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "x86 Native Tools Command Prompt for VS",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "x86_x64 Cross Tools Command Prompt for VS",
+        "version":  null,
+        "launch":  "C:\\Windows\\System32\\cmd.exe"
     },
     {
         "name":  "XAMPP",

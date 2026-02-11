@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, screen } = require("electron");
 const WebSocket = require("ws");
 const os = require("os");
 const path = require("path");
@@ -9,13 +9,59 @@ const SIM_ID = "SIM-01";
 const SERVER_URL = "ws://localhost:8080";
 
 let win;
+let statusBarWin;
 let ws;
 let runningProcesses = new Map(); // appName -> { pid, appPath }
 
 function createWindow() {
+  const { width } = screen.getPrimaryDisplay().workAreaSize;
+  
+  // Create status bar overlay window
+  statusBarWin = new BrowserWindow({
+    width: width,
+    height: 70,
+    x: 0,
+    y: 0,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    resizable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  });
+
+  statusBarWin.loadFile("statusbar.html");
+  statusBarWin.setAlwaysOnTop(true, 'screen-saver');
+  
+  // IPC handler for hiding status bar
+  ipcMain.on('hide-statusbar', () => {
+    if (statusBarWin && !statusBarWin.isDestroyed()) {
+      statusBarWin.hide();
+    }
+  });
+  
+  ipcMain.on('show-statusbar', () => {
+    if (statusBarWin && !statusBarWin.isDestroyed()) {
+      statusBarWin.show();
+    }
+  });
+  
+  // IPC handler for setting assigned timer
+  ipcMain.on('set-assigned-time', (event, minutes) => {
+    if (win && !win.isDestroyed()) {
+      win.webContents.send("assigned-time", minutes);
+    }
+  });
+  
+  // Create main client application window
   win = new BrowserWindow({
     width: 600,
-    height: 400,
+    height: 500,
+    y: 100,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -28,6 +74,11 @@ function createWindow() {
 
 function log(message) {
   if (win) win.webContents.send("log", message);
+}
+
+function updateStatus(status) {
+  if (win) win.webContents.send("status", status);
+  if (statusBarWin) statusBarWin.webContents.send("status", status);
 }
 
 function getInstalledApps() {
@@ -68,7 +119,7 @@ function connect() {
 
   ws.on("open", async () => {
     log("Connected to VMS");
-    win.webContents.send("status", "CONNECTED");
+    updateStatus("CONNECTED");
 
     ws.send(JSON.stringify({
       type: "REGISTER",
@@ -96,7 +147,7 @@ function connect() {
 
   ws.on("close", () => {
     log("Disconnected. Reconnecting...");
-    win.webContents.send("status", "DISCONNECTED");
+    updateStatus("DISCONNECTED");
     setTimeout(connect, 3000);
   });
 

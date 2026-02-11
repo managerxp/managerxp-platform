@@ -17,6 +17,54 @@
     }
     .connected { color: #22c55e; }
     .disconnected { color: #ef4444; }
+    #timer {
+      padding: 10px;
+      font-size: 18px;
+      font-family: monospace;
+      font-weight: bold;
+      color: #3b82f6;
+    }
+    #countdown {
+      padding: 10px;
+      font-size: 20px;
+      font-family: monospace;
+      font-weight: bold;
+      color: #f59e0b;
+      margin: 10px 0;
+    }
+    #countdown.warning {
+      color: #ef4444;
+      animation: blink 1s infinite;
+    }
+    @keyframes blink {
+      0%, 50% { opacity: 1; }
+      51%, 100% { opacity: 0.5; }
+    }
+    .timer-controls {
+      margin: 10px 0;
+      padding: 10px;
+      background: #1e293b;
+      border-radius: 5px;
+    }
+    .timer-controls input {
+      padding: 5px 10px;
+      margin-right: 10px;
+      background: #334155;
+      color: white;
+      border: 1px solid #475569;
+      border-radius: 3px;
+    }
+    .timer-controls button {
+      padding: 5px 15px;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 3px;
+      cursor: pointer;
+    }
+    .timer-controls button:hover {
+      background: #2563eb;
+    }
     #logs {
       background: #020617;
       margin-top: 10px;
@@ -31,9 +79,19 @@
 
   <h2>Sim Client Agent</h2>
   <div id="status" class="disconnected">DISCONNECTED</div>
+  <div id="timer">Elapsed Time: 00:00:00</div>
+  
+  <div class="timer-controls">
+    <label>Set Timer (minutes): </label>
+    <input type="number" id="assignedMinutes" value="60" min="1" max="999" />
+    <button onclick="setTimer()">Start Timer</button>
+  </div>
+  
+  <div id="countdown">Remaining Time: --:--:--</div>
 
   <div id="logs"></div>
 
   <script src="renderer.js"></script>
 </body>
+</html>
 </html>
