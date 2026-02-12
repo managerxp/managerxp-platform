@@ -125,23 +125,13 @@ function renderApps(apps) {
 async function launchApp(app) {
   if (!selectedClient || !app.launch) return;
 
-  const success = await window.api.launchApp({
+  // Store app info but don't launch yet - wait for timer to be set
+  currentRunningApp = {
     simId: selectedClient,
     appName: app.name,
-    appPath: app.launch,
-    timerMinutes: 0 // Will be set when user starts timer
-  });
-
-  if (success) {
-    currentRunningApp = {
-      simId: selectedClient,
-      appName: app.name,
-      appPath: app.launch
-    };
-    showTimerSection();
-  } else {
-    alert("Failed to send launch command. Client may be disconnected.");
-  }
+    appPath: app.launch
+  };
+  showTimerSection();
 }
 
 function showTimerSection() {
