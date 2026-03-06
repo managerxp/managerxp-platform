@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const WebSocket = require("ws");
 const path = require("path");
 
@@ -7,14 +7,19 @@ const clients = new Map(); // simId -> { ws, apps }
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 900,
-    height: 650,
+    width: 950,
+    height: 700,
+    minWidth: 800,
+    minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  // Remove the application menu
+  Menu.setApplicationMenu(null);
 
   win.loadFile("index.html");
 }

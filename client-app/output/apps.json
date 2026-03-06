@@ -15,16 +15,6 @@
         "launch":  "C:\\Program Files\\PostgreSQL\\18\\bin\\stackbuilder.exe"
     },
     {
-        "name":  "Application Verifier (WOW)",
-        "version":  null,
-        "launch":  "C:\\Windows\\SysWOW64\\appverif.exe"
-    },
-    {
-        "name":  "Application Verifier (X64)",
-        "version":  null,
-        "launch":  "C:\\Windows\\System32\\appverif.exe"
-    },
-    {
         "name":  "Character Map",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\charmap.exe"
@@ -50,16 +40,6 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\dbeaver.exe"
     },
     {
-        "name":  "Developer Command Prompt for VS",
-        "version":  null,
-        "launch":  "C:\\Windows\\System32\\cmd.exe"
-    },
-    {
-        "name":  "Developer PowerShell for VS",
-        "version":  null,
-        "launch":  "C:\\Windows\\SysWOW64\\WindowsPowerShell\\v1.0\\powershell.exe"
-    },
-    {
         "name":  "dfrgui",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\dfrgui.exe"
@@ -70,16 +50,6 @@
         "launch":  "C:\\WINDOWS\\system32\\cleanmgr.exe"
     },
     {
-        "name":  "Documentation for Desktop Apps",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\DesktopAppsDocumentation.url"
-    },
-    {
-        "name":  "Documentation for UWP Apps",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\UWPAppsDocumentation.url"
-    },
-    {
         "name":  "Event Viewer",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\eventvwr.msc"
@@ -88,6 +58,11 @@
         "name":  "Excel",
         "version":  null,
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE"
+    },
+    {
+        "name":  "Figma",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Figma\\app-126.1.2\\Figma.exe"
     },
     {
         "name":  "Git",
@@ -116,7 +91,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "144.0.7559.133",
+        "version":  "145.0.7632.160",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -181,18 +156,18 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19628.20166",
+        "version":  "16.0.19725.20126",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "144.0.3719.115",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.115\\msedge.exe"
+        "version":  "145.0.3800.82",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\145.0.3800.82\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.007.0112.0002",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.007.0112.0002\\OneDriveSetup.exe"
+        "version":  "26.022.0203.0006",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.022.0203.0006\\OneDriveSetup.exe"
     },
     {
         "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
@@ -203,11 +178,6 @@
         "name":  "Microsoft Visual C++ v14 Redistributable (x86) - 14.50.35719",
         "version":  "14.50.35719.0",
         "launch":  "C:\\ProgramData\\Package Cache\\{0e4ccf1b-d073-4cfe-8a24-e86185719b56}\\VC_redist.x86.exe"
-    },
-    {
-        "name":  "Microsoft Visual Studio Installer",
-        "version":  "4.0.2168.39045",
-        "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\setup.exe"
     },
     {
         "name":  "MiKTeX Console",
@@ -370,16 +340,6 @@
         "launch":  "C:\\WINDOWS\\system32\\perfmon.exe"
     },
     {
-        "name":  "Sample Desktop Apps",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\DesktopAppsSamples.url"
-    },
-    {
-        "name":  "Sample UWP Apps",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\UWPAppsSamples.url"
-    },
-    {
         "name":  "services",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\services.msc"
@@ -425,16 +385,6 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\miktex-texworks.exe"
     },
     {
-        "name":  "Tools for Desktop Apps",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\DesktopAppsToolsDocumentation.url"
-    },
-    {
-        "name":  "Tools for UWP Apps",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\Shortcuts\\UWPAppsToolsDocumentation.url"
-    },
-    {
         "name":  "Uninstall",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\Uninstall.exe"
@@ -455,11 +405,6 @@
         "launch":  "C:\\xampp\\uninstall.exe"
     },
     {
-        "name":  "Visual Studio Build Tools 2026",
-        "version":  "18.2.1",
-        "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\18\\BuildTools\\Common7\\IDE\\devenv.ico"
-    },
-    {
         "name":  "Visual Studio Code",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
@@ -476,18 +421,13 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1086",
+        "version":  "4.1.1.1088",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {
         "name":  "WildTangent Games",
         "version":  "1.1.1.47",
         "launch":  "C:\\Program Files (x86)\\WildGames\\Uninstall.exe"
-    },
-    {
-        "name":  "Windows App Cert Kit",
-        "version":  null,
-        "launch":  "C:\\Program Files (x86)\\Windows Kits\\10\\App Certification Kit\\appcertui.exe"
     },
     {
         "name":  "Windows Defender Firewall with Advanced Security",
@@ -530,16 +470,6 @@
         "launch":  null
     },
     {
-        "name":  "Windows Software Development Kit",
-        "version":  null,
-        "launch":  "C:\\WINDOWS\\explorer.exe"
-    },
-    {
-        "name":  "Windows Software Development Kit - Windows 10.0.26100.7175",
-        "version":  "10.1.26100.7175",
-        "launch":  "C:\\ProgramData\\Package Cache\\{b5ab6bbd-62a1-45bd-af43-2ea6ac4c3486}\\winsdksetup.exe"
-    },
-    {
         "name":  "Word",
         "version":  null,
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE"
@@ -553,26 +483,6 @@
         "name":  "WSL Settings",
         "version":  null,
         "launch":  "C:\\WINDOWS\\Installer\\{B637A6A6-5591-4503-AFD8-776164EB837A}\\wsl.ico"
-    },
-    {
-        "name":  "x64 Native Tools Command Prompt for VS",
-        "version":  null,
-        "launch":  "C:\\Windows\\System32\\cmd.exe"
-    },
-    {
-        "name":  "x64_x86 Cross Tools Command Prompt for VS",
-        "version":  null,
-        "launch":  "C:\\Windows\\System32\\cmd.exe"
-    },
-    {
-        "name":  "x86 Native Tools Command Prompt for VS",
-        "version":  null,
-        "launch":  "C:\\Windows\\System32\\cmd.exe"
-    },
-    {
-        "name":  "x86_x64 Cross Tools Command Prompt for VS",
-        "version":  null,
-        "launch":  "C:\\Windows\\System32\\cmd.exe"
     },
     {
         "name":  "XAMPP",

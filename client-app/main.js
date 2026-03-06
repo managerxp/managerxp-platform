@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
 const WebSocket = require("ws");
 const os = require("os");
 const path = require("path");
@@ -20,7 +20,7 @@ function createWindow() {
   // Create status bar overlay window
   statusBarWin = new BrowserWindow({
     width: width,
-    height: 70,
+    height: 60,
     x: 0,
     y: 0,
     frame: false,
@@ -60,7 +60,9 @@ function createWindow() {
   // Create main client application window
   win = new BrowserWindow({
     width: 600,
-    height: 400,
+    height: 600,
+    minWidth: 550,
+    minHeight: 550,
     y: 100,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -68,6 +70,9 @@ function createWindow() {
       nodeIntegration: false
     }
   });
+
+  // Remove the application menu
+  Menu.setApplicationMenu(null);
 
   win.loadFile("index.html");
 }
@@ -85,9 +90,9 @@ function createTimerCard(appName, timerMinutes) {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
   const timerCard = new BrowserWindow({
-    width: 150,
-    height: 100,
-    x: width - 170,  // 20px from right edge
+    width: 190,
+    height: 130,
+    x: width - 210,  // 20px from right edge
     y: 20,           // 20px from top
     frame: false,
     transparent: true,

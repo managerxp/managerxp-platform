@@ -9,40 +9,7 @@
       padding: 0;
       box-sizing: border-box;
     }
-    body {
-      font-family: Arial, sans-serif;
-      background: transparent;
-      overflow: hidden;
-      -webkit-app-region: drag;
-      cursor: move;
-    }
-    .timer-card {
-      width: 150px;
-      padding: 12px;
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(10px);
-      border-radius: 10px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      color: white;
-    }
-    .timer-display {
-      font-size: 36px;
-      font-family: 'Courier New', monospace;
-      font-weight: bold;
-      text-align: center;
-      color: #22c55e;
-      text-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
-    }
-    .timer-display.warning {
-      color: #f59e0b;
-      text-shadow: 0 0 10px rgba(245, 158, 11, 0.5);
-    }
-    .timer-display.danger {
-      color: #ef4444;
-      animation: pulse 1s infinite;
-      text-shadow: 0 0 10px rgba(239, 68, 68, 0.7);
-    }
+
     @keyframes pulse {
       0%, 100% {
         opacity: 1;
@@ -50,23 +17,150 @@
       }
       50% {
         opacity: 0.8;
-        transform: scale(1.05);
+        transform: scale(1.08);
       }
     }
+
+    @keyframes glow {
+      0%, 100% {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 30px rgba(34, 197, 94, 0.5);
+      }
+      50% {
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 50px rgba(34, 197, 94, 0.8);
+      }
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: transparent;
+      overflow: hidden;
+      -webkit-app-region: drag;
+      cursor: move;
+    }
+
+    .timer-card {
+      width: 180px;
+      padding: 16px;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.98) 0%, rgba(30, 27, 75, 0.98) 100%);
+      backdrop-filter: blur(20px);
+      border-radius: 14px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+      border: 2px solid rgba(102, 126, 234, 0.4);
+      color: white;
+      animation: slideIn 0.5s ease-out;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .timer-card::before {
+      content: "";
+      position: absolute;
+      top: -50%;
+      left: -50%;
+      width: 200%;
+      height: 200%;
+      background: linear-gradient(
+        45deg,
+        transparent,
+        rgba(102, 126, 234, 0.1),
+        transparent
+      );
+      animation: shimmer 3s infinite;
+    }
+
+    @keyframes shimmer {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .timer-card.glow {
+      animation: glow 2s ease-in-out infinite;
+    }
+
     .label {
       font-size: 9px;
       text-align: center;
       color: #94a3b8;
       text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 5px;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+      font-weight: 600;
+      position: relative;
+      z-index: 1;
+    }
+
+    .timer-display {
+      font-size: 42px;
+      font-family: 'Courier New', monospace;
+      font-weight: 700;
+      text-align: center;
+      color: #22c55e;
+      text-shadow: 0 0 20px rgba(34, 197, 94, 0.6);
+      letter-spacing: 2px;
+      position: relative;
+      z-index: 1;
+      transition: all 0.3s ease;
+    }
+
+    .timer-display.warning {
+      color: #f59e0b;
+      text-shadow: 0 0 20px rgba(245, 158, 11, 0.6);
+    }
+
+    .timer-display.danger {
+      color: #ef4444;
+      animation: pulse 1s infinite;
+      text-shadow: 0 0 25px rgba(239, 68, 68, 0.8);
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 3px;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 2px;
+      margin-top: 12px;
+      overflow: hidden;
+      position: relative;
+      z-index: 1;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #22c55e, #10b981);
+      border-radius: 2px;
+      transition: width 1s linear, background 0.3s ease;
+      box-shadow: 0 0 8px rgba(34, 197, 94, 0.5);
+    }
+
+    .progress-fill.warning {
+      background: linear-gradient(90deg, #f59e0b, #f97316);
+      box-shadow: 0 0 8px rgba(245, 158, 11, 0.5);
+    }
+
+    .progress-fill.danger {
+      background: linear-gradient(90deg, #ef4444, #dc2626);
+      box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
     }
   </style>
 </head>
 <body>
-  <div class="timer-card">
-    <div class="label">TIME LEFT</div>
+  <div class="timer-card" id="timerCard">
+    <div class="label">⏱️ TIME REMAINING</div>
     <div class="timer-display" id="timerDisplay">00:00</div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressFill" style="width: 100%;"></div>
+    </div>
   </div>
 
   <script src="timercard.js"></script>
