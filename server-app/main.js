@@ -26,8 +26,8 @@ function log(msg) {
 app.whenReady().then(() => {
   createWindow();
 
-  const wss = new WebSocket.Server({ port: 8080 });
-  log("VMS Server started on port 8080");
+  const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
+  log("VMS Server started on port 8080 (accessible on network)");
 
   wss.on("connection", (ws) => {
     log("Client connected");
