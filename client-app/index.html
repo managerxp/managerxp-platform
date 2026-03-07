@@ -2,37 +2,289 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>Sim Client</title>
+  <title>ConnectXP - Client Manager</title>
   <style>
-    body {
-      font-family: Arial;
-      background: #0f172a;
-      color: white;
+    * {
       margin: 0;
-      padding: 15px;
+      padding: 0;
+      box-sizing: border-box;
     }
-    #status {
-      padding: 10px;
-      font-weight: bold;
+
+    @keyframes gradient {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
     }
-    .connected { color: #22c55e; }
-    .disconnected { color: #ef4444; }
-    #logs {
-      background: #020617;
-      margin-top: 10px;
-      padding: 10px;
-      height: 250px;
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    @keyframes glow {
+      0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
+      50% { box-shadow: 0 0 40px rgba(34, 197, 94, 0.8); }
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(-45deg, #0f172a, #1e1b4b, #1e293b, #0c4a6e);
+      background-size: 400% 400%;
+      animation: gradient 15s ease infinite;
+      color: #e2e8f0;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
       overflow-y: auto;
+    }
+
+    .container {
+      width: 100%;
+      padding: 30px 25px;
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 25px;
+    }
+
+    .logo {
+      font-size: 36px;
+      font-weight: 700;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .logo::before {
+      content: " ";
+      font-size: 40px;
+      -webkit-text-fill-color: initial;
+    }
+
+    .subtitle {
+      font-size: 12px;
+      color: #94a3b8;
+      font-weight: 500;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    .status-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 25px 20px;
+      text-align: center;
+      margin-bottom: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .status-card:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .status-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      padding: 15px 30px;
+      border-radius: 12px;
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      margin-bottom: 12px;
+      transition: all 0.3s ease;
+    }
+
+    .status-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      position: relative;
+    }
+
+    .status-dot::after {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+
+    .connected .status-indicator {
+      background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%);
+      border: 2px solid rgba(34, 197, 94, 0.5);
+      color: #22c55e;
+      animation: glow 2s ease-in-out infinite;
+    }
+
+    .connected .status-dot {
+      background: #22c55e;
+      box-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
+    }
+
+    .disconnected .status-indicator {
+      background: rgba(239, 68, 68, 0.15);
+      border: 2px solid rgba(239, 68, 68, 0.4);
+      color: #ef4444;
+    }
+
+    .disconnected .status-dot {
+      background: #ef4444;
+      box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
+    }
+
+    .status-message {
       font-size: 13px;
+      color: #94a3b8;
+      margin-top: 10px;
+      margin-bottom: 15px;
+    }
+
+    .logs-card {
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 16px;
+      padding: 20px;
+      transition: all 0.3s ease;
+    }
+
+    .logs-card:hover {
+      border-color: rgba(255, 255, 255, 0.2);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    }
+
+    .logs-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    .logs-header::before {
+      content: "📋";
+      font-size: 18px;
+    }
+
+    #logs {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      padding: 12px;
+      height: 200px;
+      overflow-y: auto;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      line-height: 1.6;
+    }
+
+    #logs::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    #logs::-webkit-scrollbar-track {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 10px;
+    }
+
+    #logs::-webkit-scrollbar-thumb {
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 10px;
+    }
+
+    #logs div {
+      margin-bottom: 5px;
+      color: #94a3b8;
+      padding: 5px;
+      border-radius: 4px;
+      transition: background 0.2s ease;
+    }
+
+    #logs div:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-top: 15px;
+    }
+
+    .info-item {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      padding: 12px;
+      text-align: center;
+    }
+
+    .info-label {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .info-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #667eea;
     }
   </style>
 </head>
 <body>
+  <div class="container">
+    <div class="header">
+      <div class="logo">ConnectXP</div>
+      <div class="subtitle">Virtual Machine Client</div>
+    </div>
 
-  <h2>Sim Client Agent</h2>
-  <div id="status" class="disconnected">DISCONNECTED</div>
+    <div class="status-card" id="statusCard">
+      <div class="status-indicator" id="status">
+        <span class="status-dot"></span>
+        <span id="statusText">DISCONNECTED</span>
+      </div>
+      <div class="status-message" id="statusMessage">Attempting to connect to server...</div>
+      
+      <div class="info-grid">
+        <div class="info-item">
+          <div class="info-label">Client ID</div>
+          <div class="info-value">SIM-01</div>
+        </div>
+        <div class="info-item">
+          <div class="info-label">Server</div>
+          <div class="info-value">localhost:8080</div>
+        </div>
+      </div>
+    </div>
 
-  <div id="logs"></div>
+    <div class="logs-card">
+      <div class="logs-header">Activity Logs</div>
+      <div id="logs"></div>
+    </div>
+  </div>
 
   <script src="renderer.js"></script>
 </body>

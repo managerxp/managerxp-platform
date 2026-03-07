@@ -204,11 +204,12 @@ It explains what each role means and who to contact.
 ## Roadmap
 
 ### Phase 1
-- Customer CRM
-- Website + Booking
-- Rig sessions + Game Control & Telemetry (AC, F1, ACR, iRacing, Le Mans)
-- Payments + ledger
-- Live dashboard + basic reporting
+
+* Customer CRM
+* Website + Booking
+* Rig sessions + Game Control & Telemerty (AC,F1,ACR,iRacing,Le Mans)
+* Payments + ledger
+* Live dashboard + basic reporting
 
 ### Phase 2
 - Cafe POS + inventory

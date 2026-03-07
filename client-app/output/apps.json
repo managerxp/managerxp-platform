@@ -60,6 +60,11 @@
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\EXCEL.EXE"
     },
     {
+        "name":  "Figma",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Figma\\app-126.1.2\\Figma.exe"
+    },
+    {
         "name":  "Git",
         "version":  "2.51.1",
         "launch":  "C:\\Program Files\\Git\\mingw64\\share\\git\\git-for-windows.ico"
@@ -86,7 +91,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "144.0.7559.110",
+        "version":  "145.0.7632.160",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -103,6 +108,11 @@
         "name":  "HP Documentation",
         "version":  "1.0.0.1",
         "launch":  "C:\\Program Files\\HP\\Documentation\\elements\\hp.ico"
+    },
+    {
+        "name":  "IDLE (Python 3.11 64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\pythonw.exe"
     },
     {
         "name":  "IDLE (Python 3.14)",
@@ -146,28 +156,28 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19530.20184",
+        "version":  "16.0.19725.20126",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "144.0.3719.104",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\144.0.3719.104\\msedge.exe"
+        "version":  "145.0.3800.82",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\145.0.3800.82\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.002.0105.0001",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.002.0105.0001\\OneDriveSetup.exe"
+        "version":  "26.022.0203.0006",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.022.0203.0006\\OneDriveSetup.exe"
     },
     {
-        "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x64) - 14.44.35211",
-        "version":  "14.44.35211.0",
-        "launch":  "C:\\ProgramData\\Package Cache\\{d8bbe9f9-7c5b-42c6-b715-9ee898a2e515}\\VC_redist.x64.exe"
+        "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
+        "version":  "14.50.35719.0",
+        "launch":  "C:\\ProgramData\\Package Cache\\{91ee571b-0e8a-4c65-9eaf-2e2f5fc60c00}\\VC_redist.x64.exe"
     },
     {
-        "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211",
-        "version":  "14.44.35211.0",
-        "launch":  "C:\\ProgramData\\Package Cache\\{0b5169e3-39da-4313-808e-1f9c0407f3bf}\\VC_redist.x86.exe"
+        "name":  "Microsoft Visual C++ v14 Redistributable (x86) - 14.50.35719",
+        "version":  "14.50.35719.0",
+        "launch":  "C:\\ProgramData\\Package Cache\\{0e4ccf1b-d073-4cfe-8a24-e86185719b56}\\VC_redist.x86.exe"
     },
     {
         "name":  "MiKTeX Console",
@@ -275,6 +285,21 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
     },
     {
+        "name":  "Python 3.11 (64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+    },
+    {
+        "name":  "Python 3.11 Manuals (64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\Doc\\html\\index.html"
+    },
+    {
+        "name":  "Python 3.11 Module Docs (64-bit)",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
+    },
+    {
         "name":  "Python 3.14",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\python.exe"
@@ -283,6 +308,11 @@
         "name":  "Python 3.14 Manuals",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Python\\pythoncore-3.14-64\\Doc\\html\\index.html"
+    },
+    {
+        "name":  "Python Launcher",
+        "version":  "3.11.9150.0",
+        "launch":  null
     },
     {
         "name":  "RecoveryDrive",
@@ -380,13 +410,18 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
     },
     {
+        "name":  "Visual Studio Installer",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\setup.exe"
+    },
+    {
         "name":  "VoiceAccess",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\voiceaccess.exe"
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1086",
+        "version":  "4.1.1.1088",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {
@@ -428,6 +463,11 @@
         "name":  "Windows PowerShell ISE (x86)",
         "version":  null,
         "launch":  "C:\\WINDOWS\\syswow64\\WindowsPowerShell\\v1.0\\PowerShell_ISE.exe"
+    },
+    {
+        "name":  "Windows SDK AddOn",
+        "version":  "10.1.0.0",
+        "launch":  null
     },
     {
         "name":  "Word",

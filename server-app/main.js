@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu } = require("electron");
 const WebSocket = require("ws");
 const path = require("path");
 
@@ -7,14 +7,19 @@ const clients = new Map(); // simId -> { ws, apps }
 
 function createWindow() {
   win = new BrowserWindow({
-    width: 900,
-    height: 650,
+    width: 950,
+    height: 700,
+    minWidth: 800,
+    minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
     }
   });
+
+  // Remove the application menu
+  Menu.setApplicationMenu(null);
 
   win.loadFile("index.html");
 }
@@ -26,8 +31,8 @@ function log(msg) {
 app.whenReady().then(() => {
   createWindow();
 
-  const wss = new WebSocket.Server({ port: 8080 });
-  log("VMS Server started on port 8080");
+  const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
+  log("VMS Server started on port 8080 (accessible on network)");
 
   wss.on("connection", (ws) => {
     log("Client connected");
@@ -70,16 +75,17 @@ app.whenReady().then(() => {
 
   // Handle launch request from UI
   ipcMain.handle("launch-app", async (_, data) => {
-    const { simId, appName, appPath } = data;
+    const { simId, appName, appPath, timerMinutes } = data;
     const client = clients.get(simId);
     
     if (client && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(JSON.stringify({
         type: "LAUNCH_APP",
         appName: appName,
-        appPath: appPath
+        appPath: appPath,
+        timerMinutes: timerMinutes || 0
       }));
-      log(`Sent launch command to ${simId}: ${appName}`);
+      log(`Sent launch command to ${simId}: ${appName}${timerMinutes ? ` (Timer: ${timerMinutes} min)` : ''}`);
       return true;
     }
     return false;

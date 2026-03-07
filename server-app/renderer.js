@@ -37,7 +37,7 @@ window.api.onAppsUpdated((data) => {
 
 function renderClients() {
   if (currentClients.length === 0) {
-    clientsEl.innerHTML = "None";
+    clientsEl.innerHTML = '<div class="no-clients">No clients connected</div>';
     return;
   }
 
@@ -49,24 +49,26 @@ function renderClients() {
       item.classList.add("selected");
     }
 
-    const nameSpan = document.createElement("span");
-    nameSpan.textContent = clientId;
+    const nameDiv = document.createElement("div");
+    nameDiv.className = "client-name";
+    nameDiv.textContent = clientId;
 
     const actions = document.createElement("div");
     actions.className = "client-actions";
 
     const viewBtn = document.createElement("button");
-    viewBtn.textContent = "View Apps";
+    viewBtn.textContent = "View";
     viewBtn.onclick = () => selectClient(clientId);
 
     const refreshBtn = document.createElement("button");
+    refreshBtn.className = "refresh";
     refreshBtn.textContent = "Refresh";
     refreshBtn.onclick = () => refreshClientApps(clientId);
 
     actions.appendChild(viewBtn);
     actions.appendChild(refreshBtn);
 
-    item.appendChild(nameSpan);
+    item.appendChild(nameDiv);
     item.appendChild(actions);
     clientsEl.appendChild(item);
   });
@@ -74,7 +76,7 @@ function renderClients() {
 
 async function selectClient(clientId) {
   selectedClient = clientId;
-  selectedClientEl.textContent = `(${clientId})`;
+  selectedClientEl.textContent = clientId;
   renderClients();
 
   const apps = await window.api.getClientApps(clientId);
@@ -90,32 +92,46 @@ function renderApps(apps) {
   appsContainer.innerHTML = "";
 
   if (!apps || apps.length === 0) {
-    appsContainer.innerHTML = '<div class="no-apps">No applications found</div>';
+    appsContainer.innerHTML = '<div class="no-apps">No applications found on this client</div>';
     return;
   }
 
-  apps.forEach((app) => {
+  apps.forEach((app, index) => {
     const item = document.createElement("div");
     item.className = "app-item";
 
-    const nameSpan = document.createElement("span");
+    const appInfo = document.createElement("div");
+    appInfo.className = "app-info";
+
+    const appIcon = document.createElement("div");
+    appIcon.className = "app-icon";
+    // Use first letter of app name as icon
+    appIcon.textContent = app.name.charAt(0).toUpperCase();
+
+    const appDetails = document.createElement("div");
+    appDetails.className = "app-details";
+
+    const nameSpan = document.createElement("div");
     nameSpan.className = "app-name";
     nameSpan.textContent = app.name;
 
-    const versionSpan = document.createElement("span");
+    const versionSpan = document.createElement("div");
     versionSpan.className = "app-version";
-    versionSpan.textContent = app.version || "";
+    versionSpan.textContent = app.version || "Version unknown";
+
+    appDetails.appendChild(nameSpan);
+    appDetails.appendChild(versionSpan);
+
+    appInfo.appendChild(appIcon);
+    appInfo.appendChild(appDetails);
 
     const launchBtn = document.createElement("button");
     launchBtn.className = "launch-btn";
-    launchBtn.textContent = "Launch";
+    launchBtn.textContent = "🚀 Launch";
     launchBtn.disabled = !app.launch;
     launchBtn.onclick = () => launchApp(app);
 
-    item.appendChild(nameSpan);
-    if (app.version) {
-      item.appendChild(versionSpan);
-    }
+    item.appendChild(appInfo);
     item.appendChild(launchBtn);
 
     appsContainer.appendChild(item);
@@ -125,29 +141,20 @@ function renderApps(apps) {
 async function launchApp(app) {
   if (!selectedClient || !app.launch) return;
 
-  const success = await window.api.launchApp({
+  // Store app info but don't launch yet - wait for timer to be set
+  currentRunningApp = {
     simId: selectedClient,
     appName: app.name,
     appPath: app.launch
-  });
-
-  if (success) {
-    currentRunningApp = {
-      simId: selectedClient,
-      appName: app.name,
-      appPath: app.launch
-    };
-    showTimerSection();
-  } else {
-    alert("Failed to send launch command. Client may be disconnected.");
-  }
+  };
+  showTimerSection();
 }
 
 function showTimerSection() {
   timerSection.classList.add('active');
   runningAppInfo.innerHTML = `
-    <div class="running-app-name">${currentRunningApp.appName}</div>
-    <div style="font-size: 12px; color: #94a3b8;">Running on: ${currentRunningApp.simId}</div>
+    <div class="running-app-name">💻 ${currentRunningApp.appName}</div>
+    <div style="font-size: 13px; color: #94a3b8; margin-top: 4px;">Running on: ${currentRunningApp.simId}</div>
   `;
   timerInputGroup.style.display = 'flex';
   timerDisplay.style.display = 'none';
@@ -163,6 +170,16 @@ function startTimer() {
 
   timerSeconds = minutes * 60;
   isPaused = false;
+  
+  // Send timer to client
+  if (currentRunningApp) {
+    window.api.launchApp({
+      simId: currentRunningApp.simId,
+      appName: currentRunningApp.appName,
+      appPath: currentRunningApp.appPath,
+      timerMinutes: minutes
+    });
+  }
   
   timerInputGroup.style.display = 'none';
   timerDisplay.style.display = 'block';
