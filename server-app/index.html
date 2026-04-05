@@ -221,6 +221,78 @@
       background: rgba(15, 23, 42, 0.4);
       backdrop-filter: blur(20px);
       border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header-left {
+      flex: 1;
+    }
+
+    .header-right {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .user-profile {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .user-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 600;
+      font-size: 18px;
+      color: white;
+    }
+
+    .user-info {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .user-welcome {
+      font-size: 12px;
+      color: #94a3b8;
+      font-weight: 500;
+    }
+
+    .user-name {
+      font-size: 14px;
+      color: #e2e8f0;
+      font-weight: 600;
+    }
+
+    .logout-btn {
+      padding: 8px 16px;
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+    }
+
+    .logout-btn:hover {
+      background: rgba(239, 68, 68, 0.3);
+      border-color: #ef4444;
+      color: #fca5a5;
+      transform: translateY(-2px);
     }
 
     .main-title {
@@ -590,8 +662,20 @@
     <!-- Main Content -->
     <div class="main-content">
       <div class="main-header">
-        <div class="main-title">Application Management</div>
-        <div class="main-subtitle">Manage and launch applications on <span id="selected-client">remote clients</span></div>
+        <div class="header-left">
+          <div class="main-title">Application Management</div>
+          <div class="main-subtitle">Manage and launch applications on <span id="selected-client">remote clients</span></div>
+        </div>
+        <div class="header-right">
+          <div class="user-profile" id="userProfile" style="display: none;">
+            <div class="user-avatar" id="userAvatar"></div>
+            <div class="user-info">
+              <div class="user-welcome">Welcome</div>
+              <div class="user-name" id="userName"></div>
+            </div>
+          </div>
+          <button class="logout-btn" id="logoutBtn" onclick="handleLogout()">🚪 Logout</button>
+        </div>
       </div>
       
       <div class="main-body">

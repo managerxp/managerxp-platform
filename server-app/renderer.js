@@ -8,6 +8,12 @@ const timerControls = document.getElementById("timer-controls");
 const timerInputGroup = document.getElementById("timer-input-group");
 const runningAppInfo = document.getElementById("running-app-info");
 
+// User profile elements
+const userProfileEl = document.getElementById("userProfile");
+const userAvatarEl = document.getElementById("userAvatar");
+const userNameEl = document.getElementById("userName");
+const logoutBtn = document.getElementById("logoutBtn");
+
 let currentClients = [];
 let selectedClient = null;
 let clientApps = {};
@@ -15,6 +21,48 @@ let timerInterval = null;
 let timerSeconds = 0;
 let isPaused = false;
 let currentRunningApp = null;
+let currentUser = null;
+
+// Initialize user profile when page loads
+window.api.onUserUpdated((data) => {
+  if (data && data.user) {
+    currentUser = data.user;
+    displayUserProfile(data.user);
+  }
+});
+
+// Display user profile with avatar and welcome message
+function displayUserProfile(user) {
+  if (!user) return;
+  
+  const userName = user.name || user.email || 'User';
+  const initials = userName
+    .split(' ')
+    .map(n => n.charAt(0).toUpperCase())
+    .join('')
+    .substring(0, 2) || 'U';
+  
+  userAvatarEl.textContent = initials;
+  userNameEl.textContent = userName;
+  userProfileEl.style.display = 'flex';
+  
+  console.log(`Welcome ${userName}! You are logged in.`);
+}
+
+// Handle logout
+function handleLogout() {
+  if (confirm('Are you sure you want to log out?')) {
+    // Clear local state
+    currentUser = null;
+    clientApps = {};
+    selectedClient = null;
+    currentClients = [];
+    if (timerInterval) clearInterval(timerInterval);
+    
+    // Notify main process to handle logout
+    window.api.logout();
+  }
+}
 
 window.api.onLog((msg) => {
   const div = document.createElement("div");
