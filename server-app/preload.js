@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("api", {
   setAuth: (user, token) => ipcRenderer.send("auth:set-auth", { user, token }),
   loginSuccess: (user) => ipcRenderer.send("auth:login-success", user),
   logout: () => ipcRenderer.send("auth:logout"),
+  login: () => ipcRenderer.send("auth:login"),
   getAuthStorage: () => ipcRenderer.invoke("auth:get-storage"),
   getAuthState: () => ipcRenderer.invoke("auth:get-state"),
   getUser: () => ipcRenderer.invoke("auth:get-user"),

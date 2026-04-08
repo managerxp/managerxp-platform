@@ -1,3 +1,4 @@
+// DOM Elements
 const logsEl = document.getElementById("logs");
 const clientsEl = document.getElementById("clients");
 const appsContainer = document.getElementById("apps-container");
@@ -8,12 +9,21 @@ const timerControls = document.getElementById("timer-controls");
 const timerInputGroup = document.getElementById("timer-input-group");
 const runningAppInfo = document.getElementById("running-app-info");
 
-// User profile elements
-const userProfileEl = document.getElementById("userProfile");
-const userAvatarEl = document.getElementById("userAvatar");
-const userNameEl = document.getElementById("userName");
-const logoutBtn = document.getElementById("logoutBtn");
+// New UI Elements
+const sidebarLeft = document.getElementById("sidebarLeft");
+const sidebarRight = document.getElementById("sidebarRight");
+const userProfileBtn = document.getElementById("userProfileBtn");
+const userMenuDropdown = document.getElementById("userMenuDropdown");
+const dashboardContent = document.getElementById("dashboardContent");
+const overlay = document.getElementById("overlay");
 
+// Sidebar state (starts collapsed by default)
+let sidebarLeftCollapsed = true;
+let sidebarRightCollapsed = true;
+let currentView = 'home';
+let defaultViewSet = false;
+
+// App state
 let currentClients = [];
 let selectedClient = null;
 let clientApps = {};
@@ -23,15 +33,78 @@ let isPaused = false;
 let currentRunningApp = null;
 let currentUser = null;
 
-// Initialize user profile when page loads
+// ==================== SIDEBAR TOGGLE ====================
+function toggleSidebar(side) {
+  if (side === 'left') {
+    sidebarLeft.classList.toggle('collapsed');
+    sidebarLeftCollapsed = sidebarLeft.classList.contains('collapsed');
+  } else if (side === 'right') {
+    sidebarRight.classList.toggle('collapsed');
+    sidebarRightCollapsed = sidebarRight.classList.contains('collapsed');
+    // Close dropdown when toggling sidebar
+    closeDropdowns();
+  }
+}
+
+function expandRightSidebar() {
+  if (sidebarRightCollapsed) {
+    sidebarRight.classList.remove('collapsed');
+    sidebarRightCollapsed = false;
+  }
+}
+
+// ==================== USER MENU DROPDOWN ====================
+function toggleUserMenu() {
+  // Expand sidebar if collapsed
+  if (sidebarRightCollapsed) {
+    expandRightSidebar();
+  }
+  // Toggle the dropdown
+  userMenuDropdown.classList.toggle('active');
+  overlay.classList.toggle('active');
+}
+
+function closeDropdowns() {
+  userMenuDropdown.classList.remove('active');
+  overlay.classList.remove('active');
+}
+
+// ==================== VIEW SWITCHING ====================
+function switchView(view) {
+  currentView = view;
+  
+  // Update menu buttons
+  document.getElementById('menuHome').classList.toggle('active', view === 'home');
+  document.getElementById('menuDashboard').classList.toggle('active', view === 'dashboard');
+  
+  // Get main view elements
+  const homeViewEl = document.querySelector('div[id="homeView"]');
+  const dashboardViewEl = document.getElementById('dashboardView');
+  
+  // Update view content in main area
+  if (view === 'home') {
+    homeViewEl.style.display = 'block';
+    dashboardViewEl.style.display = 'none';
+  } else if (view === 'dashboard') {
+    homeViewEl.style.display = 'none';
+    dashboardViewEl.style.display = 'block';
+    // Reload dashboard if user exists
+    if (currentUser) {
+      loadDashboard(currentUser);
+    }
+  }
+}
+
+// ==================== USER PROFILE ====================
 window.api.onUserUpdated((data) => {
   if (data && data.user) {
     currentUser = data.user;
     displayUserProfile(data.user);
+    // Switch to home page by default when user logs in
+    switchView('home');
   }
 });
 
-// Display user profile with avatar and welcome message
 function displayUserProfile(user) {
   if (!user) return;
   
@@ -42,14 +115,21 @@ function displayUserProfile(user) {
     .join('')
     .substring(0, 2) || 'U';
   
-  userAvatarEl.textContent = initials;
-  userNameEl.textContent = userName;
-  userProfileEl.style.display = 'flex';
+  // Update sidebar user profile
+  const userAvatarCircle = document.getElementById("userAvatarCircle");
+  const userNameSidebar = document.getElementById("userNameSidebar");
+  const userEmailSidebar = document.getElementById("userEmailSidebar");
+  const loginBtnSidebar = document.getElementById("loginBtnSidebar");
+  
+  userAvatarCircle.textContent = initials;
+  userNameSidebar.textContent = userName;
+  userEmailSidebar.textContent = user.email || '';
+  if (loginBtnSidebar) loginBtnSidebar.style.display = 'none';
   
   console.log(`Welcome ${userName}! You are logged in.`);
 }
 
-// Handle logout
+// ==================== HANDLE LOGOUT ====================
 function handleLogout() {
   if (confirm('Are you sure you want to log out?')) {
     // Clear local state
@@ -59,11 +139,152 @@ function handleLogout() {
     currentClients = [];
     if (timerInterval) clearInterval(timerInterval);
     
+    // Reset sidebar user profile
+    const userAvatarCircle = document.getElementById("userAvatarCircle");
+    const userNameSidebar = document.getElementById("userNameSidebar");
+    const userEmailSidebar = document.getElementById("userEmailSidebar");
+    const loginBtnSidebar = document.getElementById("loginBtnSidebar");
+    
+    userAvatarCircle.textContent = '?';
+    userNameSidebar.textContent = 'User';
+    userEmailSidebar.textContent = 'guest@localhost';
+    if (loginBtnSidebar) loginBtnSidebar.style.display = 'inline-block';
+    
+    // Close dropdown
+    closeDropdowns();
+    
+    // Switch to home view
+    switchView('home');
+    
     // Notify main process to handle logout
     window.api.logout();
   }
 }
 
+// ==================== HANDLE LOGIN ====================
+function handleLogin() {
+  window.api.login();
+}
+
+// ==================== DASHBOARD ====================
+async function loadDashboard(user) {
+  if (!user || !user.cafe_id) {
+    dashboardContent.innerHTML = `
+      <div class="dashboard-card">
+        <h3>ℹ️ No Cafe Associated</h3>
+        <p>Please link a cafe to your account to view subscription details.</p>
+      </div>
+    `;
+    return;
+  }
+
+  try {
+    // Fetch subscription data from backend
+    const response = await fetch(`http://localhost:5000/api/subscriptions/cafe/${user.cafe_id}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to fetch subscription data');
+    }
+
+    const result = await response.json();
+    
+    if (result.success && result.data && result.data.length > 0) {
+      const subscription = result.data[0];
+      displayDashboard(user, subscription);
+    } else {
+      dashboardContent.innerHTML = `
+        <div class="dashboard-card">
+          <h3>📊 Subscription</h3>
+          <p>No active subscription found.</p>
+        </div>
+      `;
+    }
+  } catch (error) {
+    console.error('Error loading dashboard:', error);
+    dashboardContent.innerHTML = `
+      <div class="dashboard-card">
+        <h3>❌ Error</h3>
+        <p>Failed to load subscription data. Please try again.</p>
+      </div>
+    `;
+  }
+}
+
+function displayDashboard(user, subscription) {
+  const startDate = new Date(subscription.start_date);
+  const endDate = new Date(subscription.end_date);
+  const today = new Date();
+  const isActive = subscription.is_active && today <= endDate;
+  
+  dashboardContent.innerHTML = `
+    <div class="dashboard-card">
+      <h3>Cafe Information</h3>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Cafe Name</span>
+        <p class="dashboard-value">${user.name || 'Cafe'}</p>
+      </div>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Cafe ID</span>
+        <p class="dashboard-value">${user.cafe_id}</p>
+      </div>
+    </div>
+
+    <div class="dashboard-card">
+      <h3>Current Plan</h3>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Plan Name</span>
+        <p class="dashboard-value">${subscription.name}</p>
+      </div>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Max PCs</span>
+        <p class="dashboard-value">${subscription.max_pcs}</p>
+      </div>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Plan Type</span>
+        <div style="margin-top: 8px; display: flex; gap: 8px; flex-wrap: wrap;">
+          ${subscription.is_freetrial ? '<span class="dashboard-badge badge-trial">Free Trial</span>' : ''}
+          ${subscription.is_single_pc_price ? '<span class="dashboard-badge badge-single">Single PC</span>' : '<span class="dashboard-badge badge-multi">Multi PC</span>'}
+        </div>
+      </div>
+    </div>
+
+    <div class="dashboard-card">
+      <h3>Plan Duration</h3>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Start Date</span>
+        <p class="dashboard-value">${startDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+      </div>
+      <div class="dashboard-item">
+        <span class="dashboard-label">End Date</span>
+        <p class="dashboard-value">${endDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</p>
+      </div>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Days Remaining</span>
+        <p class="dashboard-value" style="color: ${isActive ? '#22c55e' : '#ef4444'};">${Math.max(0, Math.ceil((endDate - today) / (1000 * 60 * 60 * 24)))}</p>
+      </div>
+    </div>
+
+    <div class="dashboard-card">
+      <h3>Status</h3>
+      <div class="dashboard-item">
+        <span class="dashboard-label">Plan Status</span>
+        <div style="margin-top: 8px;">
+          <span class="dashboard-status-badge ${isActive ? 'status-active' : 'status-inactive'}">
+            ${isActive ? '● Active' : '● Inactive'}
+          </span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ==================== CLIENTS & APPS ====================
 window.api.onLog((msg) => {
   const div = document.createElement("div");
   div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
@@ -109,7 +330,6 @@ function renderClients() {
     viewBtn.onclick = () => selectClient(clientId);
 
     const refreshBtn = document.createElement("button");
-    refreshBtn.className = "refresh";
     refreshBtn.textContent = "Refresh";
     refreshBtn.onclick = () => refreshClientApps(clientId);
 
@@ -153,7 +373,6 @@ function renderApps(apps) {
 
     const appIcon = document.createElement("div");
     appIcon.className = "app-icon";
-    // Use first letter of app name as icon
     appIcon.textContent = app.name.charAt(0).toUpperCase();
 
     const appDetails = document.createElement("div");
@@ -186,10 +405,10 @@ function renderApps(apps) {
   });
 }
 
+// ==================== APP LAUNCH & TIMER ====================
 async function launchApp(app) {
   if (!selectedClient || !app.launch) return;
 
-  // Store app info but don't launch yet - wait for timer to be set
   currentRunningApp = {
     simId: selectedClient,
     appName: app.name,
@@ -219,7 +438,6 @@ function startTimer() {
   timerSeconds = minutes * 60;
   isPaused = false;
   
-  // Send timer to client
   if (currentRunningApp) {
     window.api.launchApp({
       simId: currentRunningApp.simId,
@@ -257,7 +475,6 @@ function updateTimerDisplay() {
   
   timerDisplay.textContent = timeString;
   
-  // Change color based on remaining time
   timerDisplay.className = 'timer-display';
   if (timerSeconds <= 60) {
     timerDisplay.classList.add('danger');
@@ -299,7 +516,6 @@ async function closeApplication() {
     alert('Failed to close application. Client may be disconnected.');
   }
 
-  // Reset timer section
   timerSection.classList.remove('active');
   currentRunningApp = null;
   timerSeconds = 0;
@@ -307,4 +523,10 @@ async function closeApplication() {
     clearInterval(timerInterval);
     timerInterval = null;
   }
+}
+
+// ==================== EVENT LISTENERS ====================
+// Close dropdown when clicking overlay
+if (overlay) {
+  overlay.addEventListener('click', closeDropdowns);
 }

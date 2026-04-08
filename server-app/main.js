@@ -21,7 +21,7 @@ function createLoginWindow() {
       contextIsolation: true,
       nodeIntegration: false
     },
-    icon: path.join(__dirname, 'icon.ico') // Optional: add an icon
+    icon: path.join(__dirname, 'Images', 'icon.png')
   });
 
   // Remove the application menu
@@ -42,7 +42,8 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false
-    }
+    },
+    icon: path.join(__dirname, 'Images', 'icon.png')
   });
 
   // Remove the application menu
