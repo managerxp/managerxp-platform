@@ -119,12 +119,8 @@ tokenBtn.addEventListener('click', async (e) => {
 
 // Handle successful login
 function handleLoginSuccess(user, token) {
-  localStorage.setItem('auth', JSON.stringify({
-    user,
-    token
-  }));
-  
-  window.api.loginSuccess(user);
+  // Use auth context through IPC
+  window.api.setAuth(user, token);
 }
 
 // Show error message

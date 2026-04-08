@@ -2,11 +2,11 @@ const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const WebSocket = require("ws");
 const path = require("path");
 const http = require("http");
+const authContext = require("./authContext");
 
 let win;
 let loginWin;
-let currentUser = null;
-let currentToken = null;
+let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
 
 // Create login window
@@ -52,11 +52,9 @@ function createWindow() {
   
   // Send user info to renderer when window loads
   win.webContents.on('did-finish-load', () => {
-    if (currentUser) {
-      win.webContents.send('user:updated', {
-        user: currentUser,
-        token: currentToken
-      });
+    const authState = authContext.getAuthState();
+    if (authState.isAuthenticated) {
+      win.webContents.send('user:updated', authState);
     }
   });
 }
@@ -123,18 +121,17 @@ function startTokenServer() {
 
 // Handle login from web app
 function handleWebAppLogin(token, user) {
+  // Store in auth context
+  authContext.setAuth(user, token);
+  
   const fs = require('fs');
   const authFile = path.join(app.getPath('userData'), 'auth.json');
   
-  // Store auth data
-  currentUser = user;
-  currentToken = token;
-  
-  // Save to file
+  // Save to file as backup
   try {
     fs.mkdirSync(path.dirname(authFile), { recursive: true });
     fs.writeFileSync(authFile, JSON.stringify({ user, token }));
-    console.log('Auth saved to file');
+    console.log('Auth saved to file for user:', user.email || user.name);
   } catch (error) {
     console.error('Error saving auth:', error);
   }
@@ -153,14 +150,15 @@ function handleWebAppLogin(token, user) {
     startWebSocketServer();
   } else {
     // Window already exists, update user info
-    win.webContents.send('user:updated', {
-      user: currentUser,
-      token: currentToken
-    });
+    const authState = authContext.getAuthState();
+    win.webContents.send('user:updated', authState);
   }
 }
 
 app.whenReady().then(() => {
+  // Register IPC handlers (only once)
+  registerIPCHandlers();
+  
   // Start token receiver server
   startTokenServer();
   
@@ -172,8 +170,8 @@ app.whenReady().then(() => {
     if (fs.existsSync(authFile)) {
       const authData = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
       if (authData.user && authData.token) {
-        currentUser = authData.user;
-        currentToken = authData.token;
+        // Restore auth context
+        authContext.setAuth(authData.user, authData.token);
         createWindow();
         startWebSocketServer();
       } else {
@@ -188,50 +186,10 @@ app.whenReady().then(() => {
   }
 });
 
-// Start WebSocket server
-function startWebSocketServer() {
-  const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
-  log("VMS Server started on port 8080 (accessible on network)");
-
-  wss.on("connection", (ws) => {
-    log("Client connected");
-
-    ws.on("message", (raw) => {
-      const msg = JSON.parse(raw);
-
-      if (msg.type === "REGISTER") {
-        ws.simId = msg.simId;
-        clients.set(msg.simId, { ws, apps: [] });
-        log(`Registered: ${msg.simId}`);
-        win.webContents.send("clients", [...clients.keys()]);
-      }
-
-      if (msg.type === "HEARTBEAT") {
-        // alive check (silent)
-      }
-
-      if (msg.type === "APPS_LIST") {
-        const client = clients.get(msg.simId);
-        if (client) {
-          client.apps = msg.apps;
-          log(`Received ${msg.apps.length} apps from ${msg.simId}`);
-          win.webContents.send("apps-updated", {
-            simId: msg.simId,
-            apps: msg.apps
-          });
-        }
-      }
-    });
-
-    ws.on("close", () => {
-      if (ws.simId) {
-        clients.delete(ws.simId);
-        log(`Disconnected: ${ws.simId}`);
-        win.webContents.send("clients", [...clients.keys()]);
-      }
-    });
-  });
-
+// Register all IPC handlers (call only once)
+function registerIPCHandlers() {
+  if (handlersRegistered) return;
+  
   // Handle launch request from UI
   ipcMain.handle("launch-app", async (_, data) => {
     const { simId, appName, appPath, timerMinutes } = data;
@@ -286,89 +244,163 @@ function startWebSocketServer() {
     }
     return false;
   });
+
+  // Authentication IPC handlers
+  ipcMain.on("auth:set-auth", (event, { user, token }) => {
+    // Set auth in context
+    authContext.setAuth(user, token);
+    
+    const fs = require('fs');
+    const authFile = path.join(app.getPath('userData'), 'auth.json');
+    
+    // Save to file as backup
+    try {
+      fs.mkdirSync(path.dirname(authFile), { recursive: true });
+      fs.writeFileSync(authFile, JSON.stringify({ user, token }));
+      console.log('Auth context updated for user:', user.email || user.name);
+    } catch (error) {
+      console.error('Failed to save auth:', error);
+    }
+    
+    // Close login window and create main window if needed
+    if (loginWin && !loginWin.isDestroyed()) {
+      loginWin.close();
+    }
+    
+    if (!win || win.isDestroyed()) {
+      createWindow();
+      startWebSocketServer();
+    }
+  });
+
+  ipcMain.on("auth:login-success", (event, user) => {
+    const fs = require('fs');
+    const authFile = path.join(app.getPath('userData'), 'auth.json');
+    
+    // Get token from login window localStorage (if available)
+    if (loginWin && !loginWin.isDestroyed()) {
+      authContext.setAuth(user, authContext.getToken());
+      
+      // Save to file
+      try {
+        fs.mkdirSync(path.dirname(authFile), { recursive: true });
+        fs.writeFileSync(authFile, JSON.stringify({ 
+          user, 
+          token: authContext.getToken() 
+        }));
+      } catch (error) {
+        console.error('Failed to save auth:', error);
+      }
+      
+      // Close login window and create main window
+      if (loginWin && !loginWin.isDestroyed()) {
+        loginWin.close();
+      }
+      createWindow();
+      startWebSocketServer();
+    }
+  });
+
+  ipcMain.on("auth:logout", (event) => {
+    const fs = require('fs');
+    const authFile = path.join(app.getPath('userData'), 'auth.json');
+    
+    // Clear auth context
+    authContext.clearAuth();
+    clients.clear();
+    
+    // Delete auth file
+    try {
+      if (fs.existsSync(authFile)) {
+        fs.unlinkSync(authFile);
+      }
+    } catch (error) {
+      console.error('Error deleting auth file:', error);
+    }
+    
+    // Close main window and create login window
+    if (win && !win.isDestroyed()) {
+      win.close();
+    }
+    createLoginWindow();
+  });
+
+  ipcMain.handle("auth:get-state", async (event) => {
+    return authContext.getAuthState();
+  });
+
+  ipcMain.handle("auth:get-user", async (event) => {
+    return authContext.getUser();
+  });
+
+  ipcMain.handle("auth:get-user-id", async (event) => {
+    return authContext.getUserId();
+  });
+
+  ipcMain.handle("auth:get-cafe-id", async (event) => {
+    return authContext.getCafeId();
+  });
+
+  ipcMain.handle("auth:get-token", async (event) => {
+    return authContext.getToken();
+  });
+
+  ipcMain.on("auth:open-web-app", (event) => {
+    shell.openExternal('http://localhost:5173/gamingxp-login');
+  });
+
+  ipcMain.on("auth:open-web-app-signup", (event) => {
+    shell.openExternal('http://localhost:5173/signup');
+  });
+  
+  handlersRegistered = true;
+  console.log('IPC handlers registered');
 }
 
-// Authentication IPC handlers
-ipcMain.on("auth:login-success", (event, user) => {
-  const fs = require('fs');
-  const authFile = path.join(app.getPath('userData'), 'auth.json');
-  
-  // Get token from login window localStorage
-  if (loginWin && !loginWin.isDestroyed()) {
-    loginWin.webContents.executeJavaScript(`
-      localStorage.getItem('auth')
-    `).then(authData => {
-      if (authData) {
-        const auth = JSON.parse(authData);
-        currentUser = auth.user;
-        currentToken = auth.token;
-        
-        // Save to file
-        try {
-          fs.mkdirSync(path.dirname(authFile), { recursive: true });
-          fs.writeFileSync(authFile, JSON.stringify(auth));
-        } catch (error) {
-          console.error('Failed to save auth:', error);
-        }
-        
-        // Close login window and create main window
-        if (loginWin && !loginWin.isDestroyed()) {
-          loginWin.close();
-        }
-        createWindow();
-        startWebSocketServer();
+// Start WebSocket server (can be called multiple times)
+function startWebSocketServer() {
+  const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
+  log("VMS Server started on port 8080 (accessible on network)");
+
+  wss.on("connection", (ws) => {
+    log("Client connected");
+
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(raw);
+
+      if (msg.type === "REGISTER") {
+        ws.simId = msg.simId;
+        clients.set(msg.simId, { ws, apps: [] });
+        log(`Registered: ${msg.simId}`);
+        win.webContents.send("clients", [...clients.keys()]);
       }
-    }).catch(err => console.error('Error retrieving auth:', err));
-  }
-});
 
-ipcMain.on("auth:logout", (event) => {
-  const fs = require('fs');
-  const authFile = path.join(app.getPath('userData'), 'auth.json');
-  
-  // Clear current session
-  currentUser = null;
-  currentToken = null;
-  clients.clear();
-  
-  // Delete auth file
-  try {
-    if (fs.existsSync(authFile)) {
-      fs.unlinkSync(authFile);
-    }
-  } catch (error) {
-    console.error('Error deleting auth file:', error);
-  }
-  
-  // Close main window and create login window
-  if (win && !win.isDestroyed()) {
-    win.close();
-  }
-  createLoginWindow();
-});
+      if (msg.type === "HEARTBEAT") {
+        // alive check (silent)
+      }
 
-ipcMain.on("auth:open-web-app", (event) => {
-  shell.openExternal('http://localhost:5173/gamingxp-login');
-});
+      if (msg.type === "APPS_LIST") {
+        const client = clients.get(msg.simId);
+        if (client) {
+          client.apps = msg.apps;
+          log(`Received ${msg.apps.length} apps from ${msg.simId}`);
+          win.webContents.send("apps-updated", {
+            simId: msg.simId,
+            apps: msg.apps
+          });
+        }
+      }
+    });
 
-ipcMain.on("auth:open-web-app-signup", (event) => {
-  shell.openExternal('http://localhost:5173/signup');
-});
-
-ipcMain.handle("auth:get-storage", async (event) => {
-  if (loginWin && !loginWin.isDestroyed()) {
-    try {
-      const authData = await loginWin.webContents.executeJavaScript(`
-        localStorage.getItem('auth')
-      `);
-      return authData ? JSON.parse(authData) : null;
-    } catch (error) {
-      console.error('Error getting storage:', error);
-      return null;
-    }
-  }
-  return { user: currentUser, token: currentToken };
-});
+    ws.on("close", () => {
+      if (ws.simId) {
+        clients.delete(ws.simId);
+        log(`Disconnected: ${ws.simId}`);
+        win.webContents.send("clients", [...clients.keys()]);
+      }
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

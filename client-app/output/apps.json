@@ -91,7 +91,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "146.0.7680.165",
+        "version":  "146.0.7680.178",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -156,13 +156,13 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19822.20114",
+        "version":  "16.0.19822.20142",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "146.0.3856.84",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\146.0.3856.84\\msedge.exe"
+        "version":  "146.0.3856.97",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\146.0.3856.97\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",

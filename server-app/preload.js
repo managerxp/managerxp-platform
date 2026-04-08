@@ -2,9 +2,15 @@ const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("api", {
   // Authentication
+  setAuth: (user, token) => ipcRenderer.send("auth:set-auth", { user, token }),
   loginSuccess: (user) => ipcRenderer.send("auth:login-success", user),
   logout: () => ipcRenderer.send("auth:logout"),
   getAuthStorage: () => ipcRenderer.invoke("auth:get-storage"),
+  getAuthState: () => ipcRenderer.invoke("auth:get-state"),
+  getUser: () => ipcRenderer.invoke("auth:get-user"),
+  getUserId: () => ipcRenderer.invoke("auth:get-user-id"),
+  getCafeId: () => ipcRenderer.invoke("auth:get-cafe-id"),
+  getToken: () => ipcRenderer.invoke("auth:get-token"),
   
   // Web app navigation
   openWebApp: () => ipcRenderer.send("auth:open-web-app"),
