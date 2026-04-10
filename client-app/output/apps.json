@@ -91,7 +91,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "145.0.7632.160",
+        "version":  "146.0.7680.178",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -156,18 +156,18 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19725.20126",
+        "version":  "16.0.19822.20142",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "145.0.3800.82",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\145.0.3800.82\\msedge.exe"
+        "version":  "146.0.3856.109",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\146.0.3856.109\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.022.0203.0006",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.022.0203.0006\\OneDriveSetup.exe"
+        "version":  "26.040.0301.0001",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.040.0301.0001\\OneDriveSetup.exe"
     },
     {
         "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
@@ -421,7 +421,7 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1088",
+        "version":  "4.1.1.1105",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {
