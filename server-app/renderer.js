@@ -25,6 +25,7 @@ let defaultViewSet = false;
 
 // App state
 let currentClients = [];
+let connectedClients = []; // Track which PCs are currently connected
 let selectedClient = null;
 let clientApps = {};
 let timerInterval = null;
@@ -332,9 +333,11 @@ async function fetchAndDisplayPCs() {
 }
 
 window.api.onClients((clients) => {
-  // Ignore WebSocket client list, just fetch PCs from API
-  console.log('Clients changed, fetching latest PC data');
-  fetchAndDisplayPCs();
+  // Update the list of connected clients
+  console.log('Connected clients updated:', clients);
+  connectedClients = clients || [];
+  // Re-render the clients list to show updated connection status
+  renderClients();
 });
 
 window.api.onAppsUpdated((data) => {
@@ -353,10 +356,10 @@ window.api.onAppsUpdated((data) => {
 });
 
 function renderClients() {
-  console.log('Rendering clients:', { currentClients, pcsData });
+  console.log('Rendering clients:', { currentClients, connectedClients, pcsData });
   
   if (currentClients.length === 0) {
-    clientsEl.innerHTML = '<div class="no-clients">No clients connected</div>';
+    clientsEl.innerHTML = '<div class="no-clients">No PCs registered</div>';
     return;
   }
 
@@ -371,36 +374,59 @@ function renderClients() {
     // Get PC data for this client
     const pcData = pcsData[clientId];
     
-    console.log(`Rendering client ${clientId}:`, pcData);
+    // Check if this PC is currently connected
+    const isConnected = connectedClients.includes(clientId);
+    
+    console.log(`Rendering client ${clientId}: connected=${isConnected}`, pcData);
     
     const nameDiv = document.createElement("div");
     nameDiv.className = "client-name";
     
     if (pcData) {
-      // Display PC name, IP address, and port
+      // Display PC name, IP address, and port with connection status
+      const statusColor = isConnected ? '#22c55e' : '#ef4444';
+      const statusText = isConnected ? 'Connected' : 'Disconnected';
+      const statusDot = isConnected ? '●' : '○';
+      
       nameDiv.innerHTML = `
-        <div style="font-weight: 500; margin-bottom: 4px;">${pcData.name}</div>
+        <div style="font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+          <span style="color: ${statusColor}; font-size: 14px;">${statusDot}</span>
+          <span>${pcData.name}</span>
+        </div>
         <div style="font-size: 12px; color: #999; margin-bottom: 2px;">IP: ${pcData.ip_address}</div>
-        <div style="font-size: 12px; color: #999;">Port: ${pcData.port}</div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 6px;">Port: ${pcData.port}</div>
+        <div style="font-size: 11px; color: ${statusColor}; font-weight: 500;">${statusText}</div>
       `;
     } else {
       // Fallback to client ID if PC data not available
-      nameDiv.textContent = clientId;
+      const statusColor = isConnected ? '#22c55e' : '#ef4444';
+      const statusText = isConnected ? 'Connected' : 'Disconnected';
+      const statusDot = isConnected ? '●' : '○';
+      nameDiv.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: ${statusColor}; font-size: 14px;">${statusDot}</span>
+          <span>${clientId}</span>
+        </div>
+        <div style="font-size: 11px; color: ${statusColor}; font-weight: 500; margin-top: 4px;">${statusText}</div>
+      `;
     }
 
     const actions = document.createElement("div");
     actions.className = "client-actions";
+    
+    // Only show action buttons if the PC is connected
+    if (isConnected) {
+      const viewBtn = document.createElement("button");
+      viewBtn.textContent = "View";
+      viewBtn.onclick = () => selectClient(clientId);
 
-    const viewBtn = document.createElement("button");
-    viewBtn.textContent = "View";
-    viewBtn.onclick = () => selectClient(clientId);
+      const refreshBtn = document.createElement("button");
+      refreshBtn.textContent = "Refresh";
+      refreshBtn.onclick = () => refreshClientApps(clientId);
 
-    const refreshBtn = document.createElement("button");
-    refreshBtn.textContent = "Refresh";
-    refreshBtn.onclick = () => refreshClientApps(clientId);
-
-    actions.appendChild(viewBtn);
-    actions.appendChild(refreshBtn);
+      actions.appendChild(viewBtn);
+      actions.appendChild(refreshBtn);
+    }
 
     item.appendChild(nameDiv);
     item.appendChild(actions);

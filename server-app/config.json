@@ -1,9 +1,0 @@
-{
-  "clients": [
-    {
-     
-      "port": 9090
-    }
-  ],
-  "serverPort": 8080
-}
