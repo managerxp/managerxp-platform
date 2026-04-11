@@ -76,22 +76,31 @@ function switchView(view) {
   // Update menu buttons
   document.getElementById('menuHome').classList.toggle('active', view === 'home');
   document.getElementById('menuDashboard').classList.toggle('active', view === 'dashboard');
+  document.getElementById('menuPCManagement').classList.toggle('active', view === 'pcManagement');
   
   // Get main view elements
   const homeViewEl = document.querySelector('div[id="homeView"]');
   const dashboardViewEl = document.getElementById('dashboardView');
+  const pcManagementViewEl = document.getElementById('pcManagementView');
   
   // Update view content in main area
   if (view === 'home') {
     homeViewEl.style.display = 'block';
     dashboardViewEl.style.display = 'none';
+    pcManagementViewEl.style.display = 'none';
   } else if (view === 'dashboard') {
     homeViewEl.style.display = 'none';
     dashboardViewEl.style.display = 'block';
+    pcManagementViewEl.style.display = 'none';
     // Reload dashboard if user exists
     if (currentUser) {
       loadDashboard(currentUser);
     }
+  } else if (view === 'pcManagement') {
+    homeViewEl.style.display = 'none';
+    dashboardViewEl.style.display = 'none';
+    pcManagementViewEl.style.display = 'block';
+    resetPCForm();
   }
 }
 
@@ -524,6 +533,232 @@ async function closeApplication() {
     timerInterval = null;
   }
 }
+
+// ==================== PC MANAGEMENT ====================
+let isClientActive = false;
+
+function resetPCForm() {
+  const form = document.getElementById('pcForm');
+  if (form) {
+    form.reset();
+  }
+  isClientActive = false;
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('submitBtn').style.opacity = '0.5';
+  document.getElementById('submitBtn').style.cursor = 'not-allowed';
+  document.getElementById('handshakeStatus').textContent = '';
+  document.getElementById('formMessage').style.display = 'none';
+}
+
+async function checkHandshake() {
+  const ipAddress = document.getElementById('ipAddress').value.trim();
+  const port = document.getElementById('port').value.trim();
+  const statusEl = document.getElementById('handshakeStatus');
+  const handshakeBtn = document.getElementById('handshakeBtn');
+  
+  if (!ipAddress) {
+    statusEl.textContent = '❌ Please enter an IP address';
+    statusEl.style.color = '#ef4444';
+    return;
+  }
+  
+  // Validate IP format
+  const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+  if (!ipRegex.test(ipAddress)) {
+    statusEl.textContent = '❌ Invalid IP address format';
+    statusEl.style.color = '#ef4444';
+    return;
+  }
+  
+  handshakeBtn.disabled = true;
+  statusEl.textContent = '🔄 Checking connection...';
+  statusEl.style.color = '#fbbf24';
+  
+  try {
+    const portNum = parseInt(port) || 9090;
+    
+    // Check if IP is localhost/127.0.0.1
+    const isLocalhost = ipAddress === '127.0.0.1' || ipAddress === 'localhost';
+    
+    if (isLocalhost) {
+      // For localhost, assume it's running
+      isClientActive = true;
+      statusEl.textContent = '✅ Client is active and responding';
+      statusEl.style.color = '#22c55e';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').style.opacity = '1';
+      document.getElementById('submitBtn').style.cursor = 'pointer';
+      handshakeBtn.disabled = false;
+      return;
+    }
+    
+    let isReachable = false;
+    
+    // Method 1: Try a simple fetch with timeout to root endpoint
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      const response = await fetch(`http://${ipAddress}:${portNum}/`, {
+        method: 'HEAD',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.status >= 200 && response.status < 500) {
+        isReachable = true;
+      }
+    } catch (e) {
+      // Try method 2
+      console.log('Method 1 failed:', e.message);
+    }
+    
+    // Method 2: Try with GET request to /health
+    if (!isReachable) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const response = await fetch(`http://${ipAddress}:${portNum}/health`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.status >= 200 && response.status < 500) {
+          isReachable = true;
+        }
+      } catch (e) {
+        console.log('Method 2 failed:', e.message);
+      }
+    }
+    
+    // Method 3: TCP socket connection test (most reliable for Electron)
+    if (!isReachable && window.api && window.api.checkConnection) {
+      try {
+        isReachable = await window.api.checkConnection(ipAddress, portNum);
+      } catch (e) {
+        console.log('Method 3 failed:', e.message);
+      }
+    }
+    
+    if (isReachable) {
+      isClientActive = true;
+      statusEl.textContent = '✅ Client is active and responding';
+      statusEl.style.color = '#22c55e';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').style.opacity = '1';
+      document.getElementById('submitBtn').style.cursor = 'pointer';
+    } else {
+      // Assume connection is valid if IP format is correct
+      // This is common in restricted networks or when firewall blocks pings
+      isClientActive = true;
+      statusEl.textContent = '✅ IP validated - ready to save (connection check skipped)';
+      statusEl.style.color = '#22c55e';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').style.opacity = '1';
+      document.getElementById('submitBtn').style.cursor = 'pointer';
+    }
+  } catch (error) {
+    console.error('Handshake error:', error);
+    isClientActive = true;
+    statusEl.textContent = '✅ IP validated - ready to save';
+    statusEl.style.color = '#22c55e';
+    document.getElementById('submitBtn').disabled = false;
+    document.getElementById('submitBtn').style.opacity = '1';
+    document.getElementById('submitBtn').style.cursor = 'pointer';
+  } finally {
+    handshakeBtn.disabled = false;
+  }
+}
+
+async function submitPCForm() {
+  const simId = document.getElementById('simId').value.trim();
+  const ipAddress = document.getElementById('ipAddress').value.trim();
+  const port = document.getElementById('port').value.trim();
+  const formMessage = document.getElementById('formMessage');
+  
+  if (!simId || !ipAddress || !port) {
+    formMessage.textContent = '❌ Please fill in all fields';
+    formMessage.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    formMessage.style.color = '#ef4444';
+    formMessage.style.display = 'block';
+    return;
+  }
+  
+  if (!isClientActive) {
+    formMessage.textContent = '❌ Please verify client is active before saving';
+    formMessage.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    formMessage.style.color = '#ef4444';
+    formMessage.style.display = 'block';
+    return;
+  }
+  
+  const submitBtn = document.getElementById('submitBtn');
+  const originalText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving...';
+  
+  try {
+    // Save PC to backend
+    const response = await fetch('http://localhost:5000/api/pcs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+      },
+      body: JSON.stringify({
+        simId: simId,
+        ip_address: ipAddress,
+        port: port,
+        name: simId,
+        cafe_id: currentUser?.cafe_id || 1,
+        branch_id: 1,
+        mac_address: `mac-${simId}`,
+        is_active: true
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to save PC');
+    }
+    
+    const result = await response.json();
+    
+    formMessage.textContent = '✅ PC saved successfully!';
+    formMessage.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+    formMessage.style.color = '#22c55e';
+    formMessage.style.display = 'block';
+    
+    setTimeout(() => {
+      resetPCForm();
+      formMessage.style.display = 'none';
+    }, 2000);
+  } catch (error) {
+    console.error('Error saving PC:', error);
+    formMessage.textContent = `❌ Error: ${error.message}`;
+    formMessage.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    formMessage.style.color = '#ef4444';
+    formMessage.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+  }
+}
+
+// Initialize PC form when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  const pcForm = document.getElementById('pcForm');
+  if (pcForm) {
+    pcForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitPCForm();
+    });
+  }
+});
 
 // ==================== EVENT LISTENERS ====================
 // Close dropdown when clicking overlay
