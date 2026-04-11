@@ -50,6 +50,11 @@
         "launch":  "C:\\WINDOWS\\system32\\cleanmgr.exe"
     },
     {
+        "name":  "Documentation",
+        "version":  null,
+        "launch":  "C:\\Program Files\\VideoLAN\\VLC\\Documentation.url"
+    },
+    {
         "name":  "Event Viewer",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\eventvwr.msc"
@@ -325,6 +330,11 @@
         "launch":  "C:\\WINDOWS\\regedit.exe"
     },
     {
+        "name":  "Release Notes",
+        "version":  null,
+        "launch":  "C:\\Program Files\\VideoLAN\\VLC\\NEWS.txt"
+    },
+    {
         "name":  "Reload Configuration",
         "version":  null,
         "launch":  "C:\\Program Files\\PostgreSQL\\18\\bin\\pg_ctl.exe"
@@ -405,6 +415,11 @@
         "launch":  "C:\\xampp\\uninstall.exe"
     },
     {
+        "name":  "VideoLAN Website",
+        "version":  null,
+        "launch":  "C:\\Program Files\\VideoLAN\\VLC\\VideoLAN Website.url"
+    },
+    {
         "name":  "Visual Studio Code",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe"
@@ -413,6 +428,21 @@
         "name":  "Visual Studio Installer",
         "version":  null,
         "launch":  "C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\setup.exe"
+    },
+    {
+        "name":  "VLC media player",
+        "version":  "2.2.4",
+        "launch":  "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
+    },
+    {
+        "name":  "VLC media player - reset preferences and cache files",
+        "version":  null,
+        "launch":  "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
+    },
+    {
+        "name":  "VLC media player skinned",
+        "version":  null,
+        "launch":  "C:\\Program Files\\VideoLAN\\VLC\\vlc.exe"
     },
     {
         "name":  "VoiceAccess",

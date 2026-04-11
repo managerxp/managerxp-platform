@@ -2,12 +2,13 @@ const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const WebSocket = require("ws");
 const path = require("path");
 const http = require("http");
+const fs = require("fs");
 const authContext = require("./authContext");
 
 let win;
 let loginWin;
-let wss; // WebSocket server instance
 let tokenServer; // HTTP token server instance
+let clientConnections = new Map(); // simId -> ws connection to client
 let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
 
@@ -165,10 +166,10 @@ function handleWebAppLogin(token, user) {
   // Create/show main window
   if (!win) {
     createWindow();
-    startWebSocketServer();
+    connectToClients();
   } else if (win.isDestroyed()) {
     createWindow();
-    startWebSocketServer();
+    connectToClients();
   } else {
     // Window already exists, update user info
     const authState = authContext.getAuthState();
@@ -196,7 +197,7 @@ app.whenReady().then(() => {
         // Restore auth context
         authContext.setAuth(authData.user, authData.token);
         createWindow();
-        startWebSocketServer();
+        connectToClients();
       } else {
         createLoginWindow();
       }
@@ -292,7 +293,7 @@ function registerIPCHandlers() {
     
     if (!win || win.isDestroyed()) {
       createWindow();
-      startWebSocketServer();
+      connectToClients();
     } else {
       // Window already exists, just update user info
       const authState = authContext.getAuthState();
@@ -324,7 +325,7 @@ function registerIPCHandlers() {
         loginWin.close();
       }
       createWindow();
-      startWebSocketServer();
+      connectToClients();
     }
   });
 
@@ -332,15 +333,17 @@ function registerIPCHandlers() {
     const fs = require('fs');
     const authFile = path.join(app.getPath('userData'), 'auth.json');
     
-    // Close WebSocket server
-    if (wss) {
+    // Close WebSocket client connections
+    if (clientConnections && clientConnections.size > 0) {
       try {
-        wss.close();
-        console.log('WebSocket server closed');
+        clientConnections.forEach(ws => {
+          ws.close();
+        });
+        clientConnections.clear();
+        console.log('WebSocket client connections closed');
       } catch (error) {
-        console.error('Error closing WebSocket server:', error);
+        console.error('Error closing WebSocket connections:', error);
       }
-      wss = null;
     }
     
     // Clear auth context
@@ -402,58 +405,115 @@ function registerIPCHandlers() {
   console.log('IPC handlers registered');
 }
 
-// Start WebSocket server (can be called multiple times)
-function startWebSocketServer() {
-  // Close existing WebSocket server if it's running
-  if (wss) {
-    try {
-      wss.close();
-      clients.clear();
-      console.log('Closed previous WebSocket server');
-    } catch (error) {
-      console.error('Error closing previous WebSocket server:', error);
+// Load client configuration
+function loadConfig() {
+  const configPath = path.join(__dirname, 'config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return config;
     }
+  } catch (error) {
+    console.error('Error loading config:', error);
   }
+  return { clients: [], serverPort: 8080 };
+}
 
-  wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
-  log("VMS Server started on port 8080 (accessible on network)");
+// Connect to all configured clients
+function connectToClients() {
+  const config = loadConfig();
+  log("Loading client configurations...");
+  
+  // Disconnect from previous connections
+  clientConnections.forEach(ws => {
+    try {
+      ws.close();
+    } catch (e) {}
+  });
+  clientConnections.clear();
+  clients.clear();
+  
+  if (!config.clients || config.clients.length === 0) {
+    log("No clients configured in config.json");
+    return;
+  }
+  
+  // Connect to each configured client
+  config.clients.forEach(clientConfig => {
+    const { simId, ip, port } = clientConfig;
+    const clientUrl = `ws://${ip}:${port}`;
+    
+    log(`Connecting to client ${simId} at ${clientUrl}...`);
+    
+    const ws = new WebSocket(clientUrl);
+    let reconnectTimeout;
+    
+    const setupClientHandlers = () => {
+      ws.on("message", (raw) => {
+        try {
+          const msg = JSON.parse(raw);
 
-  wss.on("connection", (ws) => {
-    log("Client connected");
+          if (msg.type === "REGISTER") {
+            ws.simId = msg.simId;
+            clients.set(msg.simId, { ws, apps: [] });
+            log(`Registered: ${msg.simId} (${msg.hostname})`);
+            win.webContents.send("clients", [...clients.keys()]);
+          }
 
-    ws.on("message", (raw) => {
-      const msg = JSON.parse(raw);
+          if (msg.type === "HEARTBEAT") {
+            // alive check (silent)
+          }
 
-      if (msg.type === "REGISTER") {
-        ws.simId = msg.simId;
-        clients.set(msg.simId, { ws, apps: [] });
-        log(`Registered: ${msg.simId}`);
-        win.webContents.send("clients", [...clients.keys()]);
-      }
-
-      if (msg.type === "HEARTBEAT") {
-        // alive check (silent)
-      }
-
-      if (msg.type === "APPS_LIST") {
-        const client = clients.get(msg.simId);
-        if (client) {
-          client.apps = msg.apps;
-          log(`Received ${msg.apps.length} apps from ${msg.simId}`);
-          win.webContents.send("apps-updated", {
-            simId: msg.simId,
-            apps: msg.apps
-          });
+          if (msg.type === "APPS_LIST") {
+            const client = clients.get(msg.simId);
+            if (client) {
+              client.apps = msg.apps;
+              log(`Received ${msg.apps.length} apps from ${msg.simId}`);
+              win.webContents.send("apps-updated", {
+                simId: msg.simId,
+                apps: msg.apps
+              });
+            }
+          }
+        } catch (error) {
+          log(`Error parsing message: ${error.message}`);
         }
-      }
-    });
+      });
 
-    ws.on("close", () => {
-      if (ws.simId) {
-        clients.delete(ws.simId);
-        log(`Disconnected: ${ws.simId}`);
-        win.webContents.send("clients", [...clients.keys()]);
-      }
+      ws.on("close", () => {
+        if (ws.simId) {
+          clients.delete(ws.simId);
+          clientConnections.delete(ws.simId);
+          log(`Disconnected: ${ws.simId}`);
+          win.webContents.send("clients", [...clients.keys()]);
+        }
+        
+        // Attempt to reconnect after 5 seconds
+        log(`Reconnecting to ${simId} in 5 seconds...`);
+        reconnectTimeout = setTimeout(() => {
+          connectToClients();
+        }, 5000);
+      });
+
+      ws.on("error", (error) => {
+        log(`Connection error for ${simId}: ${error.message}`);
+      });
+    };
+    
+    ws.on("open", () => {
+      log(`Connected to client ${simId}`);
+      setupClientHandlers();
+      clientConnections.set(simId, ws);
+    });
+    
+    ws.on("error", (error) => {
+      log(`Failed to connect to ${simId}: ${error.message}`);
+      // Retry connection
+      setTimeout(() => {
+        if (!clientConnections.has(simId)) {
+          connectToClients();
+        }
+      }, 5000);
     });
   });
 }

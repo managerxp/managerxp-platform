@@ -6,12 +6,13 @@ const { exec } = require("child_process");
 const fs = require("fs");
 
 const SIM_ID = "SIM-01";
-const SERVER_URL = "ws://localhost:8080";
+const CLIENT_PORT = 9090; // Port this client listens on
 
 let win;
 let statusBarWin;
 let timerCardWin;
-let ws;
+let wss; // WebSocket server instance (client listens)
+let serverConnection; // Connection from server
 let runningProcesses = new Map(); // appName -> { pid, appPath, timerCardWin }
 
 function createWindow() {
@@ -153,14 +154,17 @@ function getInstalledApps() {
   });
 }
 
-function connect() {
-  log("Connecting to server...");
-  ws = new WebSocket(SERVER_URL);
-
-  ws.on("open", async () => {
-    log("Connected to VMS");
+function listen() {
+  log("Starting WebSocket server on port " + CLIENT_PORT + "...");
+  
+  wss = new WebSocket.Server({ port: CLIENT_PORT, host: '0.0.0.0' });
+  
+  wss.on("connection", async (ws) => {
+    serverConnection = ws;
+    log("Connected to VMS Server");
     updateStatus("CONNECTED");
 
+    // Register this client with the server
     ws.send(JSON.stringify({
       type: "REGISTER",
       simId: SIM_ID,
@@ -183,76 +187,82 @@ function connect() {
     } catch (err) {
       log(`Error fetching apps: ${err.message}`);
     }
-  });
 
-  ws.on("close", () => {
-    log("Disconnected. Reconnecting...");
-    updateStatus("DISCONNECTED");
-    setTimeout(connect, 3000);
-  });
-
-  ws.on("error", () => {
-    win.webContents.send("status", "DISCONNECTED");
-  });
-
-  ws.on("message", (raw) => {
-    const msg = JSON.parse(raw);
-    
-    if (msg.type === "COMMAND") {
-      log(`Command received: ${msg.command}`);
-    }
-    
-    if (msg.type === "LAUNCH_APP") {
-      log(`Launching: ${msg.appName}`);
-      if (msg.appPath) {
-        const child = exec(`"${msg.appPath}"`, (err) => {
-          if (err) {
-            log(`Error launching app: ${err.message}`);
-          } else {
-            log(`Successfully launched: ${msg.appName}`);
-          }
-        });
-        
-        // Store the process info with timer card if timer is set
-        if (child.pid) {
-          const processInfo = {
-            pid: child.pid,
-            appPath: msg.appPath,
-            timerCardWin: null
-          };
+    ws.on("message", async (raw) => {
+      const msg = JSON.parse(raw);
+      
+      if (msg.type === "COMMAND") {
+        log(`Command received: ${msg.command}`);
+      }
+      
+      if (msg.type === "LAUNCH_APP") {
+        log(`Launching: ${msg.appName}`);
+        if (msg.appPath) {
+          const child = exec(`"${msg.appPath}"`, (err) => {
+            if (err) {
+              log(`Error launching app: ${err.message}`);
+            } else {
+              log(`Successfully launched: ${msg.appName}`);
+            }
+          });
           
-          // Create timer card if timer is set
-          if (msg.timerMinutes && msg.timerMinutes > 0) {
-            processInfo.timerCardWin = createTimerCard(msg.appName, msg.timerMinutes);
+          // Store the process info with timer card if timer is set
+          if (child.pid) {
+            const processInfo = {
+              pid: child.pid,
+              appPath: msg.appPath,
+              timerCardWin: null
+            };
+            
+            // Create timer card if timer is set
+            if (msg.timerMinutes && msg.timerMinutes > 0) {
+              processInfo.timerCardWin = createTimerCard(msg.appName, msg.timerMinutes);
+            }
+            
+            runningProcesses.set(msg.appName, processInfo);
+            log(`Tracking process PID: ${child.pid}${msg.timerMinutes ? ` with ${msg.timerMinutes} min timer` : ''}`);
           }
-          
-          runningProcesses.set(msg.appName, processInfo);
-          log(`Tracking process PID: ${child.pid}${msg.timerMinutes ? ` with ${msg.timerMinutes} min timer` : ''}`);
         }
       }
-    }
-    
-    if (msg.type === "REFRESH_APPS") {
-      log("Refreshing apps list...");
-      getInstalledApps()
-        .then(apps => {
+      
+      if (msg.type === "REFRESH_APPS") {
+        log("Refreshing apps list...");
+        try {
+          const apps = await getInstalledApps();
           ws.send(JSON.stringify({
             type: "APPS_LIST",
             simId: SIM_ID,
             apps: apps
           }));
           log("Apps list refreshed and sent");
-        })
-        .catch(err => {
+        } catch (err) {
           log(`Error refreshing apps: ${err.message}`);
-        });
-    }
-    
-    if (msg.type === "CLOSE_APP") {
-      log(`Closing application: ${msg.appName}`);
-      closeApplication(msg.appName);
-    }
+        }
+      }
+      
+      if (msg.type === "CLOSE_APP") {
+        log(`Closing application: ${msg.appName}`);
+        closeApplication(msg.appName);
+      }
+    });
+
+    ws.on("close", () => {
+      log("Disconnected from server. Waiting for reconnection...");
+      updateStatus("DISCONNECTED");
+      serverConnection = null;
+    });
+
+    ws.on("error", (err) => {
+      log(`WebSocket error: ${err.message}`);
+      updateStatus("DISCONNECTED");
+    });
   });
+
+  wss.on("error", (err) => {
+    log(`Server error: ${err.message}`);
+  });
+
+  log(`WebSocket server listening on ws://0.0.0.0:${CLIENT_PORT}`);
 }
 
 function closeApplication(appName) {
@@ -327,12 +337,12 @@ function closeByExecutableName(appPath, appName) {
 
 app.whenReady().then(() => {
   createWindow();
-  connect();
+  listen();
 });
 
 /* ---- HEARTBEAT ---- */
 setInterval(() => {
-  if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ type: "HEARTBEAT" }));
+  if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+    serverConnection.send(JSON.stringify({ type: "HEARTBEAT" }));
   }
 }, 5000);
