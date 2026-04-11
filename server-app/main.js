@@ -11,6 +11,10 @@ let tokenServer; // HTTP token server instance
 let clientConnections = new Map(); // simId -> ws connection to client
 let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
+let allRegisteredPCs = new Map(); // Track all registered PCs with their config for heartbeat
+let heartbeatInterval = null;
+const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds
+const RECONNECT_INTERVAL = 10000; // Try to reconnect dead clients every 10 seconds
 
 // Create login window
 function createLoginWindow() {
@@ -496,6 +500,119 @@ async function fetchClientsFromAPI() {
   }
 }
 
+// Heartbeat function - sends heartbeat to connected clients and tries to reconnect dead ones
+async function heartbeat() {
+  try {
+    // Send heartbeat to all connected clients
+    clients.forEach((client, simId) => {
+      if (client && client.ws && client.ws.readyState === WebSocket.OPEN) {
+        try {
+          client.ws.send(JSON.stringify({
+            type: "HEARTBEAT_PING"
+          }));
+        } catch (error) {
+          log(`Heartbeat send error for ${simId}: ${error.message}`);
+        }
+      }
+    });
+
+    // Check for disconnected PCs and try to reconnect them
+    if (allRegisteredPCs.size > 0) {
+      const connectedPCNames = new Set(clients.keys());
+      
+      allRegisteredPCs.forEach((pcConfig, pcName) => {
+        // If this PC is not in the connected clients list, try to reconnect
+        if (!connectedPCNames.has(pcName)) {
+          log(`Heartbeat: Attempting to reconnect ${pcName} at ${pcConfig.ip}:${pcConfig.port}`);
+          
+          const clientUrl = `ws://${pcConfig.ip}:${pcConfig.port}`;
+          const ws = new WebSocket(clientUrl);
+          
+          const setupClientHandlers = () => {
+            ws.on("message", (raw) => {
+              try {
+                const msg = JSON.parse(raw);
+
+                if (msg.type === "REGISTER") {
+                  ws.simId = msg.simId;
+                  clients.set(msg.simId, { ws, apps: [], pcName: pcName });
+                  clients.set(pcName, { ws, apps: [], pcName: pcName });
+                  log(`[Heartbeat Reconnect] Registered: ${msg.simId} (${msg.hostname})`);
+                  if (win) win.webContents.send("clients", [...clients.keys()]);
+                }
+
+                if (msg.type === "HEARTBEAT_PONG") {
+                  // Client is alive
+                  log(`Heartbeat response from ${msg.simId}`);
+                }
+
+                if (msg.type === "APPS_LIST") {
+                  const client = clients.get(msg.simId) || clients.get(pcName);
+                  if (client) {
+                    client.apps = msg.apps;
+                    log(`Received ${msg.apps.length} apps from ${msg.simId}`);
+                    if (win) win.webContents.send("apps-updated", {
+                      simId: msg.simId,
+                      pcName: pcName,
+                      apps: msg.apps
+                    });
+                  }
+                }
+              } catch (error) {
+                log(`Error parsing message: ${error.message}`);
+              }
+            });
+
+            ws.on("close", () => {
+              if (ws.simId) {
+                clients.delete(ws.simId);
+                clients.delete(pcName);
+                clientConnections.delete(ws.simId);
+                log(`[Heartbeat] Disconnected: ${ws.simId}`);
+                if (win) win.webContents.send("clients", [...clients.keys()]);
+              }
+            });
+
+            ws.on("error", (error) => {
+              log(`[Heartbeat] Connection error for ${pcName}: ${error.message}`);
+            });
+          };
+          
+          ws.on("open", () => {
+            log(`[Heartbeat] Connected to ${pcName}`);
+            ws.send(JSON.stringify({
+              type: "SET_NAME",
+              name: pcName
+            }));
+            setupClientHandlers();
+            clientConnections.set(pcName, ws);
+          });
+          
+          ws.on("error", (error) => {
+            log(`[Heartbeat] Failed to connect to ${pcName}: ${error.message}`);
+          });
+        }
+      });
+    }
+  } catch (error) {
+    log(`Heartbeat error: ${error.message}`);
+  }
+}
+
+// Start the heartbeat mechanism
+function startHeartbeat() {
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+  }
+  
+  // Start heartbeat that runs periodically
+  heartbeatInterval = setInterval(() => {
+    heartbeat();
+  }, HEARTBEAT_INTERVAL);
+  
+  log("Heartbeat mechanism started (interval: " + HEARTBEAT_INTERVAL + "ms)");
+}
+
 // Connect to all configured clients
 async function connectToClients() {
   log("Loading client configurations from API...");
@@ -516,7 +633,14 @@ async function connectToClients() {
     log("No clients configured in API");
     return;
   }
-  
+
+  // Store all PCs for heartbeat mechanism
+  allRegisteredPCs.clear();
+  clients_list.forEach(cfg => {
+    allRegisteredPCs.set(cfg.simId, cfg);
+  });
+  log(`Stored ${allRegisteredPCs.size} PCs for heartbeat monitoring`);
+
   // Connect to each client from API
   clients_list.forEach(clientConfig => {
     const { simId, ip, port } = clientConfig;
@@ -525,7 +649,6 @@ async function connectToClients() {
     log(`Connecting to client ${simId} at ${clientUrl}...`);
     
     const ws = new WebSocket(clientUrl);
-    let reconnectTimeout;
     
     const setupClientHandlers = () => {
       ws.on("message", (raw) => {
@@ -538,11 +661,12 @@ async function connectToClients() {
             clients.set(msg.simId, { ws, apps: [], pcName: simId });
             clients.set(simId, { ws, apps: [], pcName: simId }); // Also store by PC name for lookup
             log(`Registered: ${msg.simId} (${msg.hostname})`);
-            win.webContents.send("clients", [...clients.keys()]);
+            if (win) win.webContents.send("clients", [...clients.keys()]);
           }
 
-          if (msg.type === "HEARTBEAT") {
-            // alive check (silent)
+          if (msg.type === "HEARTBEAT_PONG") {
+            // Client responded to heartbeat - it's alive
+            log(`Heartbeat response from ${msg.simId}`);
           }
 
           if (msg.type === "APPS_LIST") {
@@ -550,7 +674,7 @@ async function connectToClients() {
             if (client) {
               client.apps = msg.apps;
               log(`Received ${msg.apps.length} apps from ${msg.simId}`);
-              win.webContents.send("apps-updated", {
+              if (win) win.webContents.send("apps-updated", {
                 simId: msg.simId,
                 pcName: simId,  // Send PC name so renderer can match
                 apps: msg.apps
@@ -567,15 +691,10 @@ async function connectToClients() {
           clients.delete(ws.simId);
           clients.delete(simId); // Also delete by PC name
           clientConnections.delete(ws.simId);
-          log(`Disconnected: ${ws.simId}`);
-          win.webContents.send("clients", [...clients.keys()]);
+          log(`Disconnected: ${ws.simId} - Heartbeat will attempt reconnection`);
+          if (win) win.webContents.send("clients", [...clients.keys()]);
         }
-        
-        // Attempt to reconnect after 5 seconds
-        log(`Reconnecting to ${simId} in 5 seconds...`);
-        reconnectTimeout = setTimeout(() => {
-          connectToClients();
-        }, 5000);
+        // Don't reconnect here - let the heartbeat mechanism handle it
       });
 
       ws.on("error", (error) => {
@@ -597,12 +716,34 @@ async function connectToClients() {
     
     ws.on("error", (error) => {
       log(`Failed to connect to ${simId}: ${error.message}`);
-      // Don't retry immediately - wait for user action or manual reconnect
+      // Heartbeat will handle reconnection attempts
     });
   });
+
+  // Start heartbeat after initial connection attempt
+  startHeartbeat();
 }
 
 app.on('window-all-closed', () => {
+  // Cleanup heartbeat
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
   if (process.platform !== 'darwin') app.quit();
+});
+
+app.on('quit', () => {
+  // Cleanup any remaining connections
+  if (heartbeatInterval) {
+    clearInterval(heartbeatInterval);
+    heartbeatInterval = null;
+  }
+  clientConnections.forEach(ws => {
+    try {
+      ws.close();
+    } catch (e) {}
+  });
+  clientConnections.clear();
 });
 
