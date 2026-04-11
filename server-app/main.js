@@ -166,10 +166,10 @@ function handleWebAppLogin(token, user) {
   // Create/show main window
   if (!win) {
     createWindow();
-    connectToClients();
+    connectToClients().catch(err => console.error('Error connecting to clients:', err));
   } else if (win.isDestroyed()) {
     createWindow();
-    connectToClients();
+    connectToClients().catch(err => console.error('Error connecting to clients:', err));
   } else {
     // Window already exists, update user info
     const authState = authContext.getAuthState();
@@ -197,7 +197,7 @@ app.whenReady().then(() => {
         // Restore auth context
         authContext.setAuth(authData.user, authData.token);
         createWindow();
-        connectToClients();
+        connectToClients().catch(err => console.error('Error connecting to clients:', err));
       } else {
         createLoginWindow();
       }
@@ -325,7 +325,8 @@ function registerIPCHandlers() {
         loginWin.close();
       }
       createWindow();
-      connectToClients();
+      // Connect to clients from API (async)
+      connectToClients().catch(err => console.error('Error connecting to clients:', err));
     }
   });
 
@@ -393,6 +394,40 @@ function registerIPCHandlers() {
     return authContext.getToken();
   });
 
+  // Fetch PCs data for the current user
+  ipcMain.handle("pcs:get-cafe-pcs", async (event) => {
+    try {
+      const cafeId = authContext.getCafeId();
+      const token = authContext.getToken();
+      
+      if (!cafeId || !token) {
+        console.log("Missing cafeId or token for PC fetch");
+        return { success: false, data: [], error: "Not authenticated" };
+      }
+
+      const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`PC fetch failed: ${response.status} ${errorText}`);
+        return { success: false, data: [], error: `HTTP ${response.status}` };
+      }
+
+      const result = await response.json();
+      console.log("PC data fetched:", result.data?.length, "PCs found");
+      return result;
+    } catch (error) {
+      console.error("Error fetching PCs:", error.message);
+      return { success: false, data: [], error: error.message };
+    }
+  });
+
   ipcMain.on("auth:open-web-app", (event) => {
     shell.openExternal('http://localhost:5173/gamingxp-login');
   });
@@ -419,10 +454,51 @@ function loadConfig() {
   return { clients: [], serverPort: 8080 };
 }
 
+// Fetch PCs from API instead of config.json
+async function fetchClientsFromAPI() {
+  try {
+    const cafeId = authContext.getCafeId();
+    const token = authContext.getToken();
+    
+    if (!cafeId || !token) {
+      log("Not authenticated - cannot fetch PCs from API");
+      return [];
+    }
+
+    const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch PCs: ${response.status}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.success && Array.isArray(result.data)) {
+      log(`Fetched ${result.data.length} PCs from API`);
+      // Convert API PC data to config format
+      return result.data.map(pc => ({
+        simId: pc.name,
+        ip: pc.ip_address,
+        port: pc.port
+      }));
+    }
+    
+    return [];
+  } catch (error) {
+    log(`Error fetching PCs from API: ${error.message}`);
+    return [];
+  }
+}
+
 // Connect to all configured clients
-function connectToClients() {
-  const config = loadConfig();
-  log("Loading client configurations...");
+async function connectToClients() {
+  log("Loading client configurations from API...");
   
   // Disconnect from previous connections
   clientConnections.forEach(ws => {
@@ -433,13 +509,16 @@ function connectToClients() {
   clientConnections.clear();
   clients.clear();
   
-  if (!config.clients || config.clients.length === 0) {
-    log("No clients configured in config.json");
+  // Fetch clients from API instead of config
+  const clients_list = await fetchClientsFromAPI();
+  
+  if (!clients_list || clients_list.length === 0) {
+    log("No clients configured in API");
     return;
   }
   
-  // Connect to each configured client
-  config.clients.forEach(clientConfig => {
+  // Connect to each client from API
+  clients_list.forEach(clientConfig => {
     const { simId, ip, port } = clientConfig;
     const clientUrl = `ws://${ip}:${port}`;
     
@@ -455,7 +534,9 @@ function connectToClients() {
 
           if (msg.type === "REGISTER") {
             ws.simId = msg.simId;
-            clients.set(msg.simId, { ws, apps: [] });
+            // Store with both the registered simId and the PC name as keys
+            clients.set(msg.simId, { ws, apps: [], pcName: simId });
+            clients.set(simId, { ws, apps: [], pcName: simId }); // Also store by PC name for lookup
             log(`Registered: ${msg.simId} (${msg.hostname})`);
             win.webContents.send("clients", [...clients.keys()]);
           }
@@ -465,12 +546,13 @@ function connectToClients() {
           }
 
           if (msg.type === "APPS_LIST") {
-            const client = clients.get(msg.simId);
+            const client = clients.get(msg.simId) || clients.get(simId);
             if (client) {
               client.apps = msg.apps;
               log(`Received ${msg.apps.length} apps from ${msg.simId}`);
               win.webContents.send("apps-updated", {
                 simId: msg.simId,
+                pcName: simId,  // Send PC name so renderer can match
                 apps: msg.apps
               });
             }
@@ -483,6 +565,7 @@ function connectToClients() {
       ws.on("close", () => {
         if (ws.simId) {
           clients.delete(ws.simId);
+          clients.delete(simId); // Also delete by PC name
           clientConnections.delete(ws.simId);
           log(`Disconnected: ${ws.simId}`);
           win.webContents.send("clients", [...clients.keys()]);
@@ -502,18 +585,19 @@ function connectToClients() {
     
     ws.on("open", () => {
       log(`Connected to client ${simId}`);
+      // Send the expected PC name from API to client
+      ws.send(JSON.stringify({
+        type: "SET_NAME",
+        name: simId
+      }));
+      log(`Sent PC name to client: ${simId}`);
       setupClientHandlers();
       clientConnections.set(simId, ws);
     });
     
     ws.on("error", (error) => {
       log(`Failed to connect to ${simId}: ${error.message}`);
-      // Retry connection
-      setTimeout(() => {
-        if (!clientConnections.has(simId)) {
-          connectToClients();
-        }
-      }, 5000);
+      // Don't retry immediately - wait for user action or manual reconnect
     });
   });
 }

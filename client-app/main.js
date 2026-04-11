@@ -5,7 +5,7 @@ const path = require("path");
 const { exec } = require("child_process");
 const fs = require("fs");
 
-const SIM_ID = "SIM-01";
+let SIM_ID = "SIM-01"; // Will be updated by server
 const CLIENT_PORT = 9090; // Port this client listens on
 
 let win;
@@ -164,36 +164,52 @@ function listen() {
     log("Connected to VMS Server");
     updateStatus("CONNECTED");
 
-    // Register this client with the server
-    ws.send(JSON.stringify({
-      type: "REGISTER",
-      simId: SIM_ID,
-      hostname: os.hostname()
-    }));
-
-    // Fetch and send installed apps to server
-    try {
-      log("Fetching installed applications...");
-      const apps = await getInstalledApps();
-      log(`Found ${apps.length} applications`);
-      
-      ws.send(JSON.stringify({
-        type: "APPS_LIST",
-        simId: SIM_ID,
-        apps: apps
-      }));
-      
-      log("Apps list sent to server");
-    } catch (err) {
-      log(`Error fetching apps: ${err.message}`);
-    }
-
+    // Listen for server to send the PC name
     ws.on("message", async (raw) => {
       const msg = JSON.parse(raw);
+      
+      // Handle SET_NAME message from server
+      if (msg.type === "SET_NAME") {
+        SIM_ID = msg.name;
+        log(`PC name set to: ${SIM_ID}`);
+        
+        // Send PC name to renderer
+        if (win) win.webContents.send("pc-name", SIM_ID);
+        if (statusBarWin) statusBarWin.webContents.send("pc-name", SIM_ID);
+        
+        // Register this client with the server using the provided name
+        ws.send(JSON.stringify({
+          type: "REGISTER",
+          simId: SIM_ID,
+          hostname: os.hostname()
+        }));
+        
+        // Fetch and send installed apps to server
+        try {
+          log("Fetching installed applications...");
+          const apps = await getInstalledApps();
+          log(`Found ${apps.length} applications`);
+          
+          ws.send(JSON.stringify({
+            type: "APPS_LIST",
+            simId: SIM_ID,
+            apps: apps
+          }));
+          
+          log("Apps list sent to server");
+        } catch (err) {
+          log(`Error fetching apps: ${err.message}`);
+        }
+        
+        return; // Don't process this as a command message
+      }
+
+      // Handle other messages
       
       if (msg.type === "COMMAND") {
         log(`Command received: ${msg.command}`);
       }
+      
       
       if (msg.type === "LAUNCH_APP") {
         log(`Launching: ${msg.appName}`);

@@ -32,6 +32,7 @@ let timerSeconds = 0;
 let isPaused = false;
 let currentRunningApp = null;
 let currentUser = null;
+let pcsData = {}; // Store PC data mapped by name/simId
 
 // ==================== SIDEBAR TOGGLE ====================
 function toggleSidebar(side) {
@@ -109,6 +110,8 @@ window.api.onUserUpdated((data) => {
   if (data && data.user) {
     currentUser = data.user;
     displayUserProfile(data.user);
+    // Fetch PC data when user logs in
+    fetchAndDisplayPCs();
     // Switch to home page by default when user logs in
     switchView('home');
   }
@@ -146,6 +149,7 @@ function handleLogout() {
     clientApps = {};
     selectedClient = null;
     currentClients = [];
+    pcsData = {};
     if (timerInterval) clearInterval(timerInterval);
     
     // Reset sidebar user profile
@@ -301,19 +305,56 @@ window.api.onLog((msg) => {
   logsEl.scrollTop = logsEl.scrollHeight;
 });
 
+// Fetch PC data from backend and display them
+async function fetchAndDisplayPCs() {
+  try {
+    console.log('Fetching PC data via IPC');
+    
+    const result = await window.api.getCafePCs();
+    
+    console.log('PC data fetched via IPC:', result);
+    
+    if (result.success && result.data && Array.isArray(result.data)) {
+      currentClients = result.data.map(pc => pc.name);
+      pcsData = {};
+      result.data.forEach(pc => {
+        pcsData[pc.name] = pc;
+        console.log(`PC: ${pc.name} -> IP: ${pc.ip_address}, Port: ${pc.port}`);
+      });
+      renderClients();
+    } else {
+      console.warn('No PCs found:', result);
+      clientsEl.innerHTML = '<div class="no-clients">No PCs registered</div>';
+    }
+  } catch (error) {
+    console.error('Error fetching PCs data:', error);
+  }
+}
+
 window.api.onClients((clients) => {
-  currentClients = clients;
-  renderClients();
+  // Ignore WebSocket client list, just fetch PCs from API
+  console.log('Clients changed, fetching latest PC data');
+  fetchAndDisplayPCs();
 });
 
 window.api.onAppsUpdated((data) => {
+  console.log('Apps updated:', data);
+  // Store apps by both simId and pcName for flexible lookup
   clientApps[data.simId] = data.apps;
-  if (selectedClient === data.simId) {
+  if (data.pcName) {
+    clientApps[data.pcName] = data.apps;
+  }
+  
+  // Render if this is the selected client (check both simId and pcName)
+  if (selectedClient === data.simId || selectedClient === data.pcName) {
+    console.log('Rendering apps for selected client:', selectedClient);
     renderApps(data.apps);
   }
 });
 
 function renderClients() {
+  console.log('Rendering clients:', { currentClients, pcsData });
+  
   if (currentClients.length === 0) {
     clientsEl.innerHTML = '<div class="no-clients">No clients connected</div>';
     return;
@@ -327,9 +368,25 @@ function renderClients() {
       item.classList.add("selected");
     }
 
+    // Get PC data for this client
+    const pcData = pcsData[clientId];
+    
+    console.log(`Rendering client ${clientId}:`, pcData);
+    
     const nameDiv = document.createElement("div");
     nameDiv.className = "client-name";
-    nameDiv.textContent = clientId;
+    
+    if (pcData) {
+      // Display PC name, IP address, and port
+      nameDiv.innerHTML = `
+        <div style="font-weight: 500; margin-bottom: 4px;">${pcData.name}</div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">IP: ${pcData.ip_address}</div>
+        <div style="font-size: 12px; color: #999;">Port: ${pcData.port}</div>
+      `;
+    } else {
+      // Fallback to client ID if PC data not available
+      nameDiv.textContent = clientId;
+    }
 
     const actions = document.createElement("div");
     actions.className = "client-actions";
@@ -356,9 +413,17 @@ async function selectClient(clientId) {
   selectedClientEl.textContent = clientId;
   renderClients();
 
+  console.log('Getting apps for client:', clientId);
   const apps = await window.api.getClientApps(clientId);
+  console.log('Got apps:', apps);
+  
   clientApps[clientId] = apps;
-  renderApps(apps);
+  if (apps && apps.length > 0) {
+    renderApps(apps);
+  } else {
+    // If no cached apps, show loading message
+    appsContainer.innerHTML = '<div class="no-apps">Loading applications...</div>';
+  }
 }
 
 async function refreshClientApps(clientId) {
