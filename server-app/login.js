@@ -1,3 +1,11 @@
+// Clear any cached auth data from previous sessions
+try {
+  localStorage.removeItem('auth');
+  sessionStorage.clear();
+} catch (error) {
+  console.log('Storage already clean');
+}
+
 // Get DOM elements
 const loginForm = document.getElementById('loginForm');
 const webBtn = document.getElementById('webBtn');
@@ -12,6 +20,19 @@ const checkMessage = document.createElement('div');
 checkMessage.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); padding: 20px; border-radius: 8px; color: #4ade80; text-align: center; z-index: 9999; display: none;';
 checkMessage.innerHTML = '<p style="margin: 0; font-size: 14px;">✓ Token received from web app!<br/>Logging you in...</p>';
 document.body.appendChild(checkMessage);
+
+// Reset button states on page load
+function resetButtonStates() {
+  checkBtn.disabled = false;
+  tokenBtn.disabled = false;
+  webBtn.disabled = false;
+  loadingMsg.classList.remove('show');
+  errorMsg.classList.remove('show');
+  tokenInput.value = '';
+}
+
+// Initialize button states
+resetButtonStates();
 
 // Listen for when token is received (login will auto-trigger in main.js)
 // Show a message to the user that login is happening

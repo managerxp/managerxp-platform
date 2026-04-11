@@ -6,6 +6,8 @@ const authContext = require("./authContext");
 
 let win;
 let loginWin;
+let wss; // WebSocket server instance
+let tokenServer; // HTTP token server instance
 let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
 
@@ -93,12 +95,18 @@ function startTokenServer() {
           if (token && user) {
             console.log('Token received from web app for user:', user.name || user.email);
             
-            // Process the login
-            handleWebAppLogin(token, user);
+            // Process the login and check if it was successful
+            const loginSuccess = handleWebAppLogin(token, user);
             
-            // Send success response
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, message: 'Token received' }));
+            if (loginSuccess) {
+              // Send success response
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true, message: 'Token received and processed' }));
+            } else {
+              // Token was invalid
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Invalid token or user data' }));
+            }
           } else {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, message: 'Missing token or user' }));
@@ -115,6 +123,7 @@ function startTokenServer() {
     }
   });
   
+  tokenServer = server;
   server.listen(3334, () => {
     console.log('Token receiver server listening on port 3334 with CORS enabled');
   });
@@ -122,6 +131,17 @@ function startTokenServer() {
 
 // Handle login from web app
 function handleWebAppLogin(token, user) {
+  // Validate token and user data
+  if (!token || typeof token !== 'string' || token.trim() === '') {
+    console.error('Invalid token received');
+    return false;
+  }
+  
+  if (!user || typeof user !== 'object') {
+    console.error('Invalid user data received');
+    return false;
+  }
+  
   // Store in auth context
   authContext.setAuth(user, token);
   
@@ -154,6 +174,8 @@ function handleWebAppLogin(token, user) {
     const authState = authContext.getAuthState();
     win.webContents.send('user:updated', authState);
   }
+  
+  return true;
 }
 
 app.whenReady().then(() => {
@@ -263,7 +285,7 @@ function registerIPCHandlers() {
       console.error('Failed to save auth:', error);
     }
     
-    // Close login window and create main window if needed
+    // Close login window if open and create main window
     if (loginWin && !loginWin.isDestroyed()) {
       loginWin.close();
     }
@@ -271,6 +293,10 @@ function registerIPCHandlers() {
     if (!win || win.isDestroyed()) {
       createWindow();
       startWebSocketServer();
+    } else {
+      // Window already exists, just update user info
+      const authState = authContext.getAuthState();
+      win.webContents.send('user:updated', authState);
     }
   });
 
@@ -306,6 +332,17 @@ function registerIPCHandlers() {
     const fs = require('fs');
     const authFile = path.join(app.getPath('userData'), 'auth.json');
     
+    // Close WebSocket server
+    if (wss) {
+      try {
+        wss.close();
+        console.log('WebSocket server closed');
+      } catch (error) {
+        console.error('Error closing WebSocket server:', error);
+      }
+      wss = null;
+    }
+    
     // Clear auth context
     authContext.clearAuth();
     clients.clear();
@@ -319,10 +356,17 @@ function registerIPCHandlers() {
       console.error('Error deleting auth file:', error);
     }
     
-    // Close main window and create login window
+    // Close previous login window if exists
+    if (loginWin && !loginWin.isDestroyed()) {
+      loginWin.close();
+    }
+    
+    // Close main window and create fresh login window
     if (win && !win.isDestroyed()) {
       win.close();
     }
+    
+    // Create a fresh login window (this clears any localStorage from previous session)
     createLoginWindow();
   });
 
@@ -360,7 +404,18 @@ function registerIPCHandlers() {
 
 // Start WebSocket server (can be called multiple times)
 function startWebSocketServer() {
-  const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
+  // Close existing WebSocket server if it's running
+  if (wss) {
+    try {
+      wss.close();
+      clients.clear();
+      console.log('Closed previous WebSocket server');
+    } catch (error) {
+      console.error('Error closing previous WebSocket server:', error);
+    }
+  }
+
+  wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
   log("VMS Server started on port 8080 (accessible on network)");
 
   wss.on("connection", (ws) => {
