@@ -2,10 +2,13 @@ const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
 const WebSocket = require("ws");
 const path = require("path");
 const http = require("http");
+const fs = require("fs");
 const authContext = require("./authContext");
 
 let win;
 let loginWin;
+let tokenServer; // HTTP token server instance
+let clientConnections = new Map(); // simId -> ws connection to client
 let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
 
@@ -93,12 +96,18 @@ function startTokenServer() {
           if (token && user) {
             console.log('Token received from web app for user:', user.name || user.email);
             
-            // Process the login
-            handleWebAppLogin(token, user);
+            // Process the login and check if it was successful
+            const loginSuccess = handleWebAppLogin(token, user);
             
-            // Send success response
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: true, message: 'Token received' }));
+            if (loginSuccess) {
+              // Send success response
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: true, message: 'Token received and processed' }));
+            } else {
+              // Token was invalid
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Invalid token or user data' }));
+            }
           } else {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, message: 'Missing token or user' }));
@@ -115,6 +124,7 @@ function startTokenServer() {
     }
   });
   
+  tokenServer = server;
   server.listen(3334, () => {
     console.log('Token receiver server listening on port 3334 with CORS enabled');
   });
@@ -122,6 +132,17 @@ function startTokenServer() {
 
 // Handle login from web app
 function handleWebAppLogin(token, user) {
+  // Validate token and user data
+  if (!token || typeof token !== 'string' || token.trim() === '') {
+    console.error('Invalid token received');
+    return false;
+  }
+  
+  if (!user || typeof user !== 'object') {
+    console.error('Invalid user data received');
+    return false;
+  }
+  
   // Store in auth context
   authContext.setAuth(user, token);
   
@@ -145,15 +166,17 @@ function handleWebAppLogin(token, user) {
   // Create/show main window
   if (!win) {
     createWindow();
-    startWebSocketServer();
+    connectToClients();
   } else if (win.isDestroyed()) {
     createWindow();
-    startWebSocketServer();
+    connectToClients();
   } else {
     // Window already exists, update user info
     const authState = authContext.getAuthState();
     win.webContents.send('user:updated', authState);
   }
+  
+  return true;
 }
 
 app.whenReady().then(() => {
@@ -174,7 +197,7 @@ app.whenReady().then(() => {
         // Restore auth context
         authContext.setAuth(authData.user, authData.token);
         createWindow();
-        startWebSocketServer();
+        connectToClients();
       } else {
         createLoginWindow();
       }
@@ -263,14 +286,18 @@ function registerIPCHandlers() {
       console.error('Failed to save auth:', error);
     }
     
-    // Close login window and create main window if needed
+    // Close login window if open and create main window
     if (loginWin && !loginWin.isDestroyed()) {
       loginWin.close();
     }
     
     if (!win || win.isDestroyed()) {
       createWindow();
-      startWebSocketServer();
+      connectToClients();
+    } else {
+      // Window already exists, just update user info
+      const authState = authContext.getAuthState();
+      win.webContents.send('user:updated', authState);
     }
   });
 
@@ -298,13 +325,26 @@ function registerIPCHandlers() {
         loginWin.close();
       }
       createWindow();
-      startWebSocketServer();
+      connectToClients();
     }
   });
 
   ipcMain.on("auth:logout", (event) => {
     const fs = require('fs');
     const authFile = path.join(app.getPath('userData'), 'auth.json');
+    
+    // Close WebSocket client connections
+    if (clientConnections && clientConnections.size > 0) {
+      try {
+        clientConnections.forEach(ws => {
+          ws.close();
+        });
+        clientConnections.clear();
+        console.log('WebSocket client connections closed');
+      } catch (error) {
+        console.error('Error closing WebSocket connections:', error);
+      }
+    }
     
     // Clear auth context
     authContext.clearAuth();
@@ -319,10 +359,17 @@ function registerIPCHandlers() {
       console.error('Error deleting auth file:', error);
     }
     
-    // Close main window and create login window
+    // Close previous login window if exists
+    if (loginWin && !loginWin.isDestroyed()) {
+      loginWin.close();
+    }
+    
+    // Close main window and create fresh login window
     if (win && !win.isDestroyed()) {
       win.close();
     }
+    
+    // Create a fresh login window (this clears any localStorage from previous session)
     createLoginWindow();
   });
 
@@ -358,47 +405,115 @@ function registerIPCHandlers() {
   console.log('IPC handlers registered');
 }
 
-// Start WebSocket server (can be called multiple times)
-function startWebSocketServer() {
-  const wss = new WebSocket.Server({ port: 8080, host: '0.0.0.0' });
-  log("VMS Server started on port 8080 (accessible on network)");
+// Load client configuration
+function loadConfig() {
+  const configPath = path.join(__dirname, 'config.json');
+  try {
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      return config;
+    }
+  } catch (error) {
+    console.error('Error loading config:', error);
+  }
+  return { clients: [], serverPort: 8080 };
+}
 
-  wss.on("connection", (ws) => {
-    log("Client connected");
+// Connect to all configured clients
+function connectToClients() {
+  const config = loadConfig();
+  log("Loading client configurations...");
+  
+  // Disconnect from previous connections
+  clientConnections.forEach(ws => {
+    try {
+      ws.close();
+    } catch (e) {}
+  });
+  clientConnections.clear();
+  clients.clear();
+  
+  if (!config.clients || config.clients.length === 0) {
+    log("No clients configured in config.json");
+    return;
+  }
+  
+  // Connect to each configured client
+  config.clients.forEach(clientConfig => {
+    const { simId, ip, port } = clientConfig;
+    const clientUrl = `ws://${ip}:${port}`;
+    
+    log(`Connecting to client ${simId} at ${clientUrl}...`);
+    
+    const ws = new WebSocket(clientUrl);
+    let reconnectTimeout;
+    
+    const setupClientHandlers = () => {
+      ws.on("message", (raw) => {
+        try {
+          const msg = JSON.parse(raw);
 
-    ws.on("message", (raw) => {
-      const msg = JSON.parse(raw);
+          if (msg.type === "REGISTER") {
+            ws.simId = msg.simId;
+            clients.set(msg.simId, { ws, apps: [] });
+            log(`Registered: ${msg.simId} (${msg.hostname})`);
+            win.webContents.send("clients", [...clients.keys()]);
+          }
 
-      if (msg.type === "REGISTER") {
-        ws.simId = msg.simId;
-        clients.set(msg.simId, { ws, apps: [] });
-        log(`Registered: ${msg.simId}`);
-        win.webContents.send("clients", [...clients.keys()]);
-      }
+          if (msg.type === "HEARTBEAT") {
+            // alive check (silent)
+          }
 
-      if (msg.type === "HEARTBEAT") {
-        // alive check (silent)
-      }
-
-      if (msg.type === "APPS_LIST") {
-        const client = clients.get(msg.simId);
-        if (client) {
-          client.apps = msg.apps;
-          log(`Received ${msg.apps.length} apps from ${msg.simId}`);
-          win.webContents.send("apps-updated", {
-            simId: msg.simId,
-            apps: msg.apps
-          });
+          if (msg.type === "APPS_LIST") {
+            const client = clients.get(msg.simId);
+            if (client) {
+              client.apps = msg.apps;
+              log(`Received ${msg.apps.length} apps from ${msg.simId}`);
+              win.webContents.send("apps-updated", {
+                simId: msg.simId,
+                apps: msg.apps
+              });
+            }
+          }
+        } catch (error) {
+          log(`Error parsing message: ${error.message}`);
         }
-      }
-    });
+      });
 
-    ws.on("close", () => {
-      if (ws.simId) {
-        clients.delete(ws.simId);
-        log(`Disconnected: ${ws.simId}`);
-        win.webContents.send("clients", [...clients.keys()]);
-      }
+      ws.on("close", () => {
+        if (ws.simId) {
+          clients.delete(ws.simId);
+          clientConnections.delete(ws.simId);
+          log(`Disconnected: ${ws.simId}`);
+          win.webContents.send("clients", [...clients.keys()]);
+        }
+        
+        // Attempt to reconnect after 5 seconds
+        log(`Reconnecting to ${simId} in 5 seconds...`);
+        reconnectTimeout = setTimeout(() => {
+          connectToClients();
+        }, 5000);
+      });
+
+      ws.on("error", (error) => {
+        log(`Connection error for ${simId}: ${error.message}`);
+      });
+    };
+    
+    ws.on("open", () => {
+      log(`Connected to client ${simId}`);
+      setupClientHandlers();
+      clientConnections.set(simId, ws);
+    });
+    
+    ws.on("error", (error) => {
+      log(`Failed to connect to ${simId}: ${error.message}`);
+      // Retry connection
+      setTimeout(() => {
+        if (!clientConnections.has(simId)) {
+          connectToClients();
+        }
+      }, 5000);
     });
   });
 }
