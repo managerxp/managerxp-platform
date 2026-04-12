@@ -3,6 +3,7 @@ const statusTextEl = document.getElementById("statusText");
 const statusCardEl = document.getElementById("statusCard");
 const statusMessageEl = document.getElementById("statusMessage");
 const logsEl = document.getElementById("logs");
+const clientIdValue = document.getElementById("clientIdValue");
 
 window.api.onStatus((status) => {
   statusTextEl.textContent = status;
@@ -16,6 +17,11 @@ window.api.onStatus((status) => {
     statusCardEl.className = "status-card disconnected";
     statusMessageEl.textContent = "⚠ Connection lost. Attempting to reconnect...";
   }
+});
+
+window.api.onPcName((name) => {
+  clientIdValue.textContent = name;
+  console.log(`Updated Client ID to: ${name}`);
 });
 
 window.api.onLog((msg) => {

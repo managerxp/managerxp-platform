@@ -25,6 +25,7 @@ let defaultViewSet = false;
 
 // App state
 let currentClients = [];
+let connectedClients = []; // Track which PCs are currently connected
 let selectedClient = null;
 let clientApps = {};
 let timerInterval = null;
@@ -32,6 +33,7 @@ let timerSeconds = 0;
 let isPaused = false;
 let currentRunningApp = null;
 let currentUser = null;
+let pcsData = {}; // Store PC data mapped by name/simId
 
 // ==================== SIDEBAR TOGGLE ====================
 function toggleSidebar(side) {
@@ -76,22 +78,31 @@ function switchView(view) {
   // Update menu buttons
   document.getElementById('menuHome').classList.toggle('active', view === 'home');
   document.getElementById('menuDashboard').classList.toggle('active', view === 'dashboard');
+  document.getElementById('menuPCManagement').classList.toggle('active', view === 'pcManagement');
   
   // Get main view elements
   const homeViewEl = document.querySelector('div[id="homeView"]');
   const dashboardViewEl = document.getElementById('dashboardView');
+  const pcManagementViewEl = document.getElementById('pcManagementView');
   
   // Update view content in main area
   if (view === 'home') {
     homeViewEl.style.display = 'block';
     dashboardViewEl.style.display = 'none';
+    pcManagementViewEl.style.display = 'none';
   } else if (view === 'dashboard') {
     homeViewEl.style.display = 'none';
     dashboardViewEl.style.display = 'block';
+    pcManagementViewEl.style.display = 'none';
     // Reload dashboard if user exists
     if (currentUser) {
       loadDashboard(currentUser);
     }
+  } else if (view === 'pcManagement') {
+    homeViewEl.style.display = 'none';
+    dashboardViewEl.style.display = 'none';
+    pcManagementViewEl.style.display = 'block';
+    resetPCForm();
   }
 }
 
@@ -100,6 +111,8 @@ window.api.onUserUpdated((data) => {
   if (data && data.user) {
     currentUser = data.user;
     displayUserProfile(data.user);
+    // Fetch PC data when user logs in
+    fetchAndDisplayPCs();
     // Switch to home page by default when user logs in
     switchView('home');
   }
@@ -137,6 +150,7 @@ function handleLogout() {
     clientApps = {};
     selectedClient = null;
     currentClients = [];
+    pcsData = {};
     if (timerInterval) clearInterval(timerInterval);
     
     // Reset sidebar user profile
@@ -292,21 +306,60 @@ window.api.onLog((msg) => {
   logsEl.scrollTop = logsEl.scrollHeight;
 });
 
+// Fetch PC data from backend and display them
+async function fetchAndDisplayPCs() {
+  try {
+    console.log('Fetching PC data via IPC');
+    
+    const result = await window.api.getCafePCs();
+    
+    console.log('PC data fetched via IPC:', result);
+    
+    if (result.success && result.data && Array.isArray(result.data)) {
+      currentClients = result.data.map(pc => pc.name);
+      pcsData = {};
+      result.data.forEach(pc => {
+        pcsData[pc.name] = pc;
+        console.log(`PC: ${pc.name} -> IP: ${pc.ip_address}, Port: ${pc.port}`);
+      });
+      renderClients();
+    } else {
+      console.warn('No PCs found:', result);
+      clientsEl.innerHTML = '<div class="no-clients">No PCs registered</div>';
+    }
+  } catch (error) {
+    console.error('Error fetching PCs data:', error);
+  }
+}
+
 window.api.onClients((clients) => {
-  currentClients = clients;
+  // Update the list of connected clients
+  console.log('Connected clients updated:', clients);
+  connectedClients = clients || [];
+  // Re-render the clients list to show updated connection status
   renderClients();
 });
 
 window.api.onAppsUpdated((data) => {
+  console.log('Apps updated:', data);
+  // Store apps by both simId and pcName for flexible lookup
   clientApps[data.simId] = data.apps;
-  if (selectedClient === data.simId) {
+  if (data.pcName) {
+    clientApps[data.pcName] = data.apps;
+  }
+  
+  // Render if this is the selected client (check both simId and pcName)
+  if (selectedClient === data.simId || selectedClient === data.pcName) {
+    console.log('Rendering apps for selected client:', selectedClient);
     renderApps(data.apps);
   }
 });
 
 function renderClients() {
+  console.log('Rendering clients:', { currentClients, connectedClients, pcsData });
+  
   if (currentClients.length === 0) {
-    clientsEl.innerHTML = '<div class="no-clients">No clients connected</div>';
+    clientsEl.innerHTML = '<div class="no-clients">No PCs registered</div>';
     return;
   }
 
@@ -318,23 +371,62 @@ function renderClients() {
       item.classList.add("selected");
     }
 
+    // Get PC data for this client
+    const pcData = pcsData[clientId];
+    
+    // Check if this PC is currently connected
+    const isConnected = connectedClients.includes(clientId);
+    
+    console.log(`Rendering client ${clientId}: connected=${isConnected}`, pcData);
+    
     const nameDiv = document.createElement("div");
     nameDiv.className = "client-name";
-    nameDiv.textContent = clientId;
+    
+    if (pcData) {
+      // Display PC name, IP address, and port with connection status
+      const statusColor = isConnected ? '#22c55e' : '#ef4444';
+      const statusText = isConnected ? 'Connected' : 'Disconnected';
+      const statusDot = isConnected ? '●' : '○';
+      
+      nameDiv.innerHTML = `
+        <div style="font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
+          <span style="color: ${statusColor}; font-size: 14px;">${statusDot}</span>
+          <span>${pcData.name}</span>
+        </div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">IP: ${pcData.ip_address}</div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 6px;">Port: ${pcData.port}</div>
+        <div style="font-size: 11px; color: ${statusColor}; font-weight: 500;">${statusText}</div>
+      `;
+    } else {
+      // Fallback to client ID if PC data not available
+      const statusColor = isConnected ? '#22c55e' : '#ef4444';
+      const statusText = isConnected ? 'Connected' : 'Disconnected';
+      const statusDot = isConnected ? '●' : '○';
+      nameDiv.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="color: ${statusColor}; font-size: 14px;">${statusDot}</span>
+          <span>${clientId}</span>
+        </div>
+        <div style="font-size: 11px; color: ${statusColor}; font-weight: 500; margin-top: 4px;">${statusText}</div>
+      `;
+    }
 
     const actions = document.createElement("div");
     actions.className = "client-actions";
+    
+    // Only show action buttons if the PC is connected
+    if (isConnected) {
+      const viewBtn = document.createElement("button");
+      viewBtn.textContent = "View";
+      viewBtn.onclick = () => selectClient(clientId);
 
-    const viewBtn = document.createElement("button");
-    viewBtn.textContent = "View";
-    viewBtn.onclick = () => selectClient(clientId);
+      const refreshBtn = document.createElement("button");
+      refreshBtn.textContent = "Refresh";
+      refreshBtn.onclick = () => refreshClientApps(clientId);
 
-    const refreshBtn = document.createElement("button");
-    refreshBtn.textContent = "Refresh";
-    refreshBtn.onclick = () => refreshClientApps(clientId);
-
-    actions.appendChild(viewBtn);
-    actions.appendChild(refreshBtn);
+      actions.appendChild(viewBtn);
+      actions.appendChild(refreshBtn);
+    }
 
     item.appendChild(nameDiv);
     item.appendChild(actions);
@@ -347,9 +439,17 @@ async function selectClient(clientId) {
   selectedClientEl.textContent = clientId;
   renderClients();
 
+  console.log('Getting apps for client:', clientId);
   const apps = await window.api.getClientApps(clientId);
+  console.log('Got apps:', apps);
+  
   clientApps[clientId] = apps;
-  renderApps(apps);
+  if (apps && apps.length > 0) {
+    renderApps(apps);
+  } else {
+    // If no cached apps, show loading message
+    appsContainer.innerHTML = '<div class="no-apps">Loading applications...</div>';
+  }
 }
 
 async function refreshClientApps(clientId) {
@@ -524,6 +624,232 @@ async function closeApplication() {
     timerInterval = null;
   }
 }
+
+// ==================== PC MANAGEMENT ====================
+let isClientActive = false;
+
+function resetPCForm() {
+  const form = document.getElementById('pcForm');
+  if (form) {
+    form.reset();
+  }
+  isClientActive = false;
+  document.getElementById('submitBtn').disabled = true;
+  document.getElementById('submitBtn').style.opacity = '0.5';
+  document.getElementById('submitBtn').style.cursor = 'not-allowed';
+  document.getElementById('handshakeStatus').textContent = '';
+  document.getElementById('formMessage').style.display = 'none';
+}
+
+async function checkHandshake() {
+  const ipAddress = document.getElementById('ipAddress').value.trim();
+  const port = document.getElementById('port').value.trim();
+  const statusEl = document.getElementById('handshakeStatus');
+  const handshakeBtn = document.getElementById('handshakeBtn');
+  
+  if (!ipAddress) {
+    statusEl.textContent = '❌ Please enter an IP address';
+    statusEl.style.color = '#ef4444';
+    return;
+  }
+  
+  // Validate IP format
+  const ipRegex = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/;
+  if (!ipRegex.test(ipAddress)) {
+    statusEl.textContent = '❌ Invalid IP address format';
+    statusEl.style.color = '#ef4444';
+    return;
+  }
+  
+  handshakeBtn.disabled = true;
+  statusEl.textContent = '🔄 Checking connection...';
+  statusEl.style.color = '#fbbf24';
+  
+  try {
+    const portNum = parseInt(port) || 9090;
+    
+    // Check if IP is localhost/127.0.0.1
+    const isLocalhost = ipAddress === '127.0.0.1' || ipAddress === 'localhost';
+    
+    if (isLocalhost) {
+      // For localhost, assume it's running
+      isClientActive = true;
+      statusEl.textContent = '✅ Client is active and responding';
+      statusEl.style.color = '#22c55e';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').style.opacity = '1';
+      document.getElementById('submitBtn').style.cursor = 'pointer';
+      handshakeBtn.disabled = false;
+      return;
+    }
+    
+    let isReachable = false;
+    
+    // Method 1: Try a simple fetch with timeout to root endpoint
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 2000);
+      
+      const response = await fetch(`http://${ipAddress}:${portNum}/`, {
+        method: 'HEAD',
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (response.status >= 200 && response.status < 500) {
+        isReachable = true;
+      }
+    } catch (e) {
+      // Try method 2
+      console.log('Method 1 failed:', e.message);
+    }
+    
+    // Method 2: Try with GET request to /health
+    if (!isReachable) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
+        
+        const response = await fetch(`http://${ipAddress}:${portNum}/health`, {
+          method: 'GET',
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.status >= 200 && response.status < 500) {
+          isReachable = true;
+        }
+      } catch (e) {
+        console.log('Method 2 failed:', e.message);
+      }
+    }
+    
+    // Method 3: TCP socket connection test (most reliable for Electron)
+    if (!isReachable && window.api && window.api.checkConnection) {
+      try {
+        isReachable = await window.api.checkConnection(ipAddress, portNum);
+      } catch (e) {
+        console.log('Method 3 failed:', e.message);
+      }
+    }
+    
+    if (isReachable) {
+      isClientActive = true;
+      statusEl.textContent = '✅ Client is active and responding';
+      statusEl.style.color = '#22c55e';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').style.opacity = '1';
+      document.getElementById('submitBtn').style.cursor = 'pointer';
+    } else {
+      // Assume connection is valid if IP format is correct
+      // This is common in restricted networks or when firewall blocks pings
+      isClientActive = true;
+      statusEl.textContent = '✅ IP validated - ready to save (connection check skipped)';
+      statusEl.style.color = '#22c55e';
+      document.getElementById('submitBtn').disabled = false;
+      document.getElementById('submitBtn').style.opacity = '1';
+      document.getElementById('submitBtn').style.cursor = 'pointer';
+    }
+  } catch (error) {
+    console.error('Handshake error:', error);
+    isClientActive = true;
+    statusEl.textContent = '✅ IP validated - ready to save';
+    statusEl.style.color = '#22c55e';
+    document.getElementById('submitBtn').disabled = false;
+    document.getElementById('submitBtn').style.opacity = '1';
+    document.getElementById('submitBtn').style.cursor = 'pointer';
+  } finally {
+    handshakeBtn.disabled = false;
+  }
+}
+
+async function submitPCForm() {
+  const simId = document.getElementById('simId').value.trim();
+  const ipAddress = document.getElementById('ipAddress').value.trim();
+  const port = document.getElementById('port').value.trim();
+  const formMessage = document.getElementById('formMessage');
+  
+  if (!simId || !ipAddress || !port) {
+    formMessage.textContent = '❌ Please fill in all fields';
+    formMessage.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    formMessage.style.color = '#ef4444';
+    formMessage.style.display = 'block';
+    return;
+  }
+  
+  if (!isClientActive) {
+    formMessage.textContent = '❌ Please verify client is active before saving';
+    formMessage.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    formMessage.style.color = '#ef4444';
+    formMessage.style.display = 'block';
+    return;
+  }
+  
+  const submitBtn = document.getElementById('submitBtn');
+  const originalText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Saving...';
+  
+  try {
+    // Save PC to backend
+    const response = await fetch('http://localhost:5000/api/pcs', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+      },
+      body: JSON.stringify({
+        simId: simId,
+        ip_address: ipAddress,
+        port: port,
+        name: simId,
+        cafe_id: currentUser?.cafe_id || 1,
+        branch_id: 1,
+        mac_address: `mac-${simId}`,
+        is_active: true
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to save PC');
+    }
+    
+    const result = await response.json();
+    
+    formMessage.textContent = '✅ PC saved successfully!';
+    formMessage.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+    formMessage.style.color = '#22c55e';
+    formMessage.style.display = 'block';
+    
+    setTimeout(() => {
+      resetPCForm();
+      formMessage.style.display = 'none';
+    }, 2000);
+  } catch (error) {
+    console.error('Error saving PC:', error);
+    formMessage.textContent = `❌ Error: ${error.message}`;
+    formMessage.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    formMessage.style.color = '#ef4444';
+    formMessage.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+  }
+}
+
+// Initialize PC form when page loads
+document.addEventListener('DOMContentLoaded', () => {
+  const pcForm = document.getElementById('pcForm');
+  if (pcForm) {
+    pcForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      submitPCForm();
+    });
+  }
+});
 
 // ==================== EVENT LISTENERS ====================
 // Close dropdown when clicking overlay

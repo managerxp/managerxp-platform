@@ -275,6 +275,11 @@
         "launch":  "C:\\Program Files\\PostgreSQL\\18\\uninstall-postgresql.exe"
     },
     {
+        "name":  "Postman",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Local\\Postman\\Postman.exe"
+    },
+    {
         "name":  "PowerPoint",
         "version":  null,
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE"
