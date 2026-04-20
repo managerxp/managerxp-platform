@@ -3,6 +3,7 @@ const WebSocket = require("ws");
 const path = require("path");
 const http = require("http");
 const fs = require("fs");
+const os = require("os");
 const authContext = require("./authContext");
 
 let win;
@@ -69,6 +70,45 @@ function createWindow() {
 
 function log(msg) {
   if (win) win.webContents.send("log", msg);
+}
+
+// Get the MAC address of the system
+function getMacAddress() {
+  try {
+    const interfaces = os.networkInterfaces();
+    
+    // Try to find the first non-internal, active interface with a MAC address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      
+      // Skip loopback and internal interfaces
+      if (iface[0]?.family === 'IPv4' && !iface[0]?.internal) {
+        const macAddress = iface[0]?.mac;
+        if (macAddress && macAddress !== '00:00:00:00:00:00') {
+          console.log(`Found MAC address: ${macAddress} on interface: ${name}`);
+          return macAddress;
+        }
+      }
+    }
+    
+    // Fallback: get the first available MAC address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      for (const addr of iface) {
+        const macAddress = addr.mac;
+        if (macAddress && macAddress !== '00:00:00:00:00:00') {
+          console.log(`Found fallback MAC address: ${macAddress} on interface: ${name}`);
+          return macAddress;
+        }
+      }
+    }
+    
+    console.warn('No valid MAC address found, using default');
+    return 'unknown';
+  } catch (error) {
+    console.error('Error getting MAC address:', error);
+    return 'error';
+  }
 }
 
 // Start token receiver HTTP server
@@ -438,6 +478,18 @@ function registerIPCHandlers() {
 
   ipcMain.on("auth:open-web-app-signup", (event) => {
     shell.openExternal('http://localhost:5173/signup');
+  });
+
+  // Get system MAC address
+  ipcMain.handle("system:get-mac-address", async (event) => {
+    try {
+      const macAddress = getMacAddress();
+      console.log('Returning MAC address:', macAddress);
+      return { success: true, macAddress: macAddress };
+    } catch (error) {
+      console.error('Error in MAC address handler:', error);
+      return { success: false, error: error.message };
+    }
   });
   
   handlersRegistered = true;

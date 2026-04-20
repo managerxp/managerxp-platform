@@ -30,5 +30,8 @@ contextBridge.exposeInMainWorld("api", {
   closeApp: (data) => ipcRenderer.invoke("close-app", data),
   
   // PC data
-  getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs")
+  getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),
+  
+  // System info
+  getMacAddress: () => ipcRenderer.invoke("system:get-mac-address")
 });

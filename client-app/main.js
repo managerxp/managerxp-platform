@@ -87,6 +87,45 @@ function updateStatus(status) {
   if (statusBarWin) statusBarWin.webContents.send("status", status);
 }
 
+// Get the MAC address of the system
+function getSystemMacAddress() {
+  try {
+    const interfaces = os.networkInterfaces();
+    
+    // Try to find the first non-internal, active interface with a MAC address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      
+      // Skip loopback and internal interfaces
+      if (iface[0]?.family === 'IPv4' && !iface[0]?.internal) {
+        const macAddress = iface[0]?.mac;
+        if (macAddress && macAddress !== '00:00:00:00:00:00') {
+          log(`Found MAC address: ${macAddress} on interface: ${name}`);
+          return macAddress;
+        }
+      }
+    }
+    
+    // Fallback: get the first available MAC address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      for (const addr of iface) {
+        const macAddress = addr.mac;
+        if (macAddress && macAddress !== '00:00:00:00:00:00') {
+          log(`Found fallback MAC address: ${macAddress} on interface: ${name}`);
+          return macAddress;
+        }
+      }
+    }
+    
+    log('Warning: No valid MAC address found, using default');
+    return 'unknown';
+  } catch (error) {
+    log(`Error getting MAC address: ${error.message}`);
+    return 'error';
+  }
+}
+
 function createTimerCard(appName, timerMinutes) {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
@@ -259,6 +298,15 @@ function listen() {
       if (msg.type === "CLOSE_APP") {
         log(`Closing application: ${msg.appName}`);
         closeApplication(msg.appName);
+      }
+      
+      if (msg.type === "GET_MAC_ADDRESS") {
+        const macAddress = getSystemMacAddress();
+        log(`Sending MAC address: ${macAddress}`);
+        ws.send(JSON.stringify({
+          type: "MAC_ADDRESS",
+          macAddress: macAddress
+        }));
       }
     });
 

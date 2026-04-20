@@ -793,6 +793,68 @@ async function submitPCForm() {
   submitBtn.textContent = 'Saving...';
   
   try {
+    // Try to get MAC address from the remote client system first
+    let macAddress = `mac-${simId}`;
+    
+    // Attempt 1: Try to fetch from the client system via WebSocket
+    try {
+      const clientUrl = `ws://${ipAddress}:${port}`;
+      const ws = new WebSocket(clientUrl);
+      
+      // Wait for connection and send MAC request
+      const macFetchPromise = new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          ws.close();
+          reject(new Error('MAC fetch timeout'));
+        }, 3000);
+        
+        ws.onopen = () => {
+          ws.send(JSON.stringify({ type: 'GET_MAC_ADDRESS' }));
+        };
+        
+        ws.onmessage = (event) => {
+          try {
+            const msg = JSON.parse(event.data);
+            if (msg.type === 'MAC_ADDRESS' && msg.macAddress) {
+              clearTimeout(timeout);
+              ws.close();
+              resolve(msg.macAddress);
+            }
+          } catch (e) {
+            console.log('Could not parse MAC response:', e);
+          }
+        };
+        
+        ws.onerror = (error) => {
+          clearTimeout(timeout);
+          reject(error);
+        };
+      });
+      
+      try {
+        const fetchedMac = await macFetchPromise;
+        macAddress = fetchedMac;
+        console.log('Retrieved client MAC address:', macAddress);
+      } catch (wsError) {
+        console.warn('Failed to fetch MAC from client via WebSocket:', wsError.message);
+        
+        // Attempt 2: Fall back to server's MAC address
+        try {
+          if (window.api && window.api.getMacAddress) {
+            const result = await window.api.getMacAddress();
+            if (result.success && result.macAddress) {
+              macAddress = result.macAddress;
+              console.log('Using server MAC address as fallback:', macAddress);
+            }
+          }
+        } catch (apiError) {
+          console.error('Error fetching server MAC address:', apiError);
+        }
+      }
+    } catch (error) {
+      console.error('Error in MAC fetching process:', error);
+    }
+
     // Save PC to backend
     const response = await fetch('http://localhost:5000/api/pcs', {
       method: 'POST',
@@ -807,7 +869,7 @@ async function submitPCForm() {
         name: simId,
         cafe_id: currentUser?.cafe_id || 1,
         branch_id: 1,
-        mac_address: `mac-${simId}`,
+        mac_address: macAddress,
         is_active: true
       })
     });

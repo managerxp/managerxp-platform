@@ -25,6 +25,11 @@
         "launch":  "C:\\WINDOWS\\system32\\cmd.exe"
     },
     {
+        "name":  "Command prompt for Orthanc tools",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\cmd.exe"
+    },
+    {
         "name":  "Component Services",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\comexp.msc"
@@ -33,6 +38,11 @@
         "name":  "Computer Management",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\compmgmt.msc"
+    },
+    {
+        "name":  "Copilot",
+        "version":  "147.0.3912.60",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.60\\mscopilot.exe"
     },
     {
         "name":  "DBeaver",
@@ -53,6 +63,11 @@
         "name":  "Documentation",
         "version":  null,
         "launch":  "C:\\Program Files\\VideoLAN\\VLC\\Documentation.url"
+    },
+    {
+        "name":  "Edit Orthanc settings",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Orthanc Server\\Configuration"
     },
     {
         "name":  "Event Viewer",
@@ -96,8 +111,13 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "146.0.7680.178",
+        "version":  "147.0.7727.57",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    },
+    {
+        "name":  "Help to use Orthanc",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Orthanc Server\\README.txt"
     },
     {
         "name":  "HP Audio Switch",
@@ -161,18 +181,23 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19822.20142",
+        "version":  "16.0.19822.20182",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "146.0.3856.109",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\146.0.3856.109\\msedge.exe"
+        "version":  "147.0.3912.72",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.72\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.040.0301.0001",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.040.0301.0001\\OneDriveSetup.exe"
+        "version":  "26.055.0323.0004",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.055.0323.0004\\OneDriveSetup.exe"
+    },
+    {
+        "name":  "Microsoft Teams Meeting Add-in for Microsoft Office",
+        "version":  "1.25.28902",
+        "launch":  null
     },
     {
         "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
@@ -243,6 +268,11 @@
         "name":  "On-Screen Keyboard",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\osk.exe"
+    },
+    {
+        "name":  "Orthanc 26.4.0",
+        "version":  "26.4.0",
+        "launch":  "C:\\Program Files\\Orthanc Server\\Orthanc.exe"
     },
     {
         "name":  "Outlook (classic)",
@@ -413,6 +443,11 @@
         "name":  "Uninstall Node.js",
         "version":  null,
         "launch":  "C:\\Windows\\SysWOW64\\msiexec.exe"
+    },
+    {
+        "name":  "Uninstall Orthanc 26.4.0",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Orthanc Server\\unins000.exe"
     },
     {
         "name":  "Uninstall XAMPP",
