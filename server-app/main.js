@@ -145,23 +145,35 @@ function startTokenServer() {
           if (type === 'PC_DISCOVERY' && ip_address && mac_address) {
             console.log(`[PC Discovery] ${hostname} (${ip_address}/${mac_address}) on port ${port}`);
             
-            // Store discovered PC
-            discoveredPCs.set(ip_address, {
-              ip: ip_address,
-              mac: mac_address,
-              hostname: hostname,
-              port: port || 9090,
-              discovered_at: new Date().toISOString()
-            });
+            // Check if this PC is already connected by checking if any connected client has this IP
+            let isAlreadyConnected = false;
+            for (let [pcName, pcConfig] of allRegisteredPCs.entries()) {
+              if (pcConfig.ip === ip_address && clients.has(pcName)) {
+                isAlreadyConnected = true;
+                console.log(`[PC Discovery] Ignoring - PC already connected: ${pcName}`);
+                break;
+              }
+            }
             
-            console.log(`[PC Discovery] Total unknown PCs: ${discoveredPCs.size}`);
+            if (!isAlreadyConnected) {
+              // Store discovered PC
+              discoveredPCs.set(ip_address, {
+                ip: ip_address,
+                mac: mac_address,
+                hostname: hostname,
+                port: port || 9090,
+                discovered_at: new Date().toISOString()
+              });
+              
+              console.log(`[PC Discovery] Added to unknown list - Total: ${discoveredPCs.size}`);
+            }
             
-            // Send discovered PCs list to renderer
+            // Send discovered PCs list to renderer (only non-connected PCs)
             if (win && !win.isDestroyed()) {
               win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
-              console.log(`[PC Discovery] Sent ${discoveredPCs.size} PCs to renderer`);
+              console.log(`[PC Discovery] Sent ${discoveredPCs.size} unknown PCs to renderer`);
             } else {
-              console.log(`[PC Discovery] Main window not ready, cannot send to renderer`);
+              console.log(`[PC Discovery] Main window not ready`);
             }
             
             res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -648,6 +660,20 @@ async function heartbeat() {
                   clients.set(msg.simId, { ws, apps: [], pcName: pcName });
                   clients.set(pcName, { ws, apps: [], pcName: pcName });
                   log(`[Heartbeat Reconnect] Registered: ${msg.simId} (${msg.hostname})`);
+                  
+                  // Remove this PC from discovered list since it's now connected
+                  if (pcConfig.ip && discoveredPCs.has(pcConfig.ip)) {
+                    const removed = discoveredPCs.get(pcConfig.ip);
+                    discoveredPCs.delete(pcConfig.ip);
+                    log(`[PC Discovery] Removed reconnected PC from unknown list: ${pcConfig.ip} (${removed.mac})`);
+                    
+                    // Send updated discovered PCs list to renderer
+                    if (win && !win.isDestroyed()) {
+                      win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+                      log(`[PC Discovery] Sent updated list - ${discoveredPCs.size} unknown PCs remaining`);
+                    }
+                  }
+                  
                   if (win) win.webContents.send("clients", [...clients.keys()]);
                 }
 
@@ -771,6 +797,20 @@ async function connectToClients() {
             clients.set(msg.simId, { ws, apps: [], pcName: simId });
             clients.set(simId, { ws, apps: [], pcName: simId }); // Also store by PC name for lookup
             log(`Registered: ${msg.simId} (${msg.hostname})`);
+            
+            // Remove this PC from discovered list since it's now connected
+            if (ip && discoveredPCs.has(ip)) {
+              const removed = discoveredPCs.get(ip);
+              discoveredPCs.delete(ip);
+              log(`[PC Discovery] Removed connected PC from unknown list: ${ip} (${removed.mac})`);
+              
+              // Send updated discovered PCs list to renderer
+              if (win && !win.isDestroyed()) {
+                win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+                log(`[PC Discovery] Sent updated list - ${discoveredPCs.size} unknown PCs remaining`);
+              }
+            }
+            
             if (win) win.webContents.send("clients", [...clients.keys()]);
           }
 

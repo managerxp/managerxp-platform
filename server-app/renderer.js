@@ -140,8 +140,9 @@ function displayDiscoveredPCs() {
   }
   
   if (discoveredPCs.length === 0) {
-    console.log('[Renderer] No discovered PCs to display');
+    console.log('[Renderer] No discovered PCs to display - showing empty message');
     unknownPcsContainer.style.display = 'none';
+    unknownPcsContainer.innerHTML = '';
     noUnknownPcsMsg.style.display = 'block';
     return;
   }
