@@ -26,6 +26,7 @@ let defaultViewSet = false;
 // App state
 let currentClients = [];
 let connectedClients = []; // Track which PCs are currently connected
+let discoveredPCs = []; // Track auto-discovered PCs not yet registered
 let selectedClient = null;
 let clientApps = {};
 let timerInterval = null;
@@ -78,31 +79,22 @@ function switchView(view) {
   // Update menu buttons
   document.getElementById('menuHome').classList.toggle('active', view === 'home');
   document.getElementById('menuDashboard').classList.toggle('active', view === 'dashboard');
-  document.getElementById('menuPCManagement').classList.toggle('active', view === 'pcManagement');
   
   // Get main view elements
   const homeViewEl = document.querySelector('div[id="homeView"]');
   const dashboardViewEl = document.getElementById('dashboardView');
-  const pcManagementViewEl = document.getElementById('pcManagementView');
   
   // Update view content in main area
   if (view === 'home') {
     homeViewEl.style.display = 'block';
     dashboardViewEl.style.display = 'none';
-    pcManagementViewEl.style.display = 'none';
   } else if (view === 'dashboard') {
     homeViewEl.style.display = 'none';
     dashboardViewEl.style.display = 'block';
-    pcManagementViewEl.style.display = 'none';
     // Reload dashboard if user exists
     if (currentUser) {
       loadDashboard(currentUser);
     }
-  } else if (view === 'pcManagement') {
-    homeViewEl.style.display = 'none';
-    dashboardViewEl.style.display = 'none';
-    pcManagementViewEl.style.display = 'block';
-    resetPCForm();
   }
 }
 
@@ -117,6 +109,70 @@ window.api.onUserUpdated((data) => {
     switchView('home');
   }
 });
+
+// ==================== DISCOVERED PCs ====================
+window.api.onDiscoveredPCs?.((pcsList) => {
+  console.log('[Renderer] Discovered PCs received:', pcsList);
+  discoveredPCs = pcsList || [];
+  console.log('Discovered PCs updated:', discoveredPCs);
+  // Update UI to show discovered PCs
+  displayDiscoveredPCs();
+}) || console.warn('onDiscoveredPCs handler not available');
+
+// Listen for discovered PCs through IPC if API doesn't provide it
+window.addEventListener('discovered-pcs-update', (event) => {
+  console.log('[Renderer] Discovered PCs event:', event.detail);
+  discoveredPCs = event.detail || [];
+  console.log('Discovered PCs updated via event:', discoveredPCs);
+  displayDiscoveredPCs();
+});
+
+function displayDiscoveredPCs() {
+  // This will update the sidebar or modal with discovered PCs
+  console.log('[Renderer] Displaying', discoveredPCs.length, 'discovered PCs');
+  
+  const unknownPcsContainer = document.getElementById('unknown-pcs');
+  const noUnknownPcsMsg = document.getElementById('no-unknown-pcs');
+  
+  if (!unknownPcsContainer || !noUnknownPcsMsg) {
+    console.error('[Renderer] Unknown PCs DOM elements not found');
+    return;
+  }
+  
+  if (discoveredPCs.length === 0) {
+    console.log('[Renderer] No discovered PCs to display');
+    unknownPcsContainer.style.display = 'none';
+    noUnknownPcsMsg.style.display = 'block';
+    return;
+  }
+  
+  console.log('[Renderer] Rendering', discoveredPCs.length, 'unknown PCs');
+  unknownPcsContainer.style.display = 'block';
+  noUnknownPcsMsg.style.display = 'none';
+  
+  // Create HTML for each unknown PC
+  unknownPcsContainer.innerHTML = discoveredPCs.map(pc => `
+    <div class="unknown-pc-item" style="
+      padding: 12px;
+      margin-bottom: 8px;
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    " onmouseover="this.style.backgroundColor='rgba(239, 68, 68, 0.15)'" onmouseout="this.style.backgroundColor='rgba(239, 68, 68, 0.1)'" onclick="showNamePCModal('${pc.ip}', '${pc.mac}', '${pc.hostname}', '${pc.port}')">
+      <div style="font-weight: 600; color: #ff4444; font-size: 13px;">Unknown PC</div>
+      <div style="font-size: 12px; color: #c9d1d9; margin-top: 4px;">
+        <div>IP: ${pc.ip}</div>
+        <div>MAC: ${pc.mac}</div>
+        <div>Host: ${pc.hostname}</div>
+      </div>
+      <div style="font-size: 11px; color: #8b949e; margin-top: 6px;">Click to register</div>
+    </div>
+  `).join('');
+  
+  console.log('[Renderer] Unknown PCs rendered successfully');
+}
 
 function displayUserProfile(user) {
   if (!user) return;
@@ -917,4 +973,119 @@ document.addEventListener('DOMContentLoaded', () => {
 // Close dropdown when clicking overlay
 if (overlay) {
   overlay.addEventListener('click', closeDropdowns);
+}
+
+// ==================== UNKNOWN PC MODAL ====================
+let currentModalPC = { ip: '', mac: '', hostname: '', port: 9090 };
+
+function showNamePCModal(ip, mac, hostname, port) {
+  currentModalPC = { ip, mac, hostname, port };
+  
+  // Update display info
+  document.getElementById('displayIP').textContent = ip;
+  document.getElementById('displayMAC').textContent = mac;
+  document.getElementById('displayHostname').textContent = hostname;
+  
+  // Clear input
+  document.getElementById('pcNameInput').value = '';
+  document.getElementById('nameFormMessage').style.display = 'none';
+  
+  // Show modal
+  document.getElementById('namePCModal').style.display = 'flex';
+  document.getElementById('pcNameInput').focus();
+}
+
+function closeNamePCModal() {
+  document.getElementById('namePCModal').style.display = 'none';
+  currentModalPC = { ip: '', mac: '', hostname: '', port: 9090 };
+}
+
+// Close modal when clicking outside
+document.getElementById('namePCModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'namePCModal') {
+    closeNamePCModal();
+  }
+});
+
+// Handle name form submission
+document.addEventListener('DOMContentLoaded', () => {
+  const nameForm = document.getElementById('nameForm');
+  if (nameForm) {
+    nameForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      await registerNamedPC();
+    });
+  }
+});
+
+async function registerNamedPC() {
+  const pcName = document.getElementById('pcNameInput').value.trim();
+  const msgEl = document.getElementById('nameFormMessage');
+  
+  if (!pcName) {
+    msgEl.textContent = '❌ Please enter a PC name';
+    msgEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    msgEl.style.color = '#ef4444';
+    msgEl.style.display = 'block';
+    return;
+  }
+  
+  const submitBtn = document.querySelector('#nameForm button[type="submit"]');
+  const originalText = submitBtn.textContent;
+  submitBtn.disabled = true;
+  submitBtn.textContent = 'Registering...';
+  
+  try {
+    // Call backend to register the PC
+    const response = await fetch('http://localhost:5000/api/pcs/register-discovered', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`
+      },
+      body: JSON.stringify({
+        cafe_id: currentUser?.cafe_id || 1,
+        branch_id: 1,
+        name: pcName,
+        ip_address: currentModalPC.ip,
+        mac_address: currentModalPC.mac,
+        hostname: currentModalPC.hostname,
+        port: currentModalPC.port
+      })
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to register PC');
+    }
+    
+    const result = await response.json();
+    
+    msgEl.textContent = '✅ PC registered successfully!';
+    msgEl.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+    msgEl.style.color = '#22c55e';
+    msgEl.style.display = 'block';
+    
+    // Remove from discovered list
+    discoveredPCs = discoveredPCs.filter(pc => pc.ip !== currentModalPC.ip);
+    displayDiscoveredPCs();
+    
+    // Refresh PC list if available
+    if (currentUser) {
+      fetchAndDisplayPCs();
+    }
+    
+    setTimeout(() => {
+      closeNamePCModal();
+    }, 1500);
+  } catch (error) {
+    console.error('Error registering PC:', error);
+    msgEl.textContent = `❌ Error: ${error.message}`;
+    msgEl.style.backgroundColor = 'rgba(239, 68, 68, 0.15)';
+    msgEl.style.color = '#ef4444';
+    msgEl.style.display = 'block';
+  } finally {
+    submitBtn.disabled = false;
+    submitBtn.textContent = originalText;
+  }
 }

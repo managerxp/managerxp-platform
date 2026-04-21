@@ -13,6 +13,7 @@ let clientConnections = new Map(); // simId -> ws connection to client
 let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
 let allRegisteredPCs = new Map(); // Track all registered PCs with their config for heartbeat
+let discoveredPCs = new Map(); // Track auto-discovered PCs: ip_address -> { ip, mac, hostname, port, discovered_at }
 let heartbeatInterval = null;
 const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds
 const RECONNECT_INTERVAL = 10000; // Try to reconnect dead clients every 10 seconds
@@ -64,6 +65,8 @@ function createWindow() {
     const authState = authContext.getAuthState();
     if (authState.isAuthenticated) {
       win.webContents.send('user:updated', authState);
+      // Send discovered PCs list
+      win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
     }
   });
 }
@@ -123,6 +126,57 @@ function startTokenServer() {
     if (req.method === 'OPTIONS') {
       res.writeHead(200);
       res.end();
+      return;
+    }
+
+    // ===== PC DISCOVERY ENDPOINT =====
+    if (req.method === 'POST' && req.url === '/api/pc-discovery') {
+      let body = '';
+      
+      req.on('data', (chunk) => {
+        body += chunk.toString();
+      });
+      
+      req.on('end', () => {
+        try {
+          const data = JSON.parse(body);
+          const { type, ip_address, mac_address, hostname, port } = data;
+          
+          if (type === 'PC_DISCOVERY' && ip_address && mac_address) {
+            console.log(`[PC Discovery] ${hostname} (${ip_address}/${mac_address}) on port ${port}`);
+            
+            // Store discovered PC
+            discoveredPCs.set(ip_address, {
+              ip: ip_address,
+              mac: mac_address,
+              hostname: hostname,
+              port: port || 9090,
+              discovered_at: new Date().toISOString()
+            });
+            
+            console.log(`[PC Discovery] Total unknown PCs: ${discoveredPCs.size}`);
+            
+            // Send discovered PCs list to renderer
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+              console.log(`[PC Discovery] Sent ${discoveredPCs.size} PCs to renderer`);
+            } else {
+              console.log(`[PC Discovery] Main window not ready, cannot send to renderer`);
+            }
+            
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true, message: 'PC discovery received' }));
+          } else {
+            console.log(`[PC Discovery] Invalid data:`, data);
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, message: 'Invalid discovery data' }));
+          }
+        } catch (error) {
+          console.error('[PC Discovery] Error parsing discovery data:', error);
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, message: 'Invalid request' }));
+        }
+      });
       return;
     }
     
@@ -218,6 +272,8 @@ function handleWebAppLogin(token, user) {
     // Window already exists, update user info
     const authState = authContext.getAuthState();
     win.webContents.send('user:updated', authState);
+    // Send discovered PCs list
+    win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
   }
   
   return true;
@@ -342,6 +398,8 @@ function registerIPCHandlers() {
       // Window already exists, just update user info
       const authState = authContext.getAuthState();
       win.webContents.send('user:updated', authState);
+      // Send discovered PCs list
+      win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
     }
   });
 

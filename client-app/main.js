@@ -4,9 +4,13 @@ const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
 const fs = require("fs");
+const http = require("http");
 
 let SIM_ID = "SIM-01"; // Will be updated by server
 const CLIENT_PORT = 9090; // Port this client listens on
+const SERVER_APP_PORT = 3334; // Server app HTTP port for discovery
+let LOCAL_IP = null; // Will be set on startup
+let BROADCAST_INTERVAL = null; // For periodic IP/MAC broadcasts
 
 let win;
 let statusBarWin;
@@ -85,6 +89,82 @@ function log(message) {
 function updateStatus(status) {
   if (win) win.webContents.send("status", status);
   if (statusBarWin) statusBarWin.webContents.send("status", status);
+}
+
+// Get the local IP address of the system
+function getLocalIPAddress() {
+  try {
+    const interfaces = os.networkInterfaces();
+    
+    // Try to find the first non-internal IPv4 address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      for (const addr of iface) {
+        // Find IPv4 addresses that are not internal (loopback)
+        if (addr.family === 'IPv4' && !addr.internal) {
+          log(`Found local IP address: ${addr.address} on interface: ${name}`);
+          return addr.address;
+        }
+      }
+    }
+    
+    // Fallback: return localhost
+    log('Warning: No local IP found, using localhost');
+    return '127.0.0.1';
+  } catch (error) {
+    log(`Error getting local IP address: ${error.message}`);
+    return '127.0.0.1';
+  }
+}
+
+// Broadcast PC information to server app for auto-discovery
+function broadcastPCInfo() {
+  try {
+    const macAddress = getSystemMacAddress();
+    const localIP = LOCAL_IP;
+    const hostname = os.hostname();
+
+    const payload = JSON.stringify({
+      type: 'PC_DISCOVERY',
+      ip_address: localIP,
+      mac_address: macAddress,
+      hostname: hostname,
+      port: CLIENT_PORT
+    });
+
+    const options = {
+      hostname: 'localhost',
+      port: SERVER_APP_PORT,
+      path: '/api/pc-discovery',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          log(`✓ PC broadcast successful - IP: ${localIP}, MAC: ${macAddress}`);
+        } else {
+          log(`✗ PC broadcast failed - Status: ${res.statusCode}`);
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      log(`⚠ Broadcast error: ${error.message}`);
+    });
+
+    req.setTimeout(3000);
+    req.write(payload);
+    req.end();
+  } catch (error) {
+    log(`Error broadcasting PC info: ${error.message}`);
+  }
 }
 
 // Get the MAC address of the system
@@ -400,8 +480,19 @@ function closeByExecutableName(appPath, appName) {
 }
 
 app.whenReady().then(() => {
+  // Get local IP on startup
+  LOCAL_IP = getLocalIPAddress();
+  
   createWindow();
   listen();
+  
+  // Start broadcasting PC info every 10 seconds
+  BROADCAST_INTERVAL = setInterval(() => {
+    broadcastPCInfo();
+  }, 10000);
+  
+  // Initial broadcast immediately
+  broadcastPCInfo();
 });
 
 /* ---- HEARTBEAT ---- */

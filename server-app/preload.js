@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("api", {
   onClients: (cb) => ipcRenderer.on("clients", (_, list) => cb(list)),
   onAppsUpdated: (cb) => ipcRenderer.on("apps-updated", (_, data) => cb(data)),
   onUserUpdated: (cb) => ipcRenderer.on("user:updated", (_, user) => cb(user)),
+  onDiscoveredPCs: (cb) => ipcRenderer.on("discovered-pcs", (_, data) => cb(data)),
   
   // App management
   launchApp: (data) => ipcRenderer.invoke("launch-app", data),

@@ -111,7 +111,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "147.0.7727.57",
+        "version":  "147.0.7727.102",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -491,7 +491,7 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1105",
+        "version":  "4.1.1.1107",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {
