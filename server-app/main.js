@@ -137,7 +137,7 @@ function startTokenServer() {
         body += chunk.toString();
       });
       
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const data = JSON.parse(body);
           const { type, ip_address, mac_address, hostname, port } = data;
@@ -156,7 +156,80 @@ function startTokenServer() {
             }
             
             if (!isAlreadyConnected) {
-              // Store discovered PC
+              // AUTO-UPDATE: Try to auto-update IP in backend if MAC exists
+              try {
+                const authState = authContext.getAuthState();
+                if (authState && authState.token) {
+                  console.log(`[PC Auto-Update] Checking if MAC ${mac_address} exists in database...`);
+                  
+                  const checkResponse = await fetch('http://localhost:5000/api/pcs/check-exists', {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${authState.token}`
+                    },
+                    body: JSON.stringify({
+                      ip_address: ip_address,
+                      mac_address: mac_address
+                    })
+                  });
+                  
+                  if (checkResponse.ok) {
+                    const checkResult = await checkResponse.json();
+                    
+                    if (checkResult.exists) {
+                      console.log(`[PC Auto-Update] ✅ PC found in database with MAC ${mac_address}`);
+                      
+                      if (checkResult.ip_updated) {
+                        console.log(`[PC Auto-Update] 🔄 IP auto-updated for MAC ${mac_address}`);
+                        // Remove from discovered list since it's been auto-updated
+                        discoveredPCs.delete(ip_address);
+                        
+                        // Send updated discovered PCs list to renderer
+                        if (win && !win.isDestroyed()) {
+                          win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+                          console.log(`[PC Discovery] Updated discovered PCs list - Total: ${discoveredPCs.size}`);
+                        }
+                        
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ 
+                          success: true, 
+                          message: 'PC discovery received and IP auto-updated',
+                          auto_updated: true
+                        }));
+                        return;
+                      } else {
+                        console.log(`[PC Auto-Update] ℹ️ PC exists in database with same IP`);
+                        // PC exists with same IP - don't add to discovered
+                        discoveredPCs.delete(ip_address);
+                        
+                        if (win && !win.isDestroyed()) {
+                          win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+                        }
+                        
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ 
+                          success: true, 
+                          message: 'PC already registered',
+                          auto_updated: false
+                        }));
+                        return;
+                      }
+                    } else {
+                      console.log(`[PC Auto-Update] ❌ PC not found in database - will add to discovered list`);
+                    }
+                  } else {
+                    console.log(`[PC Auto-Update] Check failed, will add to discovered list`);
+                  }
+                } else {
+                  console.log(`[PC Auto-Update] No auth token - will add to discovered list`);
+                }
+              } catch (checkError) {
+                console.error(`[PC Auto-Update] Error checking PC:`, checkError.message);
+                // Continue with discovery if check fails
+              }
+              
+              // If we reach here, it's a new PC - add to discovered list
               discoveredPCs.set(ip_address, {
                 ip: ip_address,
                 mac: mac_address,
@@ -165,7 +238,7 @@ function startTokenServer() {
                 discovered_at: new Date().toISOString()
               });
               
-              console.log(`[PC Discovery] Added to unknown list - Total: ${discoveredPCs.size}`);
+              console.log(`[PC Discovery] Added NEW PC to unknown list - Total: ${discoveredPCs.size}`);
             }
             
             // Send discovered PCs list to renderer (only non-connected PCs)

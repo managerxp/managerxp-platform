@@ -111,7 +111,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "147.0.7727.102",
+        "version":  "147.0.7727.116",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -181,7 +181,7 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19822.20182",
+        "version":  "16.0.19929.20090",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
