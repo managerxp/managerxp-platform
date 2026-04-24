@@ -14,9 +14,11 @@ let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
 let allRegisteredPCs = new Map(); // Track all registered PCs with their config for heartbeat
 let discoveredPCs = new Map(); // Track auto-discovered PCs: ip_address -> { ip, mac, hostname, port, discovered_at }
+let pcConnectionStats = new Map(); // Track connection failures: pcName -> { failures, lastError, lastAttempt }
 let heartbeatInterval = null;
 const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds
 const RECONNECT_INTERVAL = 10000; // Try to reconnect dead clients every 10 seconds
+const MAX_FAILED_ATTEMPTS = 3; // Mark as failed after 3 attempts
 
 // Create login window
 function createLoginWindow() {
@@ -73,6 +75,68 @@ function createWindow() {
 
 function log(msg) {
   if (win) win.webContents.send("log", msg);
+}
+
+// Track connection failure and update UI with status
+function recordConnectionFailure(pcName, error) {
+  if (!pcConnectionStats.has(pcName)) {
+    pcConnectionStats.set(pcName, { failures: 0, lastError: null, lastAttempt: null });
+  }
+  
+  const stats = pcConnectionStats.get(pcName);
+  stats.failures++;
+  stats.lastError = error.message || String(error);
+  stats.lastAttempt = new Date().toISOString();
+  
+  log(`[Connection Stats] ${pcName}: ${stats.failures} failed attempts - ${stats.lastError}`);
+  
+  // Send status to UI
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('pc-connection-status', {
+      pcName: pcName,
+      status: 'failed',
+      failures: stats.failures,
+      maxFailures: MAX_FAILED_ATTEMPTS,
+      error: stats.lastError
+    });
+  }
+}
+
+// Record successful connection
+function recordConnectionSuccess(pcName) {
+  if (pcConnectionStats.has(pcName)) {
+    pcConnectionStats.delete(pcName);
+  }
+  
+  log(`[Connection Stats] ${pcName}: ✅ Connected successfully`);
+  
+  // Send status to UI
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('pc-connection-status', {
+      pcName: pcName,
+      status: 'connected',
+      failures: 0
+    });
+  }
+}
+
+// Get connection status for all PCs
+function getConnectionStatus() {
+  const status = {};
+  allRegisteredPCs.forEach((pcConfig, pcName) => {
+    const isConnected = clients.has(pcName);
+    const stats = pcConnectionStats.get(pcName);
+    status[pcName] = {
+      name: pcName,
+      ip: pcConfig.ip,
+      port: pcConfig.port,
+      connected: isConnected,
+      failures: stats?.failures || 0,
+      lastError: stats?.lastError || null,
+      lastAttempt: stats?.lastAttempt || null
+    };
+  });
+  return status;
 }
 
 // Get the MAC address of the system
@@ -179,6 +243,7 @@ function startTokenServer() {
                     
                     if (checkResult.exists) {
                       console.log(`[PC Auto-Update] ✅ PC found in database with MAC ${mac_address}`);
+                      const pcName = checkResult.pc_name || checkResult.name || `PC-${mac_address.substring(mac_address.length - 5)}`;
                       
                       if (checkResult.ip_updated) {
                         console.log(`[PC Auto-Update] 🔄 IP auto-updated for MAC ${mac_address}`);
@@ -191,16 +256,45 @@ function startTokenServer() {
                           console.log(`[PC Discovery] Updated discovered PCs list - Total: ${discoveredPCs.size}`);
                         }
                         
+                        // UPDATE: Now register the PC in allRegisteredPCs and attempt auto-connection
+                        const portNumber = port || 9090;
+                        allRegisteredPCs.set(pcName, {
+                          simId: pcName,
+                          ip: ip_address,
+                          port: portNumber
+                        });
+                        console.log(`[PC Auto-Update] 📋 Registered PC in tracking: ${pcName}`);
+                        
+                        // Automatically connect to the newly updated PC WITHOUT requiring server restart
+                        console.log(`[PC Auto-Update] 🔌 Initiating auto-connection to ${pcName} at ${ip_address}:${portNumber}`);
+                        connectToSpecificPC(ip_address, portNumber, pcName);
+                        
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ 
                           success: true, 
-                          message: 'PC discovery received and IP auto-updated',
-                          auto_updated: true
+                          message: 'PC discovery received, IP auto-updated, and connection established',
+                          auto_updated: true,
+                          pc_name: pcName
                         }));
                         return;
                       } else {
                         console.log(`[PC Auto-Update] ℹ️ PC exists in database with same IP`);
-                        // PC exists with same IP - don't add to discovered
+                        // PC exists with same IP - register it and attempt connection
+                        const portNumber = port || 9090;
+                        allRegisteredPCs.set(pcName, {
+                          simId: pcName,
+                          ip: ip_address,
+                          port: portNumber
+                        });
+                        
+                        // If not already connected, attempt to connect
+                        if (!clients.has(pcName)) {
+                          console.log(`[PC Auto-Update] 🔌 Attempting connection to ${pcName} at ${ip_address}:${portNumber}`);
+                          connectToSpecificPC(ip_address, portNumber, pcName);
+                        } else {
+                          console.log(`[PC Auto-Update] ✓ ${pcName} is already connected`);
+                        }
+                        
                         discoveredPCs.delete(ip_address);
                         
                         if (win && !win.isDestroyed()) {
@@ -210,8 +304,9 @@ function startTokenServer() {
                         res.writeHead(200, { 'Content-Type': 'application/json' });
                         res.end(JSON.stringify({ 
                           success: true, 
-                          message: 'PC already registered',
-                          auto_updated: false
+                          message: 'PC already registered and connection attempted',
+                          auto_updated: false,
+                          pc_name: pcName
                         }));
                         return;
                       }
@@ -634,6 +729,86 @@ function registerIPCHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // New IPC handler: Connect to a specific PC on demand
+  ipcMain.handle("pc:connect-to-pc", async (event, { ip, port, pcName }) => {
+    try {
+      console.log(`[IPC] Received request to connect to PC: ${pcName} at ${ip}:${port}`);
+      
+      if (!ip || !port || !pcName) {
+        return { success: false, error: 'Missing ip, port, or pcName' };
+      }
+
+      // Check if already connected
+      if (clients.has(pcName)) {
+        log(`PC ${pcName} is already connected`);
+        return { success: true, message: 'Already connected', already_connected: true };
+      }
+
+      // Update allRegisteredPCs if not already there
+      if (!allRegisteredPCs.has(pcName)) {
+        allRegisteredPCs.set(pcName, { simId: pcName, ip: ip, port: port });
+        log(`[IPC] Registered PC for tracking: ${pcName}`);
+      }
+
+      // Attempt connection
+      connectToSpecificPC(ip, port, pcName);
+      
+      log(`[IPC] Connection attempt initiated for ${pcName}`);
+      return { success: true, message: 'Connection attempt initiated' };
+    } catch (error) {
+      console.error('[IPC] Error in pc:connect-to-pc handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // New IPC handler: Reconnect all PCs
+  ipcMain.handle("pc:reconnect-all", async (event) => {
+    try {
+      console.log(`[IPC] Received request to reconnect all PCs. Currently tracking: ${allRegisteredPCs.size} PCs`);
+      
+      let reconnectCount = 0;
+      allRegisteredPCs.forEach((pcConfig, pcName) => {
+        if (!clients.has(pcName)) {
+          console.log(`[IPC] Attempting to reconnect: ${pcName}`);
+          connectToSpecificPC(pcConfig.ip, pcConfig.port, pcName);
+          reconnectCount++;
+        }
+      });
+
+      log(`[IPC] Reconnection attempt initiated for ${reconnectCount} disconnected PCs`);
+      return { success: true, message: `Reconnection initiated for ${reconnectCount} PCs`, reconnected: reconnectCount };
+    } catch (error) {
+      console.error('[IPC] Error in pc:reconnect-all handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // New IPC handler: Get connection status for all PCs
+  ipcMain.handle("pc:get-connection-status", async (event) => {
+    try {
+      const status = getConnectionStatus();
+      console.log('[IPC] Returning connection status for', Object.keys(status).length, 'PCs');
+      return { success: true, data: status };
+    } catch (error) {
+      console.error('[IPC] Error in pc:get-connection-status handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
+
+  // New IPC handler: Clear connection failures for a PC (for manual retry)
+  ipcMain.handle("pc:clear-failures", async (event, { pcName }) => {
+    try {
+      if (pcConnectionStats.has(pcName)) {
+        pcConnectionStats.delete(pcName);
+        log(`[IPC] Cleared failure count for ${pcName}`);
+      }
+      return { success: true, message: `Cleared failures for ${pcName}` };
+    } catch (error) {
+      console.error('[IPC] Error in pc:clear-failures handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
   
   handlersRegistered = true;
   console.log('IPC handlers registered');
@@ -718,7 +893,15 @@ async function heartbeat() {
       allRegisteredPCs.forEach((pcConfig, pcName) => {
         // If this PC is not in the connected clients list, try to reconnect
         if (!connectedPCNames.has(pcName)) {
-          log(`Heartbeat: Attempting to reconnect ${pcName} at ${pcConfig.ip}:${pcConfig.port}`);
+          // Check if this PC has failed too many times
+          const stats = pcConnectionStats.get(pcName);
+          if (stats && stats.failures >= MAX_FAILED_ATTEMPTS) {
+            log(`[Heartbeat] ⚠️  Skipping ${pcName} - ${stats.failures} failed attempts. Error: ${stats.lastError}`);
+            log(`[Heartbeat] 💡 Tip: Check if IP ${pcConfig.ip} is correct. PC might be on different IP.`);
+            return; // Skip this PC
+          }
+          
+          log(`[Heartbeat] Attempting to reconnect ${pcName} at ${pcConfig.ip}:${pcConfig.port}`);
           
           const clientUrl = `ws://${pcConfig.ip}:${pcConfig.port}`;
           const ws = new WebSocket(clientUrl);
@@ -732,7 +915,10 @@ async function heartbeat() {
                   ws.simId = msg.simId;
                   clients.set(msg.simId, { ws, apps: [], pcName: pcName });
                   clients.set(pcName, { ws, apps: [], pcName: pcName });
-                  log(`[Heartbeat Reconnect] Registered: ${msg.simId} (${msg.hostname})`);
+                  log(`[Heartbeat Reconnect] ✅ Registered: ${msg.simId} (${msg.hostname})`);
+                  
+                  // Record success
+                  recordConnectionSuccess(pcName);
                   
                   // Remove this PC from discovered list since it's now connected
                   if (pcConfig.ip && discoveredPCs.has(pcConfig.ip)) {
@@ -799,6 +985,7 @@ async function heartbeat() {
           
           ws.on("error", (error) => {
             log(`[Heartbeat] Failed to connect to ${pcName}: ${error.message}`);
+            recordConnectionFailure(pcName, error);
           });
         }
       });
@@ -806,6 +993,101 @@ async function heartbeat() {
   } catch (error) {
     log(`Heartbeat error: ${error.message}`);
   }
+}
+
+// Connect to a specific PC dynamically (used for auto-discovered/updated PCs)
+function connectToSpecificPC(ip, port, pcName) {
+  // Check if we're already connected to this PC
+  if (clients.has(pcName)) {
+    log(`PC ${pcName} is already connected`);
+    return;
+  }
+
+  const clientUrl = `ws://${ip}:${port}`;
+  log(`[Dynamic Connect] Attempting connection to ${pcName} at ${clientUrl}...`);
+  
+  const ws = new WebSocket(clientUrl);
+  
+  const setupClientHandlers = () => {
+    ws.on("message", (raw) => {
+      try {
+        const msg = JSON.parse(raw);
+
+        if (msg.type === "REGISTER") {
+          ws.simId = msg.simId;
+          clients.set(msg.simId, { ws, apps: [], pcName: pcName });
+          clients.set(pcName, { ws, apps: [], pcName: pcName });
+          log(`[Dynamic Connect] ✅ Registered: ${msg.simId} (${msg.hostname})`);
+          
+          // Record success
+          recordConnectionSuccess(pcName);
+          
+          // Remove from discovered list since it's now connected
+          if (ip && discoveredPCs.has(ip)) {
+            const removed = discoveredPCs.get(ip);
+            discoveredPCs.delete(ip);
+            log(`[PC Discovery] Removed newly connected PC from unknown list: ${ip} (${removed.mac})`);
+            
+            // Send updated discovered PCs list to renderer
+            if (win && !win.isDestroyed()) {
+              win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+              log(`[PC Discovery] Updated list - ${discoveredPCs.size} unknown PCs remaining`);
+            }
+          }
+          
+          if (win) win.webContents.send("clients", [...clients.keys()]);
+        }
+
+        if (msg.type === "HEARTBEAT_PONG") {
+          log(`[Dynamic Connect] Heartbeat response from ${msg.simId}`);
+        }
+
+        if (msg.type === "APPS_LIST") {
+          const client = clients.get(msg.simId) || clients.get(pcName);
+          if (client) {
+            client.apps = msg.apps;
+            log(`[Dynamic Connect] Received ${msg.apps.length} apps from ${msg.simId}`);
+            if (win) win.webContents.send("apps-updated", {
+              simId: msg.simId,
+              pcName: pcName,
+              apps: msg.apps
+            });
+          }
+        }
+      } catch (error) {
+        log(`[Dynamic Connect] Error parsing message: ${error.message}`);
+      }
+    });
+
+    ws.on("close", () => {
+      if (ws.simId) {
+        clients.delete(ws.simId);
+        clients.delete(pcName);
+        clientConnections.delete(ws.simId);
+        log(`[Dynamic Connect] Disconnected: ${ws.simId}`);
+        if (win) win.webContents.send("clients", [...clients.keys()]);
+      }
+    });
+
+    ws.on("error", (error) => {
+      log(`[Dynamic Connect] Connection error for ${pcName}: ${error.message}`);
+    });
+  };
+  
+  ws.on("open", () => {
+    log(`[Dynamic Connect] Connected to ${pcName}, sending SET_NAME...`);
+    ws.send(JSON.stringify({
+      type: "SET_NAME",
+      name: pcName
+    }));
+    setupClientHandlers();
+    clientConnections.set(pcName, ws);
+  });
+  
+  ws.on("error", (error) => {
+    log(`[Dynamic Connect] ❌ Failed to connect to ${pcName} at ${clientUrl}: ${error.message}`);
+    recordConnectionFailure(pcName, error);
+  });
 }
 
 // Start the heartbeat mechanism

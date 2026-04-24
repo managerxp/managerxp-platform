@@ -27,6 +27,7 @@ let defaultViewSet = false;
 let currentClients = [];
 let connectedClients = []; // Track which PCs are currently connected
 let discoveredPCs = []; // Track auto-discovered PCs not yet registered
+let pcConnectionStatus = {}; // Track connection status: pcName -> { status, failures, error }
 let selectedClient = null;
 let clientApps = {};
 let timerInterval = null;
@@ -119,6 +120,19 @@ window.api.onDiscoveredPCs?.((pcsList) => {
   displayDiscoveredPCs();
 }) || console.warn('onDiscoveredPCs handler not available');
 
+// ==================== PC CONNECTION STATUS ====================
+window.api.onPCConnectionStatus?.((status) => {
+  console.log('[Renderer] PC connection status update:', status);
+  pcConnectionStatus[status.pcName] = {
+    status: status.status,
+    failures: status.failures,
+    error: status.error
+  };
+  
+  // Update UI to show connection failures
+  updateConnectionStatusDisplay(status.pcName, status);
+}) || console.warn('onPCConnectionStatus handler not available');
+
 // Listen for discovered PCs through IPC if API doesn't provide it
 window.addEventListener('discovered-pcs-update', (event) => {
   console.log('[Renderer] Discovered PCs event:', event.detail);
@@ -151,7 +165,7 @@ function displayDiscoveredPCs() {
   unknownPcsContainer.style.display = 'block';
   noUnknownPcsMsg.style.display = 'none';
   
-  // Create HTML for each unknown PC
+  // Create HTML for each unknown PC with auto-connect button
   unknownPcsContainer.innerHTML = discoveredPCs.map(pc => `
     <div class="unknown-pc-item" style="
       padding: 12px;
@@ -161,18 +175,205 @@ function displayDiscoveredPCs() {
       border-radius: 6px;
       cursor: pointer;
       transition: all 0.3s ease;
-    " onmouseover="this.style.backgroundColor='rgba(239, 68, 68, 0.15)'" onmouseout="this.style.backgroundColor='rgba(239, 68, 68, 0.1)'" onclick="showNamePCModal('${pc.ip}', '${pc.mac}', '${pc.hostname}', '${pc.port}')">
+    " onmouseover="this.style.backgroundColor='rgba(239, 68, 68, 0.15)'" onmouseout="this.style.backgroundColor='rgba(239, 68, 68, 0.1)'">
       <div style="font-weight: 600; color: #ff4444; font-size: 13px;">Unknown PC</div>
       <div style="font-size: 12px; color: #c9d1d9; margin-top: 4px;">
         <div>IP: ${pc.ip}</div>
         <div>MAC: ${pc.mac}</div>
         <div>Host: ${pc.hostname}</div>
       </div>
-      <div style="font-size: 11px; color: #8b949e; margin-top: 6px;">Click to register</div>
+      <div style="display: flex; gap: 8px; margin-top: 8px;">
+        <button 
+          onclick="autoConnectPC('${pc.ip}', '${pc.port}', '${pc.mac}')" 
+          style="
+            flex: 1;
+            padding: 6px 10px;
+            background: #10b981;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: background 0.2s;
+          "
+          onmouseover="this.style.background='#059669'"
+          onmouseout="this.style.background='#10b981'">
+          🔌 Connect
+        </button>
+        <button 
+          onclick="showNamePCModal('${pc.ip}', '${pc.mac}', '${pc.hostname}', '${pc.port}')" 
+          style="
+            flex: 1;
+            padding: 6px 10px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 600;
+            transition: background 0.2s;
+          "
+          onmouseover="this.style.background='#2563eb'"
+          onmouseout="this.style.background='#3b82f6'">
+          📝 Register
+        </button>
+      </div>
     </div>
   `).join('');
   
   console.log('[Renderer] Unknown PCs rendered successfully');
+}
+
+// Auto-connect to a discovered PC (NEW FUNCTION)
+async function autoConnectPC(ip, port, mac) {
+  console.log(`[Renderer] Attempting auto-connect to PC at ${ip}:${port} (MAC: ${mac})`);
+  
+  if (!window.api.connectToPC) {
+    alert('Error: Connection API not available');
+    return;
+  }
+
+  try {
+    // Generate a simple PC name from MAC or IP
+    const pcName = `PC-${mac.split(':').slice(-2).join('').toUpperCase()}`;
+    
+    console.log(`[Renderer] Connecting with name: ${pcName}`);
+    const result = await window.api.connectToPC(ip, port, pcName);
+    
+    if (result.success) {
+      console.log('[Renderer] Connection successful:', result.message);
+      if (result.already_connected) {
+        alert(`✓ ${pcName} is already connected!`);
+      } else {
+        alert(`✓ Connecting to ${pcName}...\nCheck the status below.`);
+      }
+    } else {
+      alert(`✗ Connection failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('[Renderer] Error during auto-connect:', error);
+    alert(`✗ Connection error: ${error.message}`);
+  }
+}
+
+// Reconnect all PCs (NEW FUNCTION)
+async function reconnectAllPCs() {
+  console.log('[Renderer] Attempting to reconnect all PCs...');
+  
+  if (!window.api.reconnectAllPCs) {
+    alert('Error: Reconnection API not available');
+    return;
+  }
+
+  try {
+    const result = await window.api.reconnectAllPCs();
+    
+    if (result.success) {
+      console.log('[Renderer] Reconnection initiated:', result.message);
+      alert(`✓ ${result.message}\n${result.reconnected} PC(s) will be reconnected.`);
+    } else {
+      alert(`✗ Reconnection failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('[Renderer] Error during reconnect-all:', error);
+    alert(`✗ Reconnection error: ${error.message}`);
+  }
+}
+
+// Update connection status display (NEW FUNCTION)
+function updateConnectionStatusDisplay(pcName, status) {
+  // Find and update the PC in the discovered list if it exists
+  const pcElement = document.querySelector(`[data-pc-name="${pcName}"]`);
+  
+  if (pcElement) {
+    if (status.status === 'connected') {
+      // PC is now connected - remove from display
+      pcElement.remove();
+      console.log(`[Renderer] ${pcName} connected - removed from failed list`);
+    } else {
+      // PC failed - update status display
+      const statusText = pcElement.querySelector('.pc-status') || pcElement.querySelector('.pc-error');
+      if (statusText) {
+        statusText.innerHTML = `<span style="color: #ef4444;">❌ Connection Failed</span><br/>
+          <span style="font-size: 11px; color: #8b949e;">Failures: ${status.failures}</span><br/>
+          <span style="font-size: 11px; color: #ef4444;">Error: ${status.error}</span>`;
+      }
+    }
+  }
+}
+
+// Get and display all connection statuses (NEW FUNCTION)
+async function showConnectionStatus() {
+  console.log('[Renderer] Fetching connection status...');
+  
+  if (!window.api.getConnectionStatus) {
+    alert('Error: Connection status API not available');
+    return;
+  }
+
+  try {
+    const result = await window.api.getConnectionStatus();
+    
+    if (result.success) {
+      const statusData = result.data;
+      console.log('[Renderer] Connection status:', statusData);
+      
+      // Display status in a formatted way
+      let statusText = '🔌 PC Connection Status:\n\n';
+      let disconnectedCount = 0;
+      
+      Object.values(statusData).forEach(pc => {
+        if (pc.connected) {
+          statusText += `✅ ${pc.name} - CONNECTED (${pc.ip}:${pc.port})\n`;
+        } else {
+          disconnectedCount++;
+          statusText += `❌ ${pc.name} - DISCONNECTED\n   IP: ${pc.ip}:${pc.port}\n   Failures: ${pc.failures}\n   Error: ${pc.lastError}\n\n`;
+        }
+      });
+      
+      if (disconnectedCount === 0) {
+        statusText += '✅ All PCs connected!';
+      } else {
+        statusText += `\n⚠️  ${disconnectedCount} PC(s) failed to connect.\n\nTip: Check if the IP addresses are correct in the database.`;
+      }
+      
+      alert(statusText);
+    } else {
+      alert(`✗ Failed to get status: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('[Renderer] Error getting status:', error);
+    alert(`✗ Error: ${error.message}`);
+  }
+}
+
+// Retry a failed PC connection (NEW FUNCTION)
+async function retryPCConnection(pcName, ip, port) {
+  console.log(`[Renderer] Retrying connection for ${pcName}...`);
+  
+  if (!window.api.clearPCFailures || !window.api.connectToPC) {
+    alert('Error: Retry API not available');
+    return;
+  }
+
+  try {
+    // Clear the failure counter
+    await window.api.clearPCFailures(pcName);
+    
+    // Attempt to reconnect
+    const result = await window.api.connectToPC(ip, port, pcName);
+    
+    if (result.success) {
+      alert(`✓ Reconnection attempt initiated for ${pcName}\nCheck the status in a few moments.`);
+    } else {
+      alert(`✗ Reconnection failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('[Renderer] Error retrying connection:', error);
+    alert(`✗ Error: ${error.message}`);
+  }
 }
 
 function displayUserProfile(user) {

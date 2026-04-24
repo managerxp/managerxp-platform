@@ -41,8 +41,8 @@
     },
     {
         "name":  "Copilot",
-        "version":  "147.0.3912.60",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.60\\mscopilot.exe"
+        "version":  "147.0.3912.84",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.84\\mscopilot.exe"
     },
     {
         "name":  "DBeaver",
