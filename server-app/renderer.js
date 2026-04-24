@@ -10,7 +10,6 @@ const timerInputGroup = document.getElementById("timer-input-group");
 const runningAppInfo = document.getElementById("running-app-info");
 
 // New UI Elements
-const sidebarLeft = document.getElementById("sidebarLeft");
 const sidebarRight = document.getElementById("sidebarRight");
 const userProfileBtn = document.getElementById("userProfileBtn");
 const userMenuDropdown = document.getElementById("userMenuDropdown");
@@ -18,7 +17,6 @@ const dashboardContent = document.getElementById("dashboardContent");
 const overlay = document.getElementById("overlay");
 
 // Sidebar state (starts collapsed by default)
-let sidebarLeftCollapsed = true;
 let sidebarRightCollapsed = true;
 let currentView = 'home';
 let defaultViewSet = false;
@@ -39,10 +37,7 @@ let pcsData = {}; // Store PC data mapped by name/simId
 
 // ==================== SIDEBAR TOGGLE ====================
 function toggleSidebar(side) {
-  if (side === 'left') {
-    sidebarLeft.classList.toggle('collapsed');
-    sidebarLeftCollapsed = sidebarLeft.classList.contains('collapsed');
-  } else if (side === 'right') {
+  if (side === 'right') {
     sidebarRight.classList.toggle('collapsed');
     sidebarRightCollapsed = sidebarRight.classList.contains('collapsed');
     // Close dropdown when toggling sidebar
@@ -80,22 +75,30 @@ function switchView(view) {
   // Update menu buttons
   document.getElementById('menuHome').classList.toggle('active', view === 'home');
   document.getElementById('menuDashboard').classList.toggle('active', view === 'dashboard');
+  document.getElementById('menuLogs').classList.toggle('active', view === 'logs');
   
   // Get main view elements
   const homeViewEl = document.querySelector('div[id="homeView"]');
   const dashboardViewEl = document.getElementById('dashboardView');
+  const logsViewEl = document.getElementById('logsView');
   
   // Update view content in main area
   if (view === 'home') {
     homeViewEl.style.display = 'block';
     dashboardViewEl.style.display = 'none';
+    logsViewEl.style.display = 'none';
   } else if (view === 'dashboard') {
     homeViewEl.style.display = 'none';
     dashboardViewEl.style.display = 'block';
+    logsViewEl.style.display = 'none';
     // Reload dashboard if user exists
     if (currentUser) {
       loadDashboard(currentUser);
     }
+  } else if (view === 'logs') {
+    homeViewEl.style.display = 'none';
+    dashboardViewEl.style.display = 'none';
+    logsViewEl.style.display = 'block';
   }
 }
 

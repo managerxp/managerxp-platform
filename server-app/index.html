@@ -85,43 +85,7 @@
       gap: 0;
     }
 
-    /* Left Sidebar */
-    .sidebar-left {
-      width: 70px;
-      background: linear-gradient(180deg, rgba(13, 17, 23, 0.95) 0%, rgba(22, 27, 34, 0.95) 100%);
-      backdrop-filter: blur(10px);
-      border-right: 1px solid rgba(239, 68, 68, 0.15);
-      display: flex;
-      flex-direction: column;
-      animation: slideIn 0.5s ease-out;
-      position: relative;
-      z-index: 100;
-      transition: all 0.3s ease;
-      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
-    }
 
-    .sidebar-left:not(.collapsed) {
-      width: 280px;
-    }
-
-    .sidebar-left.collapsed .sidebar-header h1 {
-      display: none;
-    }
-
-    .sidebar-left.collapsed .section-title,
-    .sidebar-left.collapsed .client-name,
-    .sidebar-left.collapsed .client-actions {
-      display: none;
-    }
-
-    .sidebar-header {
-      padding: 20px;
-      border-bottom: 1px solid rgba(239, 68, 68, 0.2);
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      min-height: 70px;
-    }
 
     .hamburger-btn {
       width: 40px;
@@ -557,20 +521,20 @@
       box-shadow: 0 2px 8px rgba(239, 68, 68, 0.1);
     }
 
-    /* Right Sidebar - Dashboard */
+    /* Right Sidebar - Dashboard (positioned on left) */
     .sidebar-right {
       width: 70px;
       background: linear-gradient(180deg, rgba(13, 17, 23, 0.95) 0%, rgba(22, 27, 34, 0.95) 100%);
       backdrop-filter: blur(10px);
-      border-left: 1px solid rgba(239, 68, 68, 0.15);
+      border-right: 1px solid rgba(239, 68, 68, 0.15);
       display: flex;
       flex-direction: column;
-      animation: slideInRight 0.5s ease-out;
+      animation: slideIn 0.5s ease-out;
       position: relative;
       z-index: 100;
       transition: all 0.3s ease;
       overflow: hidden;
-      box-shadow: -2px 0 8px rgba(0, 0, 0, 0.3);
+      box-shadow: 2px 0 8px rgba(0, 0, 0, 0.3);
     }
 
     .sidebar-right:not(.collapsed) {
@@ -1149,10 +1113,6 @@
 
     /* Large Screens (Desktop) */
     @media (min-width: 1920px) {
-      .sidebar-left:not(.collapsed) {
-        width: 320px;
-      }
-
       .sidebar-right:not(.collapsed) {
         width: 380px;
       }
@@ -1176,10 +1136,6 @@
 
     /* Medium Screens (Laptop) */
     @media (max-width: 1600px) {
-      .sidebar-left:not(.collapsed) {
-        width: 260px;
-      }
-
       .sidebar-right:not(.collapsed) {
         width: 320px;
       }
@@ -1199,14 +1155,6 @@
 
     /* Tablets & Small Laptops */
     @media (max-width: 1024px) {
-      .sidebar-left:not(.collapsed) {
-        width: 240px;
-      }
-
-      .sidebar-left.collapsed {
-        width: 60px;
-      }
-
       .sidebar-right:not(.collapsed) {
         width: 280px;
       }
@@ -1264,10 +1212,10 @@
     /* Phones & Small Tablets */
     @media (max-width: 768px) {
       .app-container {
-        flex-direction: column;
+        flex-direction: row;
       }
 
-      .sidebar-left {
+      .sidebar-right {
         width: 50px;
         position: absolute;
         height: 50px;
@@ -1275,23 +1223,6 @@
         top: 0;
         z-index: 200;
         border-right: none;
-        border-bottom: 1px solid rgba(239, 68, 68, 0.15);
-      }
-
-      .sidebar-left:not(.collapsed) {
-        width: 100%;
-        height: 100vh;
-        position: fixed;
-      }
-
-      .sidebar-right {
-        width: 50px;
-        position: absolute;
-        height: 50px;
-        right: 0;
-        top: 0;
-        z-index: 200;
-        border-left: none;
         border-bottom: 1px solid rgba(239, 68, 68, 0.15);
       }
 
@@ -1539,30 +1470,45 @@
   <div class="overlay" id="overlay" onclick="closeDropdowns()"></div>
 
   <div class="app-container">
-    <!-- Left Sidebar -->
-    <div class="sidebar-left collapsed" id="sidebarLeft">
-      <div class="sidebar-header">
-        <button class="hamburger-btn" id="hamburgerLeft" onclick="toggleSidebar('left')">
+    <!-- Sidebar - Menu -->
+    <div class="sidebar-right collapsed" id="sidebarRight">
+      <div class="sidebar-header-right">
+        <h2>Menu</h2>
+        <button class="hamburger-btn" id="hamburgerRight" onclick="toggleSidebar('right')">
           <span></span>
           <span></span>
           <span></span>
         </button>
-        <h1>Connected PC</h1>
       </div>
-      <div class="sidebar-content">
-        <div style="margin-bottom: 20px;">
-          <div class="section-title">Connected PCs</div>
-          <div id="clients">
-            <div class="no-clients">No clients connected</div>
-          </div>
-        </div>
+      
+      <div class="sidebar-menu">
+        <button class="menu-btn active" onclick="switchView('home')" id="menuHome">
+          <span class="menu-text">Home</span>
+        </button>
+        <button class="menu-btn" onclick="switchView('dashboard')" id="menuDashboard">
+          <span class="menu-text">Dashboard</span>
+        </button>
+        <button class="menu-btn" onclick="switchView('logs')" id="menuLogs">
+          <span class="menu-text">System Logs</span>
+        </button>
+      </div>
 
-        <div>
-          <div class="section-title">Unknown PCs</div>
-          <div id="unknown-pcs" style="display: none;">
-            <!-- Unknown PCs will be populated here -->
+      <div class="sidebar-content-right" id="sidebarContentRight">
+        <!-- Menu only, content in main area -->
+      </div>
+
+      <!-- User Profile Section at Bottom -->
+      <div class="sidebar-user-profile">
+        <button class="user-profile-btn" id="userProfileBtn" onclick="toggleUserMenu()">
+          <div class="user-avatar-circle" id="userAvatarCircle"></div>
+          <div class="user-info">
+            <div class="user-name-sidebar" id="userNameSidebar">User</div>
+            <div class="user-email-sidebar" id="userEmailSidebar">user@email.com</div>
           </div>
-          <div id="no-unknown-pcs" class="no-clients">No unknown PCs detected</div>
+        </button>
+        <div class="user-menu-dropdown" id="userMenuDropdown">
+          <button onclick="handleLogout()">Logout</button>
+          <button id="loginBtnSidebar" style="display:none;" onclick="handleLogin()">Login</button>
         </div>
       </div>
     </div>
@@ -1585,6 +1531,27 @@
       
       <div class="main-body">
         <div class="content-grid" id="homeView">
+          <!-- Connected PCs Card -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Connected PCs</div>
+            </div>
+            <div id="clients">
+              <div class="no-clients">No PCs registered</div>
+            </div>
+          </div>
+
+          <!-- Unknown PCs Card -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">Unknown PCs Detected</div>
+            </div>
+            <div id="unknown-pcs" style="display: none;">
+              <!-- Unknown PCs will be populated here -->
+            </div>
+            <div id="no-unknown-pcs" class="no-clients">No unknown PCs detected</div>
+          </div>
+
           <!-- Applications Card -->
           <div class="card">
             <div class="card-header">
@@ -1614,13 +1581,6 @@
             </div>
           </div>
 
-          <!-- Logs Card -->
-          <div class="card">
-            <div class="card-header">
-              <div class="card-title">System Logs</div>
-            </div>
-            <div id="logs"></div>
-          </div>
         </div>
 
         <div class="dashboard-main-view" id="dashboardView" style="display: none;">
@@ -1628,45 +1588,15 @@
             <!-- Loaded dynamically -->
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Right Sidebar - Dashboard -->
-    <div class="sidebar-right collapsed" id="sidebarRight">
-      <div class="sidebar-header-right">
-        <h2>Menu</h2>
-        <button class="hamburger-btn" id="hamburgerRight" onclick="toggleSidebar('right')">
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
-      </div>
-      
-      <div class="sidebar-menu">
-        <button class="menu-btn active" onclick="switchView('home')" id="menuHome">
-          <span class="menu-text">Home</span>
-        </button>
-        <button class="menu-btn" onclick="switchView('dashboard')" id="menuDashboard">
-          <span class="menu-text">Dashboard</span>
-        </button>
-      </div>
-
-      <div class="sidebar-content-right" id="sidebarContentRight">
-        <!-- Menu only, content in main area -->
-      </div>
-
-      <!-- User Profile Section at Bottom -->
-      <div class="sidebar-user-profile">
-        <button class="user-profile-btn" id="userProfileBtn" onclick="toggleUserMenu()">
-          <div class="user-avatar-circle" id="userAvatarCircle"></div>
-          <div class="user-info">
-            <div class="user-name-sidebar" id="userNameSidebar">User</div>
-            <div class="user-email-sidebar" id="userEmailSidebar">user@email.com</div>
+        <div class="content-grid" id="logsView" style="display: none;">
+          <!-- Logs Card -->
+          <div class="card">
+            <div class="card-header">
+              <div class="card-title">System Logs</div>
+            </div>
+            <div id="logs"></div>
           </div>
-        </button>
-        <div class="user-menu-dropdown" id="userMenuDropdown">
-          <button onclick="handleLogout()">Logout</button>
-          <button id="loginBtnSidebar" style="display:none;" onclick="handleLogin()">Login</button>
         </div>
       </div>
     </div>
