@@ -141,6 +141,17 @@ function getConnectionStatus() {
   return status;
 }
 
+// Get list of connected PC names (unique, not simIds)
+function getConnectedPCNames() {
+  const connectedPCNames = new Set();
+  clients.forEach((clientData) => {
+    if (clientData.pcName) {
+      connectedPCNames.add(clientData.pcName);
+    }
+  });
+  return Array.from(connectedPCNames);
+}
+
 // Get the MAC address of the system
 function getMacAddress() {
   try {
@@ -1031,7 +1042,7 @@ async function heartbeat() {
                     }
                   }
                   
-                  if (win) win.webContents.send("clients", [...clients.keys()]);
+                  if (win) win.webContents.send("clients", getConnectedPCNames());
                 }
 
                 if (msg.type === "HEARTBEAT_PONG") {
@@ -1062,7 +1073,7 @@ async function heartbeat() {
                 clients.delete(pcName);
                 clientConnections.delete(ws.simId);
                 log(`[Heartbeat] Disconnected: ${ws.simId}`);
-                if (win) win.webContents.send("clients", [...clients.keys()]);
+                if (win) win.webContents.send("clients", getConnectedPCNames());
               }
             });
 
@@ -1133,7 +1144,7 @@ function connectToSpecificPC(ip, port, pcName) {
             }
           }
           
-          if (win) win.webContents.send("clients", [...clients.keys()]);
+          if (win) win.webContents.send("clients", getConnectedPCNames());
         }
 
         if (msg.type === "HEARTBEAT_PONG") {
@@ -1163,7 +1174,7 @@ function connectToSpecificPC(ip, port, pcName) {
         clients.delete(pcName);
         clientConnections.delete(ws.simId);
         log(`[Dynamic Connect] Disconnected: ${ws.simId}`);
-        if (win) win.webContents.send("clients", [...clients.keys()]);
+        if (win) win.webContents.send("clients", getConnectedPCNames());
       }
     });
 
@@ -1264,7 +1275,7 @@ async function connectToClients() {
               }
             }
             
-            if (win) win.webContents.send("clients", [...clients.keys()]);
+            if (win) win.webContents.send("clients", getConnectedPCNames());
           }
 
           if (msg.type === "HEARTBEAT_PONG") {
@@ -1295,7 +1306,7 @@ async function connectToClients() {
           clients.delete(simId); // Also delete by PC name
           clientConnections.delete(ws.simId);
           log(`Disconnected: ${ws.simId} - Heartbeat will attempt reconnection`);
-          if (win) win.webContents.send("clients", [...clients.keys()]);
+          if (win) win.webContents.send("clients", getConnectedPCNames());
         }
         // Don't reconnect here - let the heartbeat mechanism handle it
       });

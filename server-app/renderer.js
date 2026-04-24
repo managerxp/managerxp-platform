@@ -157,24 +157,22 @@ function displayDiscoveredPCs() {
   console.log('[Renderer] Displaying', discoveredPCs.length, 'discovered PCs');
   
   const unknownPcsContainer = document.getElementById('unknown-pcs');
-  const noUnknownPcsMsg = document.getElementById('no-unknown-pcs');
+  const unknownPcsCard = document.getElementById('unknownPcsCard');
   
-  if (!unknownPcsContainer || !noUnknownPcsMsg) {
+  if (!unknownPcsContainer || !unknownPcsCard) {
     console.error('[Renderer] Unknown PCs DOM elements not found');
     return;
   }
   
   if (discoveredPCs.length === 0) {
-    console.log('[Renderer] No discovered PCs to display - showing empty message');
-    unknownPcsContainer.style.display = 'none';
+    console.log('[Renderer] No discovered PCs to display - hiding card');
+    unknownPcsCard.style.display = 'none';
     unknownPcsContainer.innerHTML = '';
-    noUnknownPcsMsg.style.display = 'block';
     return;
   }
   
   console.log('[Renderer] Rendering', discoveredPCs.length, 'unknown PCs');
-  unknownPcsContainer.style.display = 'block';
-  noUnknownPcsMsg.style.display = 'none';
+  unknownPcsCard.style.display = 'block';
   
   // Create HTML for each unknown PC with auto-connect button
   unknownPcsContainer.innerHTML = discoveredPCs.map(pc => `
