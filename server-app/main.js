@@ -16,8 +16,10 @@ let allRegisteredPCs = new Map(); // Track all registered PCs with their config 
 let discoveredPCs = new Map(); // Track auto-discovered PCs: ip_address -> { ip, mac, hostname, port, discovered_at }
 let pcConnectionStats = new Map(); // Track connection failures: pcName -> { failures, lastError, lastAttempt }
 let heartbeatInterval = null;
+let pcRefreshInterval = null; // Periodic PC list refresh
 const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds
 const RECONNECT_INTERVAL = 10000; // Try to reconnect dead clients every 10 seconds
+const PC_REFRESH_INTERVAL = 15000; // Check for new PCs every 15 seconds
 const MAX_FAILED_ATTEMPTS = 3; // Mark as failed after 3 attempts
 
 // Create login window
@@ -809,6 +811,18 @@ function registerIPCHandlers() {
       return { success: false, error: error.message };
     }
   });
+
+  // New IPC handler: Manually refresh PC list and connect to new PCs
+  ipcMain.handle("pc:refresh-list", async (event) => {
+    try {
+      console.log(`[IPC] Received request to refresh PC list`);
+      await refreshPCList();
+      return { success: true, message: 'PC list refreshed and new PCs will be connected', totalPCs: allRegisteredPCs.size };
+    } catch (error) {
+      console.error('[IPC] Error in pc:refresh-list handler:', error);
+      return { success: false, error: error.message };
+    }
+  });
   
   handlersRegistered = true;
   console.log('IPC handlers registered');
@@ -868,6 +882,90 @@ async function fetchClientsFromAPI() {
     log(`Error fetching PCs from API: ${error.message}`);
     return [];
   }
+}
+
+// Refresh PC list and connect to newly added PCs
+async function refreshPCList() {
+  try {
+    const newPCsList = await fetchClientsFromAPI();
+    
+    if (!newPCsList || newPCsList.length === 0) {
+      return;
+    }
+
+    let newPCsCount = 0;
+    
+    newPCsList.forEach(cfg => {
+      const pcName = cfg.simId;
+      
+      // Check if this PC is new (not in our registry)
+      if (!allRegisteredPCs.has(pcName)) {
+        console.log(`[PC Refresh] 🆕 New PC detected: ${pcName} at ${cfg.ip}:${cfg.port}`);
+        
+        // Add to registry
+        allRegisteredPCs.set(pcName, cfg);
+        newPCsCount++;
+        
+        // Attempt to connect immediately
+        console.log(`[PC Refresh] Attempting connection to new PC: ${pcName}`);
+        connectToSpecificPC(cfg.ip, cfg.port, pcName);
+      } else {
+        // Check if IP changed
+        const existingPC = allRegisteredPCs.get(pcName);
+        if (existingPC.ip !== cfg.ip || existingPC.port !== cfg.port) {
+          console.log(`[PC Refresh] 🔄 IP updated for ${pcName}: ${existingPC.ip}:${existingPC.port} → ${cfg.ip}:${cfg.port}`);
+          
+          // Update the config
+          allRegisteredPCs.set(pcName, cfg);
+          
+          // Close old connection if exists
+          const existingClient = clients.get(pcName);
+          if (existingClient && existingClient.ws) {
+            try {
+              existingClient.ws.close();
+              clients.delete(pcName);
+              console.log(`[PC Refresh] Closed old connection for ${pcName}`);
+            } catch (e) {}
+          }
+          
+          // Clear failure stats for fresh reconnect
+          pcConnectionStats.delete(pcName);
+          
+          // Attempt connection to new IP
+          console.log(`[PC Refresh] Reconnecting ${pcName} with new IP...`);
+          connectToSpecificPC(cfg.ip, cfg.port, pcName);
+        }
+      }
+    });
+    
+    if (newPCsCount > 0) {
+      log(`[PC Refresh] ✅ Detected ${newPCsCount} new PC(s) - attempting connections`);
+      
+      // Notify UI about refresh
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('pc-list-refreshed', {
+          newPCsFound: newPCsCount,
+          totalPCs: allRegisteredPCs.size
+        });
+      }
+    }
+  } catch (error) {
+    console.error(`[PC Refresh] Error refreshing PC list: ${error.message}`);
+  }
+}
+
+// Start periodic PC list refresh
+function startPCListRefresh() {
+  if (pcRefreshInterval) {
+    clearInterval(pcRefreshInterval);
+  }
+  
+  // Refresh PC list periodically
+  pcRefreshInterval = setInterval(() => {
+    refreshPCList();
+  }, PC_REFRESH_INTERVAL);
+  
+  log(`[PC Refresh] Started periodic PC list refresh (every ${PC_REFRESH_INTERVAL}ms)`);
 }
 
 // Heartbeat function - sends heartbeat to connected clients and tries to reconnect dead ones
@@ -1227,6 +1325,9 @@ async function connectToClients() {
 
   // Start heartbeat after initial connection attempt
   startHeartbeat();
+  
+  // Start periodic PC list refresh to detect newly added PCs
+  startPCListRefresh();
 }
 
 app.on('window-all-closed', () => {
@@ -1234,6 +1335,12 @@ app.on('window-all-closed', () => {
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
+  }
+  
+  // Cleanup PC refresh
+  if (pcRefreshInterval) {
+    clearInterval(pcRefreshInterval);
+    pcRefreshInterval = null;
   }
   if (process.platform !== 'darwin') app.quit();
 });
@@ -1244,6 +1351,13 @@ app.on('quit', () => {
     clearInterval(heartbeatInterval);
     heartbeatInterval = null;
   }
+  
+  // Cleanup PC refresh
+  if (pcRefreshInterval) {
+    clearInterval(pcRefreshInterval);
+    pcRefreshInterval = null;
+  }
+  
   clientConnections.forEach(ws => {
     try {
       ws.close();

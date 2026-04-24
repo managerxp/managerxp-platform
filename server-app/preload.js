@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld("api", {
   onUserUpdated: (cb) => ipcRenderer.on("user:updated", (_, user) => cb(user)),
   onDiscoveredPCs: (cb) => ipcRenderer.on("discovered-pcs", (_, data) => cb(data)),
   onPCConnectionStatus: (cb) => ipcRenderer.on("pc-connection-status", (_, data) => cb(data)),
+  onPCListRefreshed: (cb) => ipcRenderer.on("pc-list-refreshed", (_, data) => cb(data)),
   
   // App management
   launchApp: (data) => ipcRenderer.invoke("launch-app", data),
@@ -39,6 +40,7 @@ contextBridge.exposeInMainWorld("api", {
   reconnectAllPCs: () => ipcRenderer.invoke("pc:reconnect-all"),
   getConnectionStatus: () => ipcRenderer.invoke("pc:get-connection-status"),
   clearPCFailures: (pcName) => ipcRenderer.invoke("pc:clear-failures", { pcName }),
+  refreshPCList: () => ipcRenderer.invoke("pc:refresh-list"),
   
   // System info
   getMacAddress: () => ipcRenderer.invoke("system:get-mac-address")

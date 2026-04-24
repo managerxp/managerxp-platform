@@ -133,6 +133,14 @@ window.api.onPCConnectionStatus?.((status) => {
   updateConnectionStatusDisplay(status.pcName, status);
 }) || console.warn('onPCConnectionStatus handler not available');
 
+// ==================== PC LIST REFRESH ====================
+window.api.onPCListRefreshed?.((data) => {
+  console.log('[Renderer] PC list refreshed:', data);
+  if (data.newPCsFound > 0) {
+    console.log(`[Renderer] ✅ ${data.newPCsFound} new PC(s) detected! Total: ${data.totalPCs}`);
+  }
+}) || console.warn('onPCListRefreshed handler not available');
+
 // Listen for discovered PCs through IPC if API doesn't provide it
 window.addEventListener('discovered-pcs-update', (event) => {
   console.log('[Renderer] Discovered PCs event:', event.detail);
@@ -183,24 +191,6 @@ function displayDiscoveredPCs() {
         <div>Host: ${pc.hostname}</div>
       </div>
       <div style="display: flex; gap: 8px; margin-top: 8px;">
-        <button 
-          onclick="autoConnectPC('${pc.ip}', '${pc.port}', '${pc.mac}')" 
-          style="
-            flex: 1;
-            padding: 6px 10px;
-            background: #10b981;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 11px;
-            font-weight: 600;
-            transition: background 0.2s;
-          "
-          onmouseover="this.style.background='#059669'"
-          onmouseout="this.style.background='#10b981'">
-          🔌 Connect
-        </button>
         <button 
           onclick="showNamePCModal('${pc.ip}', '${pc.mac}', '${pc.hostname}', '${pc.port}')" 
           style="
@@ -372,6 +362,30 @@ async function retryPCConnection(pcName, ip, port) {
     }
   } catch (error) {
     console.error('[Renderer] Error retrying connection:', error);
+    alert(`✗ Error: ${error.message}`);
+  }
+}
+
+// Manually refresh PC list (NEW FUNCTION)
+async function refreshPCListManual() {
+  console.log('[Renderer] Manually refreshing PC list...');
+  
+  if (!window.api.refreshPCList) {
+    alert('Error: Refresh API not available');
+    return;
+  }
+
+  try {
+    const result = await window.api.refreshPCList();
+    
+    if (result.success) {
+      console.log('[Renderer] PC list refreshed:', result.message);
+      alert(`✓ ${result.message}\nTotal PCs: ${result.totalPCs}\n\nIf new PCs were registered in the database, they will be connected automatically.`);
+    } else {
+      alert(`✗ Refresh failed: ${result.error}`);
+    }
+  } catch (error) {
+    console.error('[Renderer] Error refreshing PC list:', error);
     alert(`✗ Error: ${error.message}`);
   }
 }
