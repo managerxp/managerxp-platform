@@ -111,7 +111,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "147.0.7727.116",
+        "version":  "147.0.7727.119",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -186,8 +186,8 @@
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "147.0.3912.72",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.72\\msedge.exe"
+        "version":  "147.0.3912.86",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.86\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
@@ -491,7 +491,7 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1109",
+        "version":  "4.1.1.1112",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {

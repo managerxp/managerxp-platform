@@ -665,9 +665,9 @@
 
     /* Client Items */
     #clients {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+      gap: 16px;
     }
 
     .client-item {
@@ -679,6 +679,9 @@
       transition: all 0.3s ease;
       position: relative;
       overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 200px;
     }
 
     .client-item::before {
@@ -716,26 +719,22 @@
     .client-name {
       font-weight: 600;
       font-size: 15px;
-      margin-bottom: 10px;
       display: flex;
-      align-items: center;
-      gap: 10px;
+      flex-direction: column;
+      gap: 8px;
       color: var(--text-primary);
+      flex: 1;
     }
 
     .client-name::before {
       content: '';
-      width: 8px;
-      height: 8px;
-      background: var(--accent);
-      border-radius: 50%;
-      box-shadow: 0 0 10px var(--accent-glow);
-      animation: pulseGlow 2s ease-in-out infinite;
+      display: none;
     }
 
     .client-actions {
       display: flex;
       gap: 8px;
+      margin-top: auto;
     }
 
     .client-actions button {
@@ -766,6 +765,7 @@
       color: var(--text-muted);
       font-size: 14px;
       font-style: italic;
+      grid-column: 1 / -1;
     }
 
     /* Apps Container */

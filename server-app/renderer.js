@@ -662,13 +662,25 @@ function renderClients() {
       const statusDot = isConnected ? '●' : '○';
       
       nameDiv.innerHTML = `
-        <div style="font-weight: 500; margin-bottom: 4px; display: flex; align-items: center; gap: 8px;">
-          <span style="color: ${statusColor}; font-size: 14px;">${statusDot}</span>
-          <span>${pcData.name}</span>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+            <rect x="2" y="6" width="20" height="12" rx="2" ry="2"></rect>
+            <path d="M6 9v6"></path>
+            <path d="M10 12h4"></path>
+            <path d="M15 9v2"></path>
+          </svg>
+          <div>
+            <div style="font-weight: 600; font-size: 15px; color: var(--text-primary);">${pcData.name}</div>
+            <div style="font-size: 11px; color: ${statusColor}; font-weight: 500;">${statusText}</div>
+          </div>
         </div>
-        <div style="font-size: 12px; color: #999; margin-bottom: 2px;">IP: ${pcData.ip_address}</div>
+        <div style="font-size: 12px; color: #999; margin-bottom: 6px;">IP: ${pcData.ip_address}</div>
         <div style="font-size: 12px; color: #999; margin-bottom: 6px;">Port: ${pcData.port}</div>
-        <div style="font-size: 11px; color: ${statusColor}; font-weight: 500;">${statusText}</div>
+        <div style="margin-top: auto; display: flex; gap: 6px;">
+          <span style="display: inline-block; padding: 4px 10px; background: rgba(255, 23, 68, 0.1); border-radius: 4px; font-size: 11px; color: ${statusColor};">
+            ${isConnected ? '🟢 Active' : '🔴 Offline'}
+          </span>
+        </div>
       `;
     } else {
       // Fallback to client ID if PC data not available
@@ -676,11 +688,23 @@ function renderClients() {
       const statusText = isConnected ? 'Connected' : 'Disconnected';
       const statusDot = isConnected ? '●' : '○';
       nameDiv.innerHTML = `
-        <div style="display: flex; align-items: center; gap: 8px;">
-          <span style="color: ${statusColor}; font-size: 14px;">${statusDot}</span>
-          <span>${clientId}</span>
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent);">
+            <rect x="2" y="6" width="20" height="12" rx="2" ry="2"></rect>
+            <path d="M6 9v6"></path>
+            <path d="M10 12h4"></path>
+            <path d="M15 9v2"></path>
+          </svg>
+          <div>
+            <div style="font-weight: 600; font-size: 15px; color: var(--text-primary);">${clientId}</div>
+            <div style="font-size: 11px; color: ${statusColor}; font-weight: 500;">${statusText}</div>
+          </div>
         </div>
-        <div style="font-size: 11px; color: ${statusColor}; font-weight: 500; margin-top: 4px;">${statusText}</div>
+        <div style="margin-top: auto; display: flex; gap: 6px;">
+          <span style="display: inline-block; padding: 4px 10px; background: rgba(255, 23, 68, 0.1); border-radius: 4px; font-size: 11px; color: ${statusColor};">
+            ${isConnected ? '🟢 Active' : '🔴 Offline'}
+          </span>
+        </div>
       `;
     }
 
