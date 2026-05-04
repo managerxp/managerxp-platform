@@ -41,8 +41,8 @@
     },
     {
         "name":  "Copilot",
-        "version":  "147.0.3912.84",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.84\\mscopilot.exe"
+        "version":  "147.0.3912.93",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.93\\mscopilot.exe"
     },
     {
         "name":  "DBeaver",
@@ -111,7 +111,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "147.0.7727.119",
+        "version":  "147.0.7727.138",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -186,8 +186,8 @@
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "147.0.3912.86",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.86\\msedge.exe"
+        "version":  "147.0.3912.98",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.98\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
@@ -491,7 +491,7 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1112",
+        "version":  "4.1.1.1113",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {

@@ -34,6 +34,8 @@ let isPaused = false;
 let currentRunningApp = null;
 let currentUser = null;
 let pcsData = {}; // Store PC data mapped by name/simId
+let currentConfigPcId = null; // Store current PC being configured for software
+let currentConfigPcSoftware = []; // Store software for current PC
 
 // ==================== SIDEBAR TOGGLE ====================
 function toggleSidebar(side) {
@@ -711,6 +713,22 @@ function renderClients() {
     const actions = document.createElement("div");
     actions.className = "client-actions";
     
+    // Add settings button for all PCs
+    const settingsBtn = document.createElement("button");
+    settingsBtn.className = "settings-btn";
+    settingsBtn.title = "PC Software Configuration";
+    settingsBtn.onclick = () => openPcSoftwareConfig(clientId);
+    settingsBtn.innerHTML = `
+      <svg class="settings-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3"></circle>
+        <path d="M12 1v6m0 6v6"></path>
+        <path d="M4.22 4.22l4.24 4.24m5.08 0l4.24-4.24"></path>
+        <path d="M1 12h6m6 0h6"></path>
+        <path d="M4.22 19.78l4.24-4.24m5.08 0l4.24 4.24"></path>
+      </svg>
+    `;
+    actions.appendChild(settingsBtn);
+    
     // Only show action buttons if the PC is connected
     if (isConnected) {
       const viewBtn = document.createElement("button");
@@ -1240,6 +1258,219 @@ function closeNamePCModal() {
   document.getElementById('namePCModal').style.display = 'none';
   currentModalPC = { ip: '', mac: '', hostname: '', port: 9090 };
 }
+
+// ==================== PC SOFTWARE CONFIGURATION ====================
+
+async function openPcSoftwareConfig(pcId) {
+  currentConfigPcId = pcId;
+  const modal = document.getElementById('pcSoftwareConfigModal');
+  
+  // Update PC info in modal
+  const pcData = pcsData[pcId];
+  const isConnected = connectedClients.includes(pcId);
+  
+  document.getElementById('configPcName').textContent = pcData?.name || pcId;
+  document.getElementById('configPcStatus').textContent = isConnected ? '🟢 Connected' : '🔴 Disconnected';
+  
+  // Show modal
+  modal.classList.add('active');
+  
+  // Load software list
+  await loadPcSoftwareList(pcId);
+}
+
+function closePcSoftwareModal() {
+  const modal = document.getElementById('pcSoftwareConfigModal');
+  modal.classList.remove('active');
+  currentConfigPcId = null;
+  currentConfigPcSoftware = [];
+  
+  // Reset form
+  document.getElementById('addSoftwareForm').style.display = 'none';
+  document.getElementById('softwareName').value = '';
+  document.getElementById('softwarePath').value = '';
+  document.getElementById('softwareIcon').value = '';
+  document.getElementById('softwareVideo').value = '';
+}
+
+async function loadPcSoftwareList(pcId) {
+  const softwareList = document.getElementById('softwareList');
+  softwareList.innerHTML = '<div class="no-software">Loading software...</div>';
+  
+  try {
+    // Get the cafeId from localStorage (set during login)
+    const cafeId = localStorage.getItem('cafeId');
+    const token = localStorage.getItem('authToken');
+    
+    if (!cafeId || !token) {
+      softwareList.innerHTML = '<div class="no-software">Please log in first</div>';
+      return;
+    }
+    
+    // Fetch software from backend
+    const response = await fetch(`http://localhost:5000/api/pc-software/by-pc/${pcId}`, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to fetch software');
+    }
+    
+    const data = await response.json();
+    currentConfigPcSoftware = data.data || [];
+    
+    if (currentConfigPcSoftware.length === 0) {
+      softwareList.innerHTML = '<div class="no-software">No software installed</div>';
+    } else {
+      renderSoftwareList(currentConfigPcSoftware);
+    }
+  } catch (error) {
+    console.error('Error loading software:', error);
+    softwareList.innerHTML = `<div class="no-software">Error loading software: ${error.message}</div>`;
+  }
+}
+
+function renderSoftwareList(softwareArray) {
+  const softwareList = document.getElementById('softwareList');
+  softwareList.innerHTML = '';
+  
+  if (softwareArray.length === 0) {
+    softwareList.innerHTML = '<div class="no-software">No software installed</div>';
+    return;
+  }
+  
+  softwareArray.forEach(software => {
+    const softwareItem = document.createElement('div');
+    softwareItem.className = 'software-item';
+    softwareItem.innerHTML = `
+      <div class="software-info">
+        <div class="software-name">${software.software_name}</div>
+        <div class="software-path">${software.software_path}</div>
+      </div>
+      <div class="software-actions">
+        <button class="delete-software-btn" onclick="deleteSoftware(${software.pc_software_id})">Delete</button>
+      </div>
+    `;
+    softwareList.appendChild(softwareItem);
+  });
+}
+
+function toggleAddSoftwareForm() {
+  const form = document.getElementById('addSoftwareForm');
+  form.style.display = form.style.display === 'none' ? 'block' : 'none';
+  
+  // Clear form
+  if (form.style.display === 'block') {
+    document.getElementById('softwareName').value = '';
+    document.getElementById('softwarePath').value = '';
+    document.getElementById('softwareIcon').value = '';
+    document.getElementById('softwareVideo').value = '';
+    document.getElementById('softwareName').focus();
+  }
+}
+
+async function addNewSoftware() {
+  const softwareName = document.getElementById('softwareName').value.trim();
+  const softwarePath = document.getElementById('softwarePath').value.trim();
+  const softwareIcon = document.getElementById('softwareIcon').value.trim();
+  const softwareVideo = document.getElementById('softwareVideo').value.trim();
+  
+  if (!softwareName || !softwarePath) {
+    alert('Please fill in required fields (Software Name and Path)');
+    return;
+  }
+  
+  if (!currentConfigPcId) {
+    alert('No PC selected');
+    return;
+  }
+  
+  try {
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      alert('Please log in first');
+      return;
+    }
+    
+    const response = await fetch('http://localhost:5000/api/pc-software', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        pc_id: currentConfigPcId,
+        software_name: softwareName,
+        software_path: softwarePath,
+        software_icon: softwareIcon || null,
+        software_video: softwareVideo || null,
+        is_active: true
+      })
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to add software');
+    }
+    
+    // Reload software list
+    await loadPcSoftwareList(currentConfigPcId);
+    toggleAddSoftwareForm();
+    
+    console.log('Software added successfully');
+  } catch (error) {
+    console.error('Error adding software:', error);
+    alert(`Error adding software: ${error.message}`);
+  }
+}
+
+async function deleteSoftware(softwareId) {
+  if (!confirm('Are you sure you want to delete this software?')) {
+    return;
+  }
+  
+  try {
+    const token = localStorage.getItem('authToken');
+    
+    if (!token) {
+      alert('Please log in first');
+      return;
+    }
+    
+    const response = await fetch(`http://localhost:5000/api/pc-software/${softwareId}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to delete software');
+    }
+    
+    // Reload software list
+    if (currentConfigPcId) {
+      await loadPcSoftwareList(currentConfigPcId);
+    }
+    
+    console.log('Software deleted successfully');
+  } catch (error) {
+    console.error('Error deleting software:', error);
+    alert(`Error deleting software: ${error.message}`);
+  }
+}
+
+// Close PC Software modal when clicking outside
+document.getElementById('pcSoftwareConfigModal')?.addEventListener('click', (e) => {
+  if (e.target.id === 'pcSoftwareConfigModal') {
+    closePcSoftwareModal();
+  }
+});
 
 // Close modal when clicking outside
 document.getElementById('namePCModal')?.addEventListener('click', (e) => {

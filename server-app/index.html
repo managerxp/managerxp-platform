@@ -1334,6 +1334,354 @@
       display: block;
     }
 
+    /* Settings Icon for PC */
+    .settings-btn {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, rgba(255, 23, 68, 0.2) 0%, rgba(26, 26, 37, 0.8) 100%);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--accent);
+      transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .settings-btn::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: -100%;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(90deg, transparent, rgba(255, 23, 68, 0.2), transparent);
+      transition: left 0.5s ease;
+    }
+
+    .settings-btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 15px rgba(255, 23, 68, 0.3);
+      transform: scale(1.08);
+    }
+
+    .settings-btn:hover::before {
+      left: 100%;
+    }
+
+    .settings-icon {
+      width: 18px;
+      height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* PC Software Config Modal */
+    #pcSoftwareConfigModal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.85);
+      backdrop-filter: blur(10px);
+      display: none;
+      z-index: 600;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #pcSoftwareConfigModal.active {
+      display: flex;
+    }
+
+    .software-config-content {
+      background: var(--glass);
+      backdrop-filter: blur(30px);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      padding: 36px;
+      max-width: 600px;
+      width: 90%;
+      height: auto;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 40px 100px rgba(0, 0, 0, 0.6), 0 0 60px rgba(255, 23, 68, 0.2);
+      animation: fadeInUp 0.4s ease-out;
+      position: relative;
+    }
+
+    .software-config-content::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    }
+
+    .software-config-content h2 {
+      font-family: 'Orbitron', sans-serif;
+      color: var(--text-primary);
+      margin-top: 0;
+      margin-bottom: 24px;
+      font-size: 20px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 3px;
+    }
+
+    .pc-header-info {
+      background: rgba(255, 23, 68, 0.05);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .pc-info-row {
+      margin-bottom: 14px;
+    }
+
+    .pc-info-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .pc-info-label {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+
+    .pc-info-value {
+      color: var(--text-primary);
+      font-weight: 600;
+      font-family: 'Courier New', monospace;
+    }
+
+    .software-list-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .software-list-header h3 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin: 0;
+    }
+
+    .add-software-btn {
+      padding: 8px 16px;
+      background: linear-gradient(135deg, var(--accent) 0%, #b71c1c 100%);
+      border: none;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Orbitron', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      transition: all 0.3s ease;
+      box-shadow: 0 0 15px rgba(255, 23, 68, 0.3);
+    }
+
+    .add-software-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 20px rgba(255, 23, 68, 0.4);
+    }
+
+    .software-items {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .software-item {
+      background: linear-gradient(135deg, rgba(26, 26, 37, 0.6) 0%, rgba(18, 18, 26, 0.6) 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .software-item:hover {
+      border-color: rgba(255, 23, 68, 0.4);
+      box-shadow: 0 0 20px rgba(255, 23, 68, 0.1);
+    }
+
+    .software-info {
+      flex: 1;
+    }
+
+    .software-name {
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-primary);
+      margin-bottom: 4px;
+    }
+
+    .software-path {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-family: 'Courier New', monospace;
+      word-break: break-all;
+    }
+
+    .software-actions {
+      display: flex;
+      gap: 8px;
+      margin-left: 12px;
+    }
+
+    .delete-software-btn {
+      padding: 6px 12px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.2) 0%, rgba(139, 0, 0, 0.2) 100%);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #ef4444;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      transition: all 0.3s ease;
+    }
+
+    .delete-software-btn:hover {
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.4) 0%, rgba(139, 0, 0, 0.4) 100%);
+      border-color: rgba(239, 68, 68, 0.6);
+    }
+
+    .no-software {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+      font-size: 13px;
+      font-style: italic;
+    }
+
+    .add-software-form {
+      background: rgba(255, 23, 68, 0.03);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      color: var(--text-secondary);
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    .form-group input[type="text"] {
+      width: 100%;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      color: var(--text-primary);
+      font-size: 14px;
+      font-family: 'Rajdhani', sans-serif;
+      transition: all 0.3s ease;
+    }
+
+    .form-group input[type="text"]:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(255, 23, 68, 0.2);
+    }
+
+    .form-buttons {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-buttons button {
+      flex: 1;
+      padding: 12px 20px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Orbitron', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: all 0.3s ease;
+    }
+
+    .form-buttons .submit-btn {
+      background: linear-gradient(135deg, var(--success) 0%, #00c853 100%);
+      border: none;
+      color: white;
+      box-shadow: 0 0 20px rgba(0, 230, 118, 0.3);
+    }
+
+    .form-buttons .submit-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 10px 30px rgba(0, 230, 118, 0.4);
+    }
+
+    .form-buttons .cancel-btn {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--accent);
+    }
+
+    .form-buttons .cancel-btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(255, 23, 68, 0.3);
+    }
+
+    .close-config-btn {
+      padding: 12px 24px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--accent);
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 700;
+      font-family: 'Orbitron', sans-serif;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      transition: all 0.3s ease;
+      width: 100%;
+    }
+
+    .close-config-btn:hover {
+      border-color: var(--accent);
+      box-shadow: 0 0 20px rgba(255, 23, 68, 0.3);
+    }
+
     /* Responsive */
     @media (max-width: 1200px) {
       .sidebar-right:not(.collapsed) {
@@ -1669,6 +2017,60 @@
         
         <div id="nameFormMessage" style="font-size: 13px; padding: 10px; border-radius: 8px; display: none;"></div>
       </form>
+    </div>
+  </div>
+
+  <!-- PC Software Configuration Modal -->
+  <div id="pcSoftwareConfigModal">
+    <div class="software-config-content">
+      <h2>PC Software Configuration</h2>
+      
+      <div class="pc-header-info" id="softwarePcInfo">
+        <div class="pc-info-row">
+          <div class="pc-info-label">PC Name</div>
+          <div class="pc-info-value" id="configPcName">-</div>
+        </div>
+        <div class="pc-info-row">
+          <div class="pc-info-label">Status</div>
+          <div class="pc-info-value" id="configPcStatus">-</div>
+        </div>
+      </div>
+
+      <div class="software-list-header">
+        <h3>Installed Software</h3>
+        <button class="add-software-btn" onclick="toggleAddSoftwareForm()">+ Add Software</button>
+      </div>
+
+      <!-- Add Software Form (Hidden by default) -->
+      <div id="addSoftwareForm" class="add-software-form" style="display: none;">
+        <div class="form-group">
+          <label>Software Name *</label>
+          <input type="text" id="softwareName" placeholder="e.g., Google Chrome, VS Code" required />
+        </div>
+        <div class="form-group">
+          <label>Software Path *</label>
+          <input type="text" id="softwarePath" placeholder="e.g., C:\\Program Files\\Application\\app.exe" required />
+        </div>
+        <div class="form-group">
+          <label>Icon URL (Optional)</label>
+          <input type="text" id="softwareIcon" placeholder="e.g., https://example.com/icon.png" />
+        </div>
+        <div class="form-group">
+          <label>Video URL (Optional)</label>
+          <input type="text" id="softwareVideo" placeholder="e.g., https://example.com/demo.mp4" />
+        </div>
+        <div class="form-buttons">
+          <button type="button" class="submit-btn" onclick="addNewSoftware()">Add Software</button>
+          <button type="button" class="cancel-btn" onclick="toggleAddSoftwareForm()">Cancel</button>
+        </div>
+      </div>
+
+      <!-- Software List -->
+      <div id="softwareList" class="software-items">
+        <div class="no-software">Loading software...</div>
+      </div>
+
+      <button class="close-config-btn" onclick="closePcSoftwareModal()">Close</button>
     </div>
   </div>
 
