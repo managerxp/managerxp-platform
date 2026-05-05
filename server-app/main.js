@@ -7,7 +7,6 @@ const os = require("os");
 const authContext = require("./authContext");
 
 let win;
-let loginWin;
 let tokenServer; // HTTP token server instance
 let clientConnections = new Map(); // simId -> ws connection to client
 let handlersRegistered = false;
@@ -24,57 +23,137 @@ const MAX_FAILED_ATTEMPTS = 3; // Mark as failed after 3 attempts
 
 // Create login window
 function createLoginWindow() {
-  loginWin = new BrowserWindow({
-    width: 500,
-    height: 600,
-    minWidth: 400,
-    minHeight: 500,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false
-    },
-    icon: path.join(__dirname, 'Images', 'icon.png')
-  });
+  if (!win || win.isDestroyed()) {
+    console.log('[Navigation] Creating main window with login page');
+    win = new BrowserWindow({
+      width: 500,
+      height: 600,
+      minWidth: 400,
+      minHeight: 500,
+      show: false,
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false
+      },
+      icon: path.join(__dirname, 'Images', 'icon.png')
+    });
 
-  // Remove the application menu
-  Menu.setApplicationMenu(null);
+    // Remove the application menu
+    Menu.setApplicationMenu(null);
 
-  loginWin.loadFile("login.html");
-  loginWin.show(); // Ensure the window is shown
-  loginWin.focus(); // Focus on the login window
-  // loginWin.webContents.openDevTools(); // Uncomment for debugging
+    // Load the login page
+    win.loadFile(path.join(__dirname, "login.html")).catch(err => {
+      console.error('[Navigation] Error loading login page:', err);
+    });
+    
+    // Show window when content is ready
+    win.webContents.once('did-finish-load', () => {
+      console.log('[Navigation] Login window content loaded, showing window');
+      win.center();
+      win.show();
+      win.focus();
+    });
+    
+    // Handle window close event
+    win.on('closed', () => {
+      console.log('[Navigation] Window closed');
+      win = null;
+      app.quit();
+    });
+  } else {
+    console.log('[Navigation] Window exists, navigating to login page');
+    win.setSize(500, 600);
+    win.center();
+    
+    // Load the login page
+    win.loadFile(path.join(__dirname, "login.html")).catch(err => {
+      console.error('[Navigation] Error loading login page:', err);
+    });
+    
+    // Show when ready
+    win.webContents.once('did-finish-load', () => {
+      console.log('[Navigation] Login page loaded');
+      win.show();
+      win.focus();
+    });
+  }
 }
 
-// Create main window
+// Create/Navigate to main home window
 function createWindow() {
-  win = new BrowserWindow({
-    width: 950,
-    height: 700,
-    minWidth: 800,
-    minHeight: 600,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false
-    },
-    icon: path.join(__dirname, 'Images', 'icon.png')
-  });
+  if (!win || win.isDestroyed()) {
+    console.log('[Navigation] Creating main window with home page');
+    win = new BrowserWindow({
+      width: 950,
+      height: 700,
+      minWidth: 800,
+      minHeight: 600,
+      show: false, // Don't show until ready
+      webPreferences: {
+        preload: path.join(__dirname, "preload.js"),
+        contextIsolation: true,
+        nodeIntegration: false
+      },
+      icon: path.join(__dirname, 'Images', 'icon.png')
+    });
 
-  // Remove the application menu
-  Menu.setApplicationMenu(null);
+    // Remove the application menu
+    Menu.setApplicationMenu(null);
 
-  win.loadFile("index.html");
+    // Load the home page
+    win.loadFile(path.join(__dirname, "index.html")).catch(err => {
+      console.error('[Navigation] Error loading home page:', err);
+    });
+    
+    // Send user info to renderer when window loads
+    win.webContents.once('did-finish-load', () => {
+      console.log('[Navigation] Home window content loaded, showing window');
+      win.center();
+      win.show();
+      win.focus();
+      
+      const authState = authContext.getAuthState();
+      if (authState.isAuthenticated) {
+        console.log('[Navigation] Sending user info to renderer');
+        win.webContents.send('user:updated', authState);
+        // Send discovered PCs list
+        win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+      }
+    });
+    
+    // Handle window close event
+    win.on('closed', () => {
+      console.log('[Navigation] Window closed');
+      win = null;
+      app.quit();
+    });
+  } else {
+    console.log('[Navigation] Window exists, navigating to home page');
+    win.setSize(950, 700);
+    win.center();
+    
+    // Load the home page
+    win.loadFile(path.join(__dirname, "index.html")).catch(err => {
+      console.error('[Navigation] Error loading home page:', err);
+    });
+    
+    // When ready, show and send data
+    win.webContents.once('did-finish-load', () => {
+      console.log('[Navigation] Home page loaded');
+      win.show();
+      win.focus();
+      
+      const authState = authContext.getAuthState();
+      if (authState.isAuthenticated) {
+        console.log('[Navigation] Sending user info to renderer');
+        win.webContents.send('user:updated', authState);
+        win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+      }
+    });
+  }
   
-  // Send user info to renderer when window loads
-  win.webContents.on('did-finish-load', () => {
-    const authState = authContext.getAuthState();
-    if (authState.isAuthenticated) {
-      win.webContents.send('user:updated', authState);
-      // Send discovered PCs list
-      win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
-    }
-  });
+  return win;
 }
 
 function log(msg) {
@@ -425,6 +504,8 @@ function startTokenServer() {
 
 // Handle login from web app
 function handleWebAppLogin(token, user) {
+  console.log('\n========== WEB APP LOGIN HANDLER ==========');
+  
   // Validate token and user data
   if (!token || typeof token !== 'string' || token.trim() === '') {
     console.error('Invalid token received');
@@ -436,8 +517,12 @@ function handleWebAppLogin(token, user) {
     return false;
   }
   
+  console.log('[WebAppLogin] User:', user.email || user.name);
+  console.log('[WebAppLogin] Token length:', token.length);
+  
   // Store in auth context
   authContext.setAuth(user, token);
+  console.log('[WebAppLogin] Auth context set');
   
   const fs = require('fs');
   const authFile = path.join(app.getPath('userData'), 'auth.json');
@@ -446,29 +531,44 @@ function handleWebAppLogin(token, user) {
   try {
     fs.mkdirSync(path.dirname(authFile), { recursive: true });
     fs.writeFileSync(authFile, JSON.stringify({ user, token }));
-    console.log('Auth saved to file for user:', user.email || user.name);
+    console.log('[WebAppLogin] Auth saved to file for user:', user.email || user.name);
   } catch (error) {
-    console.error('Error saving auth:', error);
+    console.error('[WebAppLogin] Error saving auth:', error);
   }
   
-  // Close login window if open
-  if (loginWin && !loginWin.isDestroyed()) {
-    loginWin.close();
-  }
+  // Navigate to home page with single window model
+  console.log('[WebAppLogin] Window exists:', !!(win && !win.isDestroyed()));
   
-  // Create/show main window
-  if (!win) {
+  if (!win || win.isDestroyed()) {
+    console.log('[WebAppLogin] No valid window, creating new window');
     createWindow();
-    connectToClients().catch(err => console.error('Error connecting to clients:', err));
-  } else if (win.isDestroyed()) {
-    createWindow();
-    connectToClients().catch(err => console.error('Error connecting to clients:', err));
+    connectToClients().catch(err => console.error('[WebAppLogin] Error connecting to clients:', err));
   } else {
-    // Window already exists, update user info
-    const authState = authContext.getAuthState();
-    win.webContents.send('user:updated', authState);
-    // Send discovered PCs list
-    win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+    console.log('[WebAppLogin] Window exists, navigating to home page');
+    console.log('[WebAppLogin] Resizing to 950x700');
+    win.setSize(950, 700);
+    win.center();
+    win.show();
+    
+    console.log('[WebAppLogin] Loading index.html...');
+    win.loadFile(path.join(__dirname, "index.html"))
+      .then(() => console.log('[WebAppLogin] loadFile promise resolved'))
+      .catch(err => console.error('[WebAppLogin] loadFile error:', err));
+    
+    // When home page loads, send user info
+    win.webContents.once('did-finish-load', () => {
+      console.log('========== WEB APP HOME PAGE LOADED ==========');
+      console.log('[WebAppLogin] Focusing window');
+      win.focus();
+      
+      const authState = authContext.getAuthState();
+      console.log('[WebAppLogin] Sending user:updated and discovered-pcs events');
+      win.webContents.send('user:updated', authState);
+      win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+      console.log('========== WEB APP LOGIN COMPLETE ==========\n');
+    });
+    
+    connectToClients().catch(err => console.error('[WebAppLogin] Error connecting to clients:', err));
   }
   
   return true;
@@ -566,8 +666,15 @@ function registerIPCHandlers() {
 
   // Authentication IPC handlers
   ipcMain.on("auth:set-auth", (event, { user, token }) => {
+    console.log('\n========== AUTH:SET-AUTH RECEIVED ==========');
+    console.log('[Auth] User:', user.email || user.name);
+    console.log('[Auth] Token provided:', !!token);
+    console.log('[Auth] Token length:', token ? token.length : 0);
+    console.log('[Auth] Window exists:', !!(win && !win.isDestroyed()));
+    
     // Set auth in context
     authContext.setAuth(user, token);
+    console.log('[Auth] Auth context set');
     
     const fs = require('fs');
     const authFile = path.join(app.getPath('userData'), 'auth.json');
@@ -576,54 +683,133 @@ function registerIPCHandlers() {
     try {
       fs.mkdirSync(path.dirname(authFile), { recursive: true });
       fs.writeFileSync(authFile, JSON.stringify({ user, token }));
-      console.log('Auth context updated for user:', user.email || user.name);
+      console.log('[Auth] Auth saved to file');
     } catch (error) {
-      console.error('Failed to save auth:', error);
+      console.error('[Auth] Failed to save auth:', error);
     }
     
-    // Close login window if open and create main window
-    if (loginWin && !loginWin.isDestroyed()) {
-      loginWin.close();
-    }
+    console.log('[Auth] Starting navigation logic...');
     
-    if (!win || win.isDestroyed()) {
-      createWindow();
-      connectToClients();
+    // Navigate to home page
+    if (win && !win.isDestroyed()) {
+      console.log('[Auth] Window is valid, starting navigation');
+      console.log('[Auth] Current window state - visible:', win.isVisible());
+      console.log('[Auth] Resizing window to 950x700');
+      win.setSize(950, 700);
+      win.center();
+      win.show();
+      
+      console.log('[Auth] Loading index.html...');
+      win.loadFile(path.join(__dirname, "index.html"))
+        .then(() => {
+          console.log('[Auth] loadFile promise resolved');
+          console.log('[Auth] Window still valid after load:', !!(win && !win.isDestroyed()));
+        })
+        .catch(err => console.error('[Auth] loadFile error:', err));
+      
+      // When content is ready, display it
+      win.webContents.once('did-finish-load', () => {
+        console.log('========== HOME PAGE LOADED ==========');
+        console.log('[Auth] did-finish-load event fired');
+        console.log('[Auth] Window still valid:', !!(win && !win.isDestroyed()));
+        
+        if (win && !win.isDestroyed()) {
+          console.log('[Auth] Focusing window');
+          win.focus();
+          
+          const authState = authContext.getAuthState();
+          console.log('[Auth] Auth state - authenticated:', authState.isAuthenticated);
+          
+          if (authState.isAuthenticated) {
+            console.log('[Auth] Sending user:updated and discovered-pcs events');
+            win.webContents.send('user:updated', authState);
+            win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+          }
+        }
+        console.log('========== NAVIGATION COMPLETE ==========\n');
+      });
+      
+      // Connect to clients
+      connectToClients().catch(err => console.error('[Auth] Error connecting to clients:', err));
     } else {
-      // Window already exists, just update user info
-      const authState = authContext.getAuthState();
-      win.webContents.send('user:updated', authState);
-      // Send discovered PCs list
-      win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+      console.log('[Auth] Window invalid, creating new window');
+      createWindow();
+      connectToClients().catch(err => console.error('[Auth] Error connecting to clients:', err));
     }
   });
 
   ipcMain.on("auth:login-success", (event, user) => {
+    console.log('\n========== AUTH:LOGIN-SUCCESS RECEIVED ==========');
+    console.log('[Login-Success] User:', user.email || user.name);
+    
     const fs = require('fs');
     const authFile = path.join(app.getPath('userData'), 'auth.json');
     
-    // Get token from login window localStorage (if available)
-    if (loginWin && !loginWin.isDestroyed()) {
-      authContext.setAuth(user, authContext.getToken());
+    // Get token and set auth
+    const token = authContext.getToken();
+    console.log('[Login-Success] Token available:', !!token);
+    console.log('[Login-Success] Token length:', token ? token.length : 0);
+    
+    authContext.setAuth(user, token);
+    console.log('[Login-Success] Auth context set');
+    
+    // Save to file
+    try {
+      fs.mkdirSync(path.dirname(authFile), { recursive: true });
+      fs.writeFileSync(authFile, JSON.stringify({ user, token: token }));
+      console.log('[Login-Success] Auth saved to file');
+    } catch (error) {
+      console.error('[Login-Success] Failed to save auth:', error);
+    }
+    
+    console.log('[Login-Success] Starting navigation logic...');
+    console.log('[Login-Success] Window exists:', !!(win && !win.isDestroyed()));
+    
+    // Navigate to home page
+    if (win && !win.isDestroyed()) {
+      console.log('[Login-Success] Window is valid, starting navigation');
+      console.log('[Login-Success] Current window state - visible:', win.isVisible());
+      console.log('[Login-Success] Resizing window to 950x700');
+      win.setSize(950, 700);
+      win.center();
+      win.show();
       
-      // Save to file
-      try {
-        fs.mkdirSync(path.dirname(authFile), { recursive: true });
-        fs.writeFileSync(authFile, JSON.stringify({ 
-          user, 
-          token: authContext.getToken() 
-        }));
-      } catch (error) {
-        console.error('Failed to save auth:', error);
-      }
+      console.log('[Login-Success] Loading index.html...');
+      win.loadFile(path.join(__dirname, "index.html"))
+        .then(() => {
+          console.log('[Login-Success] loadFile promise resolved');
+          console.log('[Login-Success] Window still valid after load:', !!(win && !win.isDestroyed()));
+        })
+        .catch(err => console.error('[Login-Success] loadFile error:', err));
       
-      // Close login window and create main window
-      if (loginWin && !loginWin.isDestroyed()) {
-        loginWin.close();
-      }
+      // When content is ready, display it
+      win.webContents.once('did-finish-load', () => {
+        console.log('========== HOME PAGE LOADED ==========');
+        console.log('[Login-Success] did-finish-load event fired');
+        console.log('[Login-Success] Window still valid:', !!(win && !win.isDestroyed()));
+        
+        if (win && !win.isDestroyed()) {
+          console.log('[Login-Success] Focusing window');
+          win.focus();
+          
+          const authState = authContext.getAuthState();
+          console.log('[Login-Success] Auth state - authenticated:', authState.isAuthenticated);
+          
+          if (authState.isAuthenticated) {
+            console.log('[Login-Success] Sending user:updated and discovered-pcs events');
+            win.webContents.send('user:updated', authState);
+            win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+          }
+        }
+        console.log('========== NAVIGATION COMPLETE ==========\n');
+      });
+      
+      // Connect to clients
+      connectToClients().catch(err => console.error('[Login-Success] Error connecting to clients:', err));
+    } else {
+      console.log('[Login-Success] Window invalid, creating new window');
       createWindow();
-      // Connect to clients from API (async)
-      connectToClients().catch(err => console.error('Error connecting to clients:', err));
+      connectToClients().catch(err => console.error('[Login-Success] Error connecting to clients:', err));
     }
   });
 
@@ -640,9 +826,9 @@ function registerIPCHandlers() {
           ws.close();
         });
         clientConnections.clear();
-        console.log('WebSocket client connections closed');
+        console.log('[Logout] WebSocket client connections closed');
       } catch (error) {
-        console.error('Error closing WebSocket connections:', error);
+        console.error('[Logout] Error closing WebSocket connections:', error);
       }
     }
     
@@ -657,25 +843,23 @@ function registerIPCHandlers() {
         console.log('[Logout] Auth file deleted');
       }
     } catch (error) {
-      console.error('Error deleting auth file:', error);
+      console.error('[Logout] Error deleting auth file:', error);
     }
     
-    // Close previous login window if exists
-    if (loginWin && !loginWin.isDestroyed()) {
-      loginWin.close();
-    }
-    
-    // Close main window and create fresh login window
+    // Navigate to login page instead of closing windows
     if (win && !win.isDestroyed()) {
-      console.log('[Logout] Closing main window');
-      win.close();
-    }
-    
-    // Create a fresh login window with a small delay to ensure main window is closed
-    setTimeout(() => {
-      console.log('[Logout] Creating login window');
+      console.log('[Logout] Navigating to login page');
+      win.setSize(500, 600); // Resize to login window size
+      win.loadFile(path.join(__dirname, "login.html"));
+      win.webContents.once('did-finish-load', () => {
+        console.log('[Logout] Login page loaded');
+        win.show();
+        win.focus();
+      });
+    } else {
+      console.log('[Logout] Window not available, creating login window');
       createLoginWindow();
-    }, 500);
+    }
   });
 
   ipcMain.handle("auth:get-state", async (event) => {
@@ -1351,6 +1535,8 @@ async function connectToClients() {
 }
 
 app.on('window-all-closed', () => {
+  console.log('[App] All windows closed');
+  
   // Cleanup heartbeat
   if (heartbeatInterval) {
     clearInterval(heartbeatInterval);
@@ -1362,6 +1548,7 @@ app.on('window-all-closed', () => {
     clearInterval(pcRefreshInterval);
     pcRefreshInterval = null;
   }
+  
   if (process.platform !== 'darwin') app.quit();
 });
 

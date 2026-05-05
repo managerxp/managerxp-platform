@@ -41,8 +41,8 @@
     },
     {
         "name":  "Copilot",
-        "version":  "147.0.3912.93",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.93\\mscopilot.exe"
+        "version":  "147.0.3912.98",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.98\\mscopilot.exe"
     },
     {
         "name":  "DBeaver",
@@ -453,6 +453,11 @@
         "name":  "Uninstall XAMPP",
         "version":  null,
         "launch":  "C:\\xampp\\uninstall.exe"
+    },
+    {
+        "name":  "uTorrent Web",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Roaming\\uTorrent Web\\utweb.exe"
     },
     {
         "name":  "VideoLAN Website",
