@@ -18,6 +18,9 @@ let timerCardWin;
 let wss; // WebSocket server instance (client listens)
 let serverConnection; // Connection from server
 let runningProcesses = new Map(); // appName -> { pid, appPath, timerCardWin }
+let cachedApps = null; // Cache for installed apps
+let lastAppsCacheTime = 0;
+const APPS_CACHE_DURATION = 5000; // Cache for 5 seconds to avoid duplicate PowerShell calls
 
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -243,6 +246,14 @@ function createTimerCard(appName, timerMinutes) {
 
 function getInstalledApps() {
   return new Promise((resolve, reject) => {
+    // Return cached apps if still fresh
+    const now = Date.now();
+    if (cachedApps && (now - lastAppsCacheTime) < APPS_CACHE_DURATION) {
+      log(`✅ Using cached apps (${cachedApps.length} items)`);
+      resolve(cachedApps);
+      return;
+    }
+
     const scriptPath = path.join(__dirname, "get_apps.ps1");
     const outputDir = path.join(__dirname, "output");
     const outputFile = path.join(outputDir, "apps.json");
@@ -252,24 +263,59 @@ function getInstalledApps() {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    exec(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
-      { cwd: __dirname },
-      (err) => {
-        if (err) {
-          reject(err);
-          return;
+    const startTime = Date.now();
+    let retryCount = 0;
+    const maxRetries = 1;
+
+    const executeScript = () => {
+      exec(
+        `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`,
+        { cwd: __dirname, timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+        (err) => {
+          const duration = Date.now() - startTime;
+          
+          if (err) {
+            log(`❌ PowerShell error (${duration}ms): ${err.message}`);
+            if (retryCount < maxRetries) {
+              retryCount++;
+              log(`🔄 Retrying PowerShell execution (attempt ${retryCount}/${maxRetries})...`);
+              setTimeout(executeScript, 500); // Retry after 500ms
+            } else {
+              reject(err);
+            }
+            return;
+          }
+          
+          // Add delay to ensure file is fully written
+          setTimeout(() => {
+            try {
+              if (!fs.existsSync(outputFile)) {
+                reject(new Error('Output file not created by PowerShell script'));
+                return;
+              }
+              
+              const fileStats = fs.statSync(outputFile);
+              log(`📄 Output file size: ${fileStats.size} bytes`);
+              
+              const data = fs.readFileSync(outputFile, "utf8");
+              const apps = JSON.parse(data);
+              
+              // Cache the result
+              cachedApps = apps;
+              lastAppsCacheTime = Date.now();
+              
+              log(`✅ Parsed ${apps.length} apps (${duration}ms)`);
+              resolve(apps);
+            } catch (parseErr) {
+              log(`❌ Parse error (${duration}ms): ${parseErr.message}`);
+              reject(parseErr);
+            }
+          }, 500); // Wait 500ms for file to be fully written
         }
-        
-        try {
-          const data = fs.readFileSync(outputFile, "utf8");
-          const apps = JSON.parse(data);
-          resolve(apps);
-        } catch (parseErr) {
-          reject(parseErr);
-        }
-      }
-    );
+      );
+    };
+
+    executeScript();
   });
 }
 
@@ -363,6 +409,8 @@ function listen() {
       if (msg.type === "REFRESH_APPS") {
         log("Refreshing apps list...");
         try {
+          // Force fresh fetch for refresh
+          cachedApps = null;
           const apps = await getInstalledApps();
           ws.send(JSON.stringify({
             type: "APPS_LIST",
@@ -387,6 +435,42 @@ function listen() {
           type: "MAC_ADDRESS",
           macAddress: macAddress
         }));
+      }
+      
+      if (msg.type === "GET_SOFTWARE_LIST") {
+        log("Fetching software list...");
+        try {
+          const startTime = Date.now();
+          // Force fresh fetch, bypass cache for software list requests
+          cachedApps = null;
+          const apps = await getInstalledApps();
+          const duration = Date.now() - startTime;
+          log(`Fetched ${apps.length} apps in ${duration}ms`);
+          
+          const software = apps.map(app => ({
+            name: app.name,
+            version: app.version,
+            path: app.launch
+          }));
+          
+          const message = {
+            type: "SOFTWARE_LIST",
+            simId: SIM_ID,
+            software: software,
+            count: software.length
+          };
+          
+          ws.send(JSON.stringify(message));
+          log(`✅ Software list sent: ${software.length} items`);
+        } catch (err) {
+          log(`❌ Error fetching software: ${err.message}`);
+          ws.send(JSON.stringify({
+            type: "SOFTWARE_LIST",
+            simId: SIM_ID,
+            software: [],
+            error: err.message
+          }));
+        }
       }
     });
 

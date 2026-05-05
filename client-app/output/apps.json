@@ -122,7 +122,7 @@
     {
         "name":  "HP Audio Switch",
         "version":  "1.0.179.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "HP Connection Optimizer",
@@ -197,7 +197,7 @@
     {
         "name":  "Microsoft Teams Meeting Add-in for Microsoft Office",
         "version":  "1.25.28902",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
@@ -217,7 +217,7 @@
     {
         "name":  "MongoDB 8.2.1 2008R2Plus SSL (64 bit)",
         "version":  "8.2.1",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "MongoDB Compass",
@@ -232,7 +232,7 @@
     {
         "name":  "Node.js",
         "version":  "22.20.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "Node.js command prompt",
@@ -352,7 +352,7 @@
     {
         "name":  "Python Launcher",
         "version":  "3.11.9150.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "RecoveryDrive",
@@ -542,7 +542,7 @@
     {
         "name":  "Windows SDK AddOn",
         "version":  "10.1.0.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "Word",

@@ -1379,11 +1379,23 @@ function selectSoftwareFromMaster() {
 }
 
 async function openPcSoftwareConfig(pcId) {
-  currentConfigPcId = pcId;
+  // Get the full PC data from pcsData
+  const pcData = pcsData[pcId];
+  
+  if (!pcData) {
+    alert('PC data not found. Please refresh the page.');
+    console.error('PC data not found for:', pcId);
+    return;
+  }
+  
+  // Use the actual database pc_id, not the client name
+  currentConfigPcId = pcData.pc_id;
+  
+  console.log('Opening software config for PC:', { pcName: pcId, pc_id: currentConfigPcId, pcData });
+  
   const modal = document.getElementById('pcSoftwareConfigModal');
   
   // Update PC info in modal
-  const pcData = pcsData[pcId];
   const isConnected = connectedClients.includes(pcId);
   
   document.getElementById('configPcName').textContent = pcData?.name || pcId;
@@ -1392,11 +1404,23 @@ async function openPcSoftwareConfig(pcId) {
   // Show modal
   modal.classList.add('active');
   
+  // Clear cache to force fresh fetch when modal opens
+  cachedPcSoftware = [];
+  const statusEl = document.getElementById('fetchStatus');
+  if (statusEl) {
+    statusEl.style.display = 'none';
+  }
+  
   // Load softwareMaster list for dropdown
   await loadSoftwareMasterList();
   
   // Load software list
-  await loadPcSoftwareList(pcId);
+  await loadPcSoftwareList(currentConfigPcId);
+  
+  // Setup autocomplete for this PC
+  setTimeout(() => {
+    setupSoftwarePathAutocomplete();
+  }, 100);
 }
 
 function closePcSoftwareModal() {
@@ -1404,6 +1428,7 @@ function closePcSoftwareModal() {
   modal.classList.remove('active');
   currentConfigPcId = null;
   currentConfigPcSoftware = [];
+  cachedPcSoftware = []; // Clear cached software
   
   // Reset form
   document.getElementById('addSoftwareForm').style.display = 'none';
@@ -1412,6 +1437,9 @@ function closePcSoftwareModal() {
   document.getElementById('softwarePath').value = '';
   document.getElementById('softwareIcon').value = '';
   document.getElementById('softwareVideo').value = '';
+  document.getElementById('softwareSuggestions').innerHTML = '';
+  document.getElementById('softwareSuggestions').style.display = 'none';
+  document.getElementById('fetchStatus').style.display = 'none';
 }
 
 async function loadPcSoftwareList(pcId) {
@@ -1429,7 +1457,7 @@ async function loadPcSoftwareList(pcId) {
     }
     
     // Fetch software from backend
-    const response = await fetch(`http://localhost:5000/api/pc-software/by-pc/${pcId}`, {
+    const response = await fetch(`http://localhost:5000/api/pc-software/pc/${pcId}`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -1438,7 +1466,8 @@ async function loadPcSoftwareList(pcId) {
     });
     
     if (!response.ok) {
-      throw new Error('Failed to fetch software');
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to fetch software');
     }
     
     const data = await response.json();
@@ -1480,18 +1509,186 @@ function renderSoftwareList(softwareArray) {
   });
 }
 
+let cachedPcSoftware = []; // Cache for PC software list
+
+function showSoftwareSuggestions() {
+  const softwarePath = document.getElementById('softwarePath');
+  const suggestionsContainer = document.getElementById('softwareSuggestions');
+  const searchText = softwarePath.value.toLowerCase();
+
+  if (!suggestionsContainer) {
+    console.error('Suggestions container not found');
+    return;
+  }
+
+  if (cachedPcSoftware.length === 0) {
+    suggestionsContainer.innerHTML = '';
+    suggestionsContainer.style.display = 'none';
+    return;
+  }
+
+  // Filter software paths based on search text (if empty, show all)
+  const filtered = searchText 
+    ? cachedPcSoftware.filter(software => 
+        software.path && software.path.toLowerCase().includes(searchText) ||
+        software.name && software.name.toLowerCase().includes(searchText)
+      )
+    : cachedPcSoftware; // Show all if search is empty
+
+  if (filtered.length === 0) {
+    suggestionsContainer.innerHTML = '';
+    suggestionsContainer.style.display = 'none';
+    return;
+  }
+
+  // Create suggestion items (show ALL items, but prioritize those with valid paths)
+  suggestionsContainer.innerHTML = '';
+  
+  if (filtered.length === 0) {
+    suggestionsContainer.innerHTML = '<div class="suggestion-loading">No software found</div>';
+    suggestionsContainer.style.display = 'block';
+    return;
+  }
+  
+  // Separate items with and without valid paths, then combine
+  const withPath = filtered.filter(s => s.path && s.path.trim());
+  const withoutPath = filtered.filter(s => !s.path || !s.path.trim());
+  const allSoftware = [...withPath, ...withoutPath].slice(0, 50); // Show up to 50 items
+  
+  allSoftware.forEach(software => {
+    const suggestionItem = document.createElement('div');
+    suggestionItem.className = 'suggestion-item';
+    const pathDisplay = software.path && software.path.trim() ? software.path : '(No path found)';
+    suggestionItem.innerHTML = `
+      <div class="suggestion-name">${software.name || 'Unknown'}</div>
+      <div class="suggestion-path" title="${pathDisplay}">${pathDisplay}</div>
+    `;
+    suggestionItem.onclick = () => selectSoftwarePath(software.path, software.name);
+    suggestionsContainer.appendChild(suggestionItem);
+  });
+
+  suggestionsContainer.style.display = 'block';
+}
+
+function selectSoftwarePath(path, name) {
+  const pathInput = document.getElementById('softwarePath');
+  const nameInput = document.getElementById('softwareName');
+  
+  // Allow selecting even if no path (user can manually enter path)
+  pathInput.value = path && path.trim() ? path : '';
+  nameInput.value = name || '';
+  
+  const suggestionsContainer = document.getElementById('softwareSuggestions');
+  suggestionsContainer.innerHTML = '';
+  suggestionsContainer.style.display = 'none';
+  
+  console.log(`Selected software: ${name} at ${path || '(no path - enter manually)'}`);
+  
+  // Trigger change event to update form state
+  pathInput.dispatchEvent(new Event('change', { bubbles: true }));
+  nameInput.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+async function fetchAndShowPcSoftware() {
+  const btn = document.getElementById('fetchPcSoftwareBtn');
+  const statusEl = document.getElementById('fetchStatus');
+  
+  if (!statusEl || !btn) return;
+
+  if (!currentConfigPcId) {
+    statusEl.textContent = '❌ No PC selected';
+    statusEl.style.display = 'block';
+    statusEl.style.color = 'var(--accent)';
+    return;
+  }
+
+  const pcName = Object.keys(pcsData).find(key => pcsData[key].pc_id === currentConfigPcId);
+  if (!pcName || !connectedClients.includes(pcName)) {
+    statusEl.textContent = '❌ PC is not connected. Connect first.';
+    statusEl.style.display = 'block';
+    statusEl.style.color = 'var(--accent)';
+    return;
+  }
+
+  btn.disabled = true;
+  statusEl.textContent = '⏳ Fetching software from PC (this may take 10-30 seconds for first time)...';
+  statusEl.style.display = 'block';
+  statusEl.style.color = 'var(--text-muted)';
+
+  try {
+    const result = await window.api.fetchPcSoftware(pcName);
+    
+    if (result.success) {
+      cachedPcSoftware = result.software || [];
+      const validCount = cachedPcSoftware.filter(s => s.path && s.path.trim()).length;
+      statusEl.textContent = `✅ Found ${cachedPcSoftware.length} items (${validCount} with valid paths). Type to search or click to select.`;
+      statusEl.style.color = 'var(--success)';
+      console.log(`Fetched from PC ${pcName}: ${cachedPcSoftware.length} items total`);
+      
+      // Show suggestions dropdown if there's text
+      setTimeout(() => {
+        showSoftwareSuggestions();
+        document.getElementById('softwarePath').focus();
+      }, 300);
+    } else {
+      statusEl.textContent = `❌ Error: ${result.error}`;
+      statusEl.style.color = 'var(--accent)';
+      console.error('Fetch failed:', result.error);
+    }
+  } catch (error) {
+    statusEl.textContent = `❌ Error: ${error.message}`;
+    statusEl.style.color = 'var(--accent)';
+    console.error('Fetch error:', error);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function setupSoftwarePathAutocomplete() {
+  const softwarePath = document.getElementById('softwarePath');
+  if (!softwarePath) return;
+
+  // Filter and show suggestions on input
+  softwarePath.addEventListener('input', () => {
+    showSoftwareSuggestions();
+  });
+
+  // Hide suggestions on blur (with delay to allow clicks)
+  softwarePath.addEventListener('blur', () => {
+    setTimeout(() => {
+      const suggestionsContainer = document.getElementById('softwareSuggestions');
+      if (suggestionsContainer) {
+        suggestionsContainer.style.display = 'none';
+      }
+    }, 200);
+  });
+}
+
 function toggleAddSoftwareForm() {
   const form = document.getElementById('addSoftwareForm');
   form.style.display = form.style.display === 'none' ? 'block' : 'none';
   
-  // Clear form
+  // Clear form and suggestions
   if (form.style.display === 'block') {
     document.getElementById('softwareMasterDropdown').value = '';
     document.getElementById('softwareName').value = '';
     document.getElementById('softwarePath').value = '';
     document.getElementById('softwareIcon').value = '';
     document.getElementById('softwareVideo').value = '';
+    document.getElementById('softwareSuggestions').innerHTML = '';
+    document.getElementById('softwareSuggestions').style.display = 'none';
+    document.getElementById('fetchStatus').style.display = 'none';
+    cachedPcSoftware = []; // Clear cache when opening form
     document.getElementById('softwareName').focus();
+    
+    // Setup autocomplete after form is displayed
+    setTimeout(() => {
+      setupSoftwarePathAutocomplete();
+    }, 100);
+  } else {
+    // Also clear when closing
+    document.getElementById('softwareSuggestions').innerHTML = '';
+    document.getElementById('softwareSuggestions').style.display = 'none';
   }
 }
 
@@ -1519,31 +1716,39 @@ async function addNewSoftware() {
       return;
     }
     
+    const payload = {
+      pc_id: parseInt(currentConfigPcId, 10),
+      software_name: softwareName,
+      software_path: softwarePath,
+      software_icon: softwareIcon || null,
+      software_video: softwareVideo || null,
+      is_active: true
+    };
+    
+    console.log('Sending PC software data:', payload);
+    
     const response = await fetch('http://localhost:5000/api/pc-software', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${token}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        pc_id: currentConfigPcId,
-        software_name: softwareName,
-        software_path: softwarePath,
-        software_icon: softwareIcon || null,
-        software_video: softwareVideo || null,
-        is_active: true
-      })
+      body: JSON.stringify(payload)
     });
     
     if (!response.ok) {
-      throw new Error('Failed to add software');
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to add software');
     }
+    
+    const result = await response.json();
+    console.log('Software added successfully:', result);
     
     // Reload software list
     await loadPcSoftwareList(currentConfigPcId);
     toggleAddSoftwareForm();
     
-    console.log('Software added successfully');
+    alert('Software added successfully!');
   } catch (error) {
     console.error('Error adding software:', error);
     alert(`Error adding software: ${error.message}`);
@@ -1572,7 +1777,8 @@ async function deleteSoftware(softwareId) {
     });
     
     if (!response.ok) {
-      throw new Error('Failed to delete software');
+      const errorData = await response.json();
+      throw new Error(errorData.message || 'Failed to delete software');
     }
     
     // Reload software list

@@ -1661,6 +1661,90 @@
       box-shadow: 0 0 20px rgba(255, 23, 68, 0.3);
     }
 
+    .software-suggestions {
+      position: relative;
+      top: -6px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--accent);
+      border-top: none;
+      border-radius: 0 0 10px 10px;
+      max-height: 250px;
+      overflow-y: auto;
+      z-index: 1000;
+      box-shadow: 0 10px 30px rgba(255, 23, 68, 0.2);
+    }
+
+    .suggestion-item {
+      padding: 10px 14px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255, 23, 68, 0.1);
+      transition: all 0.2s ease;
+    }
+
+    .suggestion-item:last-child {
+      border-bottom: none;
+    }
+
+    .suggestion-item:hover {
+      background: rgba(255, 23, 68, 0.1);
+      padding-left: 18px;
+    }
+
+    .suggestion-name {
+      color: var(--text-primary);
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .suggestion-path {
+      color: var(--text-muted);
+      font-size: 11px;
+      font-family: 'Courier New', monospace;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .suggestion-loading {
+      padding: 15px;
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-style: italic;
+    }
+
+    .fetch-software-btn {
+      padding: 10px 12px;
+      background: rgba(0, 200, 255, 0.1);
+      border: 1px solid rgba(0, 200, 255, 0.5);
+      color: #00c8ff;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      font-family: 'Orbitron', sans-serif;
+      transition: all 0.3s ease;
+      white-space: nowrap;
+      height: fit-content;
+    }
+
+    .fetch-software-btn:hover {
+      background: rgba(0, 200, 255, 0.2);
+      border-color: #00c8ff;
+      box-shadow: 0 0 15px rgba(0, 200, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .fetch-software-btn:active {
+      transform: translateY(0);
+    }
+
+    .fetch-software-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .close-config-btn {
       padding: 12px 24px;
       background: var(--bg-tertiary);
@@ -2056,7 +2140,16 @@
         </div>
         <div class="form-group">
           <label>Software Path *</label>
-          <input type="text" id="softwarePath" placeholder="e.g., C:\\Program Files\\Application\\app.exe" required />
+          <div style="display: flex; gap: 8px; align-items: flex-start;">
+            <div style="flex: 1;">
+              <input type="text" id="softwarePath" placeholder="e.g., C:\\Program Files\\Application\\app.exe" required />
+              <div id="softwareSuggestions" class="software-suggestions" style="display: none;"></div>
+            </div>
+            <button type="button" id="fetchPcSoftwareBtn" class="fetch-software-btn" onclick="fetchAndShowPcSoftware()" title="Fetch installed software from connected PC">
+              📥 Fetch from PC
+            </button>
+          </div>
+          <div id="fetchStatus" style="font-size: 11px; color: var(--text-muted); margin-top: 6px; display: none;"></div>
         </div>
         <div class="form-group">
           <label>Icon URL (Optional)</label>

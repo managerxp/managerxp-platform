@@ -14,6 +14,7 @@ const clients = new Map(); // simId -> { ws, apps }
 let allRegisteredPCs = new Map(); // Track all registered PCs with their config for heartbeat
 let discoveredPCs = new Map(); // Track auto-discovered PCs: ip_address -> { ip, mac, hostname, port, discovered_at }
 let pcConnectionStats = new Map(); // Track connection failures: pcName -> { failures, lastError, lastAttempt }
+let pendingSoftwareRequests = new Map(); // Track pending software requests: simId -> { resolve, reject, timeout }
 let heartbeatInterval = null;
 let pcRefreshInterval = null; // Periodic PC list refresh
 const HEARTBEAT_INTERVAL = 5000; // Send heartbeat every 5 seconds
@@ -664,6 +665,34 @@ function registerIPCHandlers() {
     return false;
   });
 
+  // Handle fetch software list request from UI
+  ipcMain.handle("fetch-pc-software", async (_, simId) => {
+    const client = clients.get(simId);
+    
+    if (!client || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: `PC ${simId} is not connected`, software: [] };
+    }
+    
+    return new Promise((resolve) => {
+      // Set a timeout for the request (30 seconds for large software lists)
+      const timeout = setTimeout(() => {
+        pendingSoftwareRequests.delete(simId);
+        resolve({ success: false, error: 'Request timeout - PC took too long to respond. Check PC connection.', software: [] });
+        log(`Software request timeout for ${simId}`);
+      }, 30000);
+      
+      // Store the resolve and timeout for later
+      pendingSoftwareRequests.set(simId, { resolve, timeout });
+      
+      // Send the request
+      client.ws.send(JSON.stringify({
+        type: "GET_SOFTWARE_LIST"
+      }));
+      
+      log(`Sent software list request to ${simId} (30 second timeout)`);
+    });
+  });
+
   // Authentication IPC handlers
   ipcMain.on("auth:set-auth", (event, { user, token }) => {
     console.log('\n========== AUTH:SET-AUTH RECEIVED ==========');
@@ -1255,6 +1284,17 @@ async function heartbeat() {
                     });
                   }
                 }
+
+                if (msg.type === "SOFTWARE_LIST") {
+                  const simId = msg.simId;
+                  const request = pendingSoftwareRequests.get(simId);
+                  if (request) {
+                    clearTimeout(request.timeout);
+                    pendingSoftwareRequests.delete(simId);
+                    request.resolve({ success: true, software: msg.software || [] });
+                    log(`Software list received from ${simId}: ${(msg.software || []).length} items`);
+                  }
+                }
               } catch (error) {
                 log(`Error parsing message: ${error.message}`);
               }
@@ -1354,6 +1394,17 @@ function connectToSpecificPC(ip, port, pcName) {
               pcName: pcName,
               apps: msg.apps
             });
+          }
+        }
+
+        if (msg.type === "SOFTWARE_LIST") {
+          const simId = msg.simId;
+          const request = pendingSoftwareRequests.get(simId);
+          if (request) {
+            clearTimeout(request.timeout);
+            pendingSoftwareRequests.delete(simId);
+            request.resolve({ success: true, software: msg.software || [] });
+            log(`[Dynamic Connect] Software list received from ${simId}: ${(msg.software || []).length} items`);
           }
         }
       } catch (error) {
@@ -1486,6 +1537,17 @@ async function connectToClients() {
                 pcName: simId,  // Send PC name so renderer can match
                 apps: msg.apps
               });
+            }
+          }
+
+          if (msg.type === "SOFTWARE_LIST") {
+            const pcSimId = msg.simId;
+            const request = pendingSoftwareRequests.get(pcSimId);
+            if (request) {
+              clearTimeout(request.timeout);
+              pendingSoftwareRequests.delete(pcSimId);
+              request.resolve({ success: true, software: msg.software || [] });
+              log(`Software list received from ${pcSimId}: ${(msg.software || []).length} items`);
             }
           }
         } catch (error) {
