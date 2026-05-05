@@ -108,6 +108,12 @@ function switchView(view) {
 window.api.onUserUpdated((data) => {
   if (data && data.user) {
     currentUser = data.user;
+    // Store token in localStorage for API calls
+    if (data.token) {
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('cafeId', data.user.cafe_id || '');
+      console.log('Token stored in localStorage');
+    }
     displayUserProfile(data.user);
     // Fetch PC data when user logs in
     fetchAndDisplayPCs();
@@ -420,6 +426,11 @@ function displayUserProfile(user) {
 // ==================== HANDLE LOGOUT ====================
 function handleLogout() {
   if (confirm('Are you sure you want to log out?')) {
+    // Clear localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('cafeId');
+    localStorage.removeItem('authToken');
+    
     // Clear local state
     currentUser = null;
     clientApps = {};
@@ -447,6 +458,7 @@ function handleLogout() {
     
     // Notify main process to handle logout
     window.api.logout();
+    console.log('Logged out successfully');
   }
 }
 
@@ -1261,6 +1273,111 @@ function closeNamePCModal() {
 
 // ==================== PC SOFTWARE CONFIGURATION ====================
 
+// Load software list from softwareMaster and populate dropdown
+async function loadSoftwareMasterList() {
+  const dropdown = document.getElementById('softwareMasterDropdown');
+  
+  if (!dropdown) {
+    console.error('softwareMasterDropdown element not found');
+    return;
+  }
+  
+  try {
+    let token = localStorage.getItem('token');
+    
+    // If no token in localStorage, try to get from IPC
+    if (!token && window.api && window.api.getToken) {
+      try {
+        token = await window.api.getToken();
+        console.log('Token fetched from IPC');
+      } catch (e) {
+        console.warn('Could not get token from IPC:', e);
+      }
+    }
+    
+    if (!token) {
+      console.warn('No token available, attempting fetch without auth');
+    }
+    
+    // Fetch software master list from backend (with higher limit to get all software)
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const response = await fetch('http://localhost:5000/api/software-master?limit=100', {
+      method: 'GET',
+      headers: headers
+    });
+    
+    if (!response.ok) {
+      console.error('Failed to fetch softwareMaster list:', response.status, response.statusText);
+      dropdown.innerHTML = '<option value="">-- Error loading software --</option>';
+      return;
+    }
+    
+    const data = await response.json();
+    console.log('SoftwareMaster response:', data);
+    
+    const softwareList = data.data || [];
+    
+    // Clear existing options except the first one
+    dropdown.innerHTML = '<option value="">-- Choose software to auto-fill --</option>';
+    
+    // Add options for each software
+    softwareList.forEach(software => {
+      const option = document.createElement('option');
+      option.value = JSON.stringify({
+        id: software.software_id,
+        name: software.software_name,
+        icon: software.software_icon,
+        video: software.software_video
+      });
+      option.textContent = software.software_name;
+      dropdown.appendChild(option);
+    });
+    
+    console.log('SoftwareMaster list loaded:', softwareList.length, 'items');
+  } catch (error) {
+    console.error('Error loading softwareMaster list:', error);
+    dropdown.innerHTML = '<option value="">-- Error loading software --</option>';
+  }
+}
+
+// Handle software selection from master and auto-fill fields
+function selectSoftwareFromMaster() {
+  const dropdown = document.getElementById('softwareMasterDropdown');
+  const selectedValue = dropdown.value;
+  
+  if (!selectedValue) {
+    // Reset fields if no selection
+    document.getElementById('softwareName').value = '';
+    document.getElementById('softwareIcon').value = '';
+    document.getElementById('softwareVideo').value = '';
+    // Clear but keep software path as user needs to enter it
+    return;
+  }
+  
+  try {
+    const selected = JSON.parse(selectedValue);
+    
+    // Auto-fill the fields
+    document.getElementById('softwareName').value = selected.name || '';
+    document.getElementById('softwareIcon').value = selected.icon || '';
+    document.getElementById('softwareVideo').value = selected.video || '';
+    
+    // Focus on path field so user can enter it
+    document.getElementById('softwarePath').focus();
+    
+    console.log('Software selected and fields auto-filled:', selected.name);
+  } catch (error) {
+    console.error('Error parsing software selection:', error);
+  }
+}
+
 async function openPcSoftwareConfig(pcId) {
   currentConfigPcId = pcId;
   const modal = document.getElementById('pcSoftwareConfigModal');
@@ -1275,6 +1392,9 @@ async function openPcSoftwareConfig(pcId) {
   // Show modal
   modal.classList.add('active');
   
+  // Load softwareMaster list for dropdown
+  await loadSoftwareMasterList();
+  
   // Load software list
   await loadPcSoftwareList(pcId);
 }
@@ -1287,6 +1407,7 @@ function closePcSoftwareModal() {
   
   // Reset form
   document.getElementById('addSoftwareForm').style.display = 'none';
+  document.getElementById('softwareMasterDropdown').value = '';
   document.getElementById('softwareName').value = '';
   document.getElementById('softwarePath').value = '';
   document.getElementById('softwareIcon').value = '';
@@ -1300,7 +1421,7 @@ async function loadPcSoftwareList(pcId) {
   try {
     // Get the cafeId from localStorage (set during login)
     const cafeId = localStorage.getItem('cafeId');
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     
     if (!cafeId || !token) {
       softwareList.innerHTML = '<div class="no-software">Please log in first</div>';
@@ -1365,6 +1486,7 @@ function toggleAddSoftwareForm() {
   
   // Clear form
   if (form.style.display === 'block') {
+    document.getElementById('softwareMasterDropdown').value = '';
     document.getElementById('softwareName').value = '';
     document.getElementById('softwarePath').value = '';
     document.getElementById('softwareIcon').value = '';
@@ -1390,7 +1512,7 @@ async function addNewSoftware() {
   }
   
   try {
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     
     if (!token) {
       alert('Please log in first');
@@ -1434,7 +1556,7 @@ async function deleteSoftware(softwareId) {
   }
   
   try {
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token');
     
     if (!token) {
       alert('Please log in first');

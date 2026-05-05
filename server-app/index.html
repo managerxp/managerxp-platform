@@ -2044,6 +2044,13 @@
       <!-- Add Software Form (Hidden by default) -->
       <div id="addSoftwareForm" class="add-software-form" style="display: none;">
         <div class="form-group">
+          <label>Select from Software Master (Optional)</label>
+          <select id="softwareMasterDropdown" onchange="selectSoftwareFromMaster()" style="width: 100%; padding: 8px; border: 1px solid rgba(255, 23, 68, 0.3); border-radius: 4px; background: var(--bg-secondary); color: var(--text-primary);">
+            <option value="">-- Choose software to auto-fill --</option>
+          </select>
+        </div>
+        <div style="text-align: center; margin: 8px 0; color: var(--text-muted); font-size: 12px;">OR</div>
+        <div class="form-group">
           <label>Software Name *</label>
           <input type="text" id="softwareName" placeholder="e.g., Google Chrome, VS Code" required />
         </div>
@@ -2122,16 +2129,6 @@
 
     function closeNamePCModal() {
       document.getElementById('namePCModal').classList.remove('active');
-    }
-
-    function handleLogout() {
-      console.log('Logout clicked');
-      closeDropdowns();
-    }
-
-    function handleLogin() {
-      console.log('Login clicked');
-      closeDropdowns();
     }
 
     // Live Clock Function

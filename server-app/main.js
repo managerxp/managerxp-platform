@@ -41,6 +41,8 @@ function createLoginWindow() {
   Menu.setApplicationMenu(null);
 
   loginWin.loadFile("login.html");
+  loginWin.show(); // Ensure the window is shown
+  loginWin.focus(); // Focus on the login window
   // loginWin.webContents.openDevTools(); // Uncomment for debugging
 }
 
@@ -629,6 +631,8 @@ function registerIPCHandlers() {
     const fs = require('fs');
     const authFile = path.join(app.getPath('userData'), 'auth.json');
     
+    console.log('[Logout] User initiated logout');
+    
     // Close WebSocket client connections
     if (clientConnections && clientConnections.size > 0) {
       try {
@@ -650,6 +654,7 @@ function registerIPCHandlers() {
     try {
       if (fs.existsSync(authFile)) {
         fs.unlinkSync(authFile);
+        console.log('[Logout] Auth file deleted');
       }
     } catch (error) {
       console.error('Error deleting auth file:', error);
@@ -662,11 +667,15 @@ function registerIPCHandlers() {
     
     // Close main window and create fresh login window
     if (win && !win.isDestroyed()) {
+      console.log('[Logout] Closing main window');
       win.close();
     }
     
-    // Create a fresh login window (this clears any localStorage from previous session)
-    createLoginWindow();
+    // Create a fresh login window with a small delay to ensure main window is closed
+    setTimeout(() => {
+      console.log('[Logout] Creating login window');
+      createLoginWindow();
+    }, 500);
   });
 
   ipcMain.handle("auth:get-state", async (event) => {
