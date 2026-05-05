@@ -1572,4 +1572,3 @@ app.on('quit', () => {
   });
   clientConnections.clear();
 });
-
