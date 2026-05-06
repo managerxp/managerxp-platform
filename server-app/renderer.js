@@ -865,7 +865,39 @@ function renderApps(apps) {
 
     const appIcon = document.createElement("div");
     appIcon.className = "app-icon";
-    appIcon.textContent = app.name.charAt(0).toUpperCase();
+    
+    // Display icon image if available, otherwise show first letter
+    if (app.icon) {
+      // Construct full URL if icon is a relative path
+      let iconUrl = app.icon;
+      if (app.icon.startsWith('/')) {
+        iconUrl = `http://localhost:5000${app.icon}`;
+      }
+      
+      const iconImg = document.createElement("img");
+      iconImg.src = iconUrl;
+      iconImg.alt = app.name;
+      iconImg.style.width = "100%";
+      iconImg.style.height = "100%";
+      iconImg.style.objectFit = "contain";
+      iconImg.style.borderRadius = "12px";
+      iconImg.style.padding = "4px";
+      
+      iconImg.onerror = () => {
+        console.error('Failed to load icon:', iconUrl);
+        // Fallback to first letter if image fails to load
+        iconImg.style.display = "none";
+        appIcon.textContent = app.name.charAt(0).toUpperCase();
+      };
+      
+      iconImg.onload = () => {
+        console.log('Icon loaded successfully:', iconUrl);
+      };
+      
+      appIcon.appendChild(iconImg);
+    } else {
+      appIcon.textContent = app.name.charAt(0).toUpperCase();
+    }
 
     const appDetails = document.createElement("div");
     appDetails.className = "app-details";
