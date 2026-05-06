@@ -693,6 +693,38 @@ function registerIPCHandlers() {
     });
   });
 
+  // Handle fetch PC software from API (new approach)
+  ipcMain.handle("get-pc-software-from-api", async (_, pcId) => {
+    try {
+      const token = authContext.getToken();
+      
+      if (!token) {
+        return { success: false, error: 'Not authenticated', data: [] };
+      }
+
+      const response = await fetch(`http://localhost:5000/api/pc-software/pc/${pcId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`PC software fetch failed: ${response.status} ${errorText}`);
+        return { success: false, error: `HTTP ${response.status}`, data: [] };
+      }
+
+      const result = await response.json();
+      log(`Fetched software for PC ${pcId}: ${result.count || 0} software items`);
+      return result;
+    } catch (error) {
+      console.error("Error fetching PC software from API:", error.message);
+      return { success: false, error: error.message, data: [] };
+    }
+  });
+
   // Authentication IPC handlers
   ipcMain.on("auth:set-auth", (event, { user, token }) => {
     console.log('\n========== AUTH:SET-AUTH RECEIVED ==========');

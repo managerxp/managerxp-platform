@@ -32,6 +32,7 @@ contextBridge.exposeInMainWorld("api", {
   getClientApps: (simId) => ipcRenderer.invoke("get-client-apps", simId),
   closeApp: (data) => ipcRenderer.invoke("close-app", data),
   fetchPcSoftware: (simId) => ipcRenderer.invoke("fetch-pc-software", simId),
+  getPcSoftwareFromAPI: (pcId) => ipcRenderer.invoke("get-pc-software-from-api", pcId),
   
   // PC data
   getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),

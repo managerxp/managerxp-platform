@@ -766,21 +766,86 @@ async function selectClient(clientId) {
   selectedClientEl.textContent = clientId;
   renderClients();
 
-  console.log('Getting apps for client:', clientId);
-  const apps = await window.api.getClientApps(clientId);
-  console.log('Got apps:', apps);
-  
-  clientApps[clientId] = apps;
-  if (apps && apps.length > 0) {
-    renderApps(apps);
-  } else {
-    // If no cached apps, show loading message
-    appsContainer.innerHTML = '<div class="no-apps">Loading applications...</div>';
+  try {
+    // Get PC data to extract pc_id
+    const pcData = pcsData[clientId];
+    if (!pcData || !pcData.pc_id) {
+      console.error('PC data not found for client:', clientId);
+      appsContainer.innerHTML = '<div class="no-apps">PC information not available</div>';
+      return;
+    }
+
+    console.log('Getting apps for PC:', clientId, 'with pc_id:', pcData.pc_id);
+    
+    // Fetch from API instead of local cache
+    const response = await window.api.getPcSoftwareFromAPI(pcData.pc_id);
+    console.log('Got software from API:', response);
+    
+    if (response.success && response.data && Array.isArray(response.data)) {
+      // Convert API format to app format for renderApps
+      const apps = response.data.map(software => ({
+        name: software.software_name,
+        version: software.software_path || 'Unknown',
+        launch: software.software_path,
+        icon: software.software_icon,
+        video: software.software_video,
+        isActive: software.is_active
+      }));
+      
+      clientApps[clientId] = apps;
+      if (apps && apps.length > 0) {
+        renderApps(apps);
+      } else {
+        appsContainer.innerHTML = '<div class="no-apps">No software installed on this PC</div>';
+      }
+    } else {
+      appsContainer.innerHTML = `<div class="no-apps">Error: ${response.error || 'Failed to fetch software'}</div>`;
+    }
+  } catch (error) {
+    console.error('Error in selectClient:', error);
+    appsContainer.innerHTML = `<div class="no-apps">Error loading software: ${error.message}</div>`;
   }
 }
 
 async function refreshClientApps(clientId) {
-  await window.api.refreshApps(clientId);
+  try {
+    // Get PC data to extract pc_id
+    const pcData = pcsData[clientId];
+    if (!pcData || !pcData.pc_id) {
+      console.error('PC data not found for client:', clientId);
+      return;
+    }
+
+    console.log('Refreshing software for PC:', clientId);
+    
+    // Fetch from API
+    const response = await window.api.getPcSoftwareFromAPI(pcData.pc_id);
+    
+    if (response.success && response.data && Array.isArray(response.data)) {
+      // Convert API format to app format
+      const apps = response.data.map(software => ({
+        name: software.software_name,
+        version: software.software_path || 'Unknown',
+        launch: software.software_path,
+        icon: software.software_icon,
+        video: software.software_video,
+        isActive: software.is_active
+      }));
+      
+      clientApps[clientId] = apps;
+      
+      // Re-render if this is the selected client
+      if (selectedClient === clientId) {
+        renderApps(apps);
+      }
+      
+      console.log('Software refreshed successfully');
+    } else {
+      console.error('Failed to refresh software:', response.error);
+    }
+  } catch (error) {
+    console.error('Error refreshing software:', error);
+  }
 }
 
 function renderApps(apps) {
