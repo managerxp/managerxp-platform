@@ -2,255 +2,349 @@
 <html>
 <head>
   <meta charset="UTF-8" />
-  <title>ConnectXP - Client Manager</title>
+  <title>ConnectXP - Gaming Hub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary-neon: #ff0033; /* Intense Red */
+      --secondary-neon: #8a001c; /* Dark Blood Red */
+      --accent-online: #00ff41; /* Terminal Green for contrast */
+      --bg-dark: #000000;
+      --bg-panel: #0a0a0a;
+      --text-main: #ffffff;
+      --text-dim: #666666;
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
 
-    @keyframes gradient {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
-    }
-
-    @keyframes glow {
-      0%, 100% { box-shadow: 0 0 20px rgba(34, 197, 94, 0.5); }
-      50% { box-shadow: 0 0 40px rgba(34, 197, 94, 0.8); }
-    }
-
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(-45deg, #0f172a, #1e1b4b, #1e293b, #0c4a6e);
-      background-size: 400% 400%;
-      animation: gradient 15s ease infinite;
-      color: #e2e8f0;
-      margin: 0;
-      padding: 0;
+      font-family: 'Rajdhani', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
       min-height: 100vh;
       overflow-x: hidden;
-      overflow-y: auto;
-    }
-
-    .container {
-      width: 100%;
-      padding: 30px 25px;
-      animation: fadeIn 0.8s ease-out;
-    }
-
-    .header {
-      text-align: center;
-      margin-bottom: 25px;
-    }
-
-    .logo {
-      font-size: 36px;
-      font-weight: 700;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 8px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-    }
-
-    .logo::before {
-      content: " ";
-      font-size: 40px;
-      -webkit-text-fill-color: initial;
-    }
-
-    .subtitle {
-      font-size: 12px;
-      color: #94a3b8;
-      font-weight: 500;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-
-    .status-card {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 25px 20px;
-      text-align: center;
-      margin-bottom: 20px;
-      transition: all 0.3s ease;
-    }
-
-    .status-card:hover {
-      border-color: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    }
-
-    .status-indicator {
-      display: inline-flex;
-      align-items: center;
-      gap: 12px;
-      padding: 15px 30px;
-      border-radius: 12px;
-      font-size: 22px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      margin-bottom: 12px;
-      transition: all 0.3s ease;
-    }
-
-    .status-dot {
-      width: 14px;
-      height: 14px;
-      border-radius: 50%;
+      /* Tech grid background with Red tint */
+      background-image: 
+        linear-gradient(rgba(255, 0, 51, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 0, 51, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
       position: relative;
     }
 
-    .status-dot::after {
+    /* Dark Vignette */
+    body::after {
       content: "";
-      position: absolute;
+      position: fixed;
+      top: 0;
+      left: 0;
       width: 100%;
       height: 100%;
-      border-radius: 50%;
-      animation: pulse 2s ease-in-out infinite;
+      background: radial-gradient(circle at center, transparent 0%, #000000 90%);
+      pointer-events: none;
+      z-index: 1;
     }
 
-    .connected .status-indicator {
-      background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%);
-      border: 2px solid rgba(34, 197, 94, 0.5);
-      color: #22c55e;
-      animation: glow 2s ease-in-out infinite;
+    .container {
+      max-width: 700px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      position: relative;
+      z-index: 2;
     }
 
-    .connected .status-dot {
-      background: #22c55e;
-      box-shadow: 0 0 20px rgba(34, 197, 94, 0.8);
+    /* --- Header Section --- */
+    .header {
+      text-align: center;
+      margin-bottom: 40px;
+      position: relative;
     }
 
-    .disconnected .status-indicator {
-      background: rgba(239, 68, 68, 0.15);
-      border: 2px solid rgba(239, 68, 68, 0.4);
-      color: #ef4444;
+    .logo {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 42px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 4px;
+      color: #fff;
+      /* Text Shadow for Neon Red Glow */
+      text-shadow: 
+        0 0 10px var(--primary-neon),
+        0 0 20px var(--primary-neon),
+        2px 2px 0px var(--secondary-neon);
+      margin-bottom: 5px;
+      position: relative;
+      display: inline-block;
     }
 
-    .disconnected .status-dot {
-      background: #ef4444;
-      box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
-    }
-
-    .status-message {
-      font-size: 13px;
-      color: #94a3b8;
-      margin-top: 10px;
-      margin-bottom: 15px;
-    }
-
-    .logs-card {
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 16px;
-      padding: 20px;
+    /* Decorative HUD brackets */
+    .logo::before, .logo::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      width: 30px;
+      height: 30px;
+      border: 2px solid var(--primary-neon);
+      box-shadow: 0 0 8px var(--primary-neon);
       transition: all 0.3s ease;
     }
 
-    .logs-card:hover {
-      border-color: rgba(255, 255, 255, 0.2);
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+    .logo:hover::before, .logo:hover::after {
+      transform: translateY(-50%) scale(1.1);
+      box-shadow: 0 0 15px var(--primary-neon);
     }
 
-    .logs-header {
+    .logo::before {
+      left: -45px;
+      border-right: none;
+      transform: translateY(-50%);
+    }
+
+    .logo::after {
+      right: -45px;
+      border-left: none;
+      transform: translateY(-50%);
+    }
+
+    .subtitle {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 6px;
+      text-transform: uppercase;
+      font-weight: 500;
+    }
+
+    /* --- Status Card --- */
+    .status-card {
+      background: linear-gradient(135deg, rgba(20, 20, 20, 0.9) 0%, rgba(5, 5, 5, 0.95) 100%);
+      border: 1px solid #222;
+      border-top: 3px solid var(--primary-neon);
+      position: relative;
+      padding: 30px;
+      margin-bottom: 30px;
+      /* Angled Cut Corner */
+      clip-path: polygon(
+        0 0, 
+        100% 0, 
+        100% calc(100% - 20px), 
+        calc(100% - 20px) 100%, 
+        0 100%
+      );
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* Corner accents */
+    .status-card::before {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 20px;
+      height: 20px;
+      border-bottom: 2px solid var(--primary-neon);
+      border-right: 2px solid var(--primary-neon);
+    }
+
+    .status-indicator {
       display: flex;
       align-items: center;
-      gap: 10px;
-      margin-bottom: 12px;
-      font-size: 15px;
+      justify-content: center;
+      gap: 15px;
+      padding: 15px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(0, 0, 0, 0.5);
+      position: relative;
+    }
+
+    .status-dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: #333;
+      box-shadow: none;
+    }
+
+    #statusText {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #555;
+      transition: color 0.3s;
+    }
+
+    /* Connected State - Green for usability */
+    .connected #statusText {
+      color: var(--accent-online);
+      text-shadow: 0 0 10px var(--accent-online);
+    }
+    .connected .status-dot {
+      background: var(--accent-online);
+      box-shadow: 0 0 15px var(--accent-online);
+      animation: pulse-glow 1s infinite alternate;
+    }
+    .connected .status-indicator {
+      border-color: rgba(0, 255, 65, 0.3);
+      background: rgba(0, 255, 65, 0.05);
+    }
+
+    /* Disconnected State - Red */
+    .disconnected #statusText {
+      color: var(--primary-neon);
+      text-shadow: 0 0 10px var(--primary-neon);
+    }
+    .disconnected .status-dot {
+      background: var(--primary-neon);
+      box-shadow: 0 0 15px var(--primary-neon);
+    }
+    .disconnected .status-indicator {
+      border-color: rgba(255, 0, 51, 0.3);
+      background: rgba(255, 0, 51, 0.05);
+    }
+
+    .status-message {
+      text-align: center;
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 20px;
+      letter-spacing: 1px;
+    }
+
+    /* --- Info Grid --- */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 15px;
+    }
+
+    .info-item {
+      background: rgba(0, 0, 0, 0.6);
+      border-left: 3px solid var(--primary-neon);
+      padding: 15px;
+      position: relative;
+    }
+
+    /* Arrow accent */
+    .info-item::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 0;
+      height: 0;
+      border-style: solid;
+      border-width: 0 10px 10px 0;
+      border-color: transparent rgba(255, 255, 255, 0.1) transparent transparent;
+    }
+
+    .info-label {
+      font-size: 11px;
+      color: var(--primary-neon);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
       font-weight: 600;
     }
 
-    .logs-header::before {
-      content: "📋";
-      font-size: 18px;
+    .info-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      color: #eee;
+      font-weight: 400;
+    }
+
+    /* --- Logs Card --- */
+    .logs-card {
+      background: rgba(10, 10, 10, 0.8);
+      border: 1px solid #222;
+      padding: 20px;
+      position: relative;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .logs-header {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      color: var(--primary-neon);
+      letter-spacing: 2px;
+      margin-bottom: 15px;
+      border-bottom: 1px solid #222;
+      padding-bottom: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logs-header::after {
+      content: "SYS://STREAM";
+      font-size: 10px;
+      color: #555;
+      font-weight: 400;
     }
 
     #logs {
-      background: rgba(0, 0, 0, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 10px;
-      padding: 12px;
-      height: 200px;
+      background: #000;
+      border: 1px solid #111;
+      padding: 15px;
+      height: 220px;
       overflow-y: auto;
-      font-size: 12px;
       font-family: 'Courier New', monospace;
-      line-height: 1.6;
+      font-size: 13px;
+      line-height: 1.5;
+      color: #666;
     }
 
     #logs::-webkit-scrollbar {
       width: 8px;
     }
-
     #logs::-webkit-scrollbar-track {
-      background: rgba(0, 0, 0, 0.2);
-      border-radius: 10px;
+      background: #111;
     }
-
     #logs::-webkit-scrollbar-thumb {
-      background: linear-gradient(135deg, #667eea, #764ba2);
-      border-radius: 10px;
+      background: var(--secondary-neon);
+      border-radius: 0;
     }
 
     #logs div {
-      margin-bottom: 5px;
-      color: #94a3b8;
-      padding: 5px;
-      border-radius: 4px;
-      transition: background 0.2s ease;
+      margin-bottom: 8px;
+      position: relative;
+      padding-left: 15px;
     }
 
-    #logs div:hover {
-      background: rgba(255, 255, 255, 0.05);
+    /* Red arrow indicators for logs */
+    #logs div::before {
+      content: ">";
+      position: absolute;
+      left: 0;
+      color: var(--primary-neon);
+      font-weight: bold;
     }
 
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-      margin-top: 15px;
+    /* Animations */
+    @keyframes pulse-glow {
+      from { box-shadow: 0 0 5px var(--accent-online); }
+      to { box-shadow: 0 0 20px var(--accent-online), 0 0 5px #fff; }
     }
 
-    .info-item {
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 8px;
-      padding: 12px;
-      text-align: center;
+    @keyframes flicker {
+      0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
+          opacity: 1;
+      }
+      20%, 24%, 55% {
+          opacity: 0.4;
+      }
     }
 
-    .info-label {
-      font-size: 10px;
-      color: #64748b;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 4px;
-    }
-
-    .info-value {
-      font-size: 14px;
-      font-weight: 600;
-      color: #667eea;
+    /* Responsive adjustments */
+    @media (max-width: 480px) {
+      .logo { font-size: 28px; }
+      .logo::before, .logo::after { display: none; }
+      .info-grid { grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -258,31 +352,34 @@
   <div class="container">
     <div class="header">
       <div class="logo">ConnectXP</div>
-      <div class="subtitle">Virtual Machine Client</div>
+      <div class="subtitle">Virtual Client Interface</div>
     </div>
 
+    <!-- Functionality preserved: IDs and Classes match original -->
     <div class="status-card" id="statusCard">
       <div class="status-indicator" id="status">
         <span class="status-dot"></span>
-        <span id="statusText">DISCONNECTED</span>
+        <span id="statusText">OFFLINE</span>
       </div>
-      <div class="status-message" id="statusMessage">Attempting to connect to server...</div>
+      <div class="status-message" id="statusMessage">Establishing secure connection...</div>
       
       <div class="info-grid">
         <div class="info-item">
           <div class="info-label">Client ID</div>
-          <div class="info-value" id="clientIdValue">Loading...</div>
+          <div class="info-value" id="clientIdValue">WAITING...</div>
         </div>
         <div class="info-item">
-          <div class="info-label">Server</div>
+          <div class="info-label">Server Node</div>
           <div class="info-value">localhost:8080</div>
         </div>
       </div>
     </div>
 
     <div class="logs-card">
-      <div class="logs-header">Activity Logs</div>
-      <div id="logs"></div>
+      <div class="logs-header">Terminal Output</div>
+      <div id="logs">
+        <div>System boot sequence initiated...</div>
+      </div>
     </div>
   </div>
 
