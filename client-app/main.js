@@ -21,6 +21,9 @@ let runningProcesses = new Map(); // appName -> { pid, appPath, timerCardWin }
 let cachedApps = null; // Cache for installed apps
 let lastAppsCacheTime = 0;
 const APPS_CACHE_DURATION = 5000; // Cache for 5 seconds to avoid duplicate PowerShell calls
+let userToken = null; // Store user authentication token
+let currentPage = 'welcome'; // Track current page
+let currentStatus = 'DISCONNECTED'; // Track current connection status
 
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -64,6 +67,32 @@ function createWindow() {
     log(`Timer expired for ${appName}, closing application...`);
     closeApplication(appName);
   });
+
+  // IPC handler for page navigation
+  ipcMain.on('navigate', (event, page) => {
+    navigateToPage(page);
+  });
+
+  // IPC handler for storing authentication token
+  ipcMain.on('store-token', (event, token) => {
+    userToken = token;
+    log(`User token stored`);
+  });
+
+  // IPC handler for retrieving authentication token
+  ipcMain.handle('get-token', async (event) => {
+    return userToken;
+  });
+
+  // IPC handler for getting PC name
+  ipcMain.handle('get-pc-name', async (event) => {
+    return SIM_ID;
+  });
+
+  // IPC handler for getting current connection status
+  ipcMain.handle('get-status', async (event) => {
+    return currentStatus;
+  });
   
   // Create main client application window
   win = new BrowserWindow({
@@ -82,7 +111,26 @@ function createWindow() {
   // Remove the application menu
   Menu.setApplicationMenu(null);
 
+  currentPage = 'status';
   win.loadFile("index.html");
+}
+
+function navigateToPage(page) {
+  if (!win || win.isDestroyed()) return;
+  
+  const pages = {
+    'welcome': 'welcome.html',
+    'login': 'login.html',
+    'register': 'register.html',
+    'dashboard': 'index.html',
+    'status': 'index.html'
+  };
+
+  const pageFile = pages[page] || 'welcome.html';
+  currentPage = page;
+  log(`Navigating to ${page} (${pageFile})`);
+  
+  win.loadFile(pageFile);
 }
 
 function log(message) {
@@ -90,8 +138,25 @@ function log(message) {
 }
 
 function updateStatus(status) {
+  currentStatus = status; // Update current status
+  
   if (win) win.webContents.send("status", status);
   if (statusBarWin) statusBarWin.webContents.send("status", status);
+  
+  // Navigate to welcome page when connected
+  if (status === "CONNECTED" && currentPage === 'status') {
+    setTimeout(() => {
+      navigateToPage('welcome');
+    }, 500);
+  }
+  
+  // Navigate back to the home/logs page when disconnected
+  if (status === "DISCONNECTED" && currentPage !== 'status') {
+    setTimeout(() => {
+      log("PC disconnected, navigating back to home page");
+      navigateToPage('status');
+    }, 500);
+  }
 }
 
 // Get the local IP address of the system
