@@ -3,182 +3,288 @@
 <head>
   <meta charset="UTF-8" />
   <title>ConnectXP - Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
+    :root {
+      --primary-red: #ff0033;
+      --dark-red: #8a001c;
+      --accent-green: #00ff41;
+      --bg-dark: #050505;
+      --text-main: #ffffff;
+      --text-dim: #666666;
+      --input-bg: #0a0a0a;
+      --border-tech: #222;
+    }
+
     * {
       margin: 0;
       padding: 0;
       box-sizing: border-box;
     }
 
-    @keyframes gradient {
-      0% { background-position: 0% 50%; }
-      50% { background-position: 100% 50%; }
-      100% { background-position: 0% 50%; }
-    }
-
-    @keyframes fadeIn {
-      from { opacity: 0; transform: translateY(20px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @keyframes slideIn {
-      from { transform: translateX(-50px); opacity: 0; }
-      to { transform: translateX(0); opacity: 1; }
-    }
-
     body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background: linear-gradient(-45deg, #0f172a, #1e1b4b, #1e293b, #0c4a6e);
-      background-size: 400% 400%;
-      animation: gradient 15s ease infinite;
-      color: #e2e8f0;
+      font-family: 'Rajdhani', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
       height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; /* Split Screen Layout */
       overflow: hidden;
+      position: relative;
     }
 
-    .login-container {
-      width: 100%;
-      max-width: 420px;
-      animation: fadeIn 0.6s ease-out;
+    /* --- Background Effects --- */
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 200%;
+      height: 200%;
+      background-image: 
+        linear-gradient(rgba(255, 0, 51, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 0, 51, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridMove 20s linear infinite;
+      z-index: 0;
     }
 
-    .login-card {
-      background: rgba(15, 23, 42, 0.7);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      border-radius: 20px;
-      padding: 50px 40px;
-      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-      animation: slideIn 0.6s ease-out;
+    /* --- Split Layout Containers --- */
+    .brand-panel {
+      flex: 1;
+      background: linear-gradient(135deg, #0a0a0a 0%, #000000 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-right: 1px solid var(--border-tech);
+      position: relative;
+      z-index: 1;
+      padding: 40px;
+      /* Angled cut on the right side */
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
     }
 
-    .logo-section {
+    /* Glowing line separator */
+    .brand-panel::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 2px;
+      background: linear-gradient(to bottom, transparent, var(--primary-red), transparent);
+      box-shadow: 0 0 15px var(--primary-red);
+    }
+
+    .form-panel {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+      padding: 40px;
+    }
+
+    /* --- Branding Section (Left) --- */
+    .brand-content {
       text-align: center;
-      margin-bottom: 35px;
-      animation: fadeIn 0.8s ease-out 0.2s both;
+      max-width: 400px;
     }
 
-    .logo {
-      font-size: 48px;
-      margin-bottom: 15px;
+    .brand-logo {
+      font-size: 80px;
+      margin-bottom: 20px;
+      filter: drop-shadow(0 0 20px var(--primary-red));
+      animation: float 6s ease-in-out infinite;
     }
 
-    .logo-text {
-      font-size: 28px;
+    .brand-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 56px;
+      font-weight: 900;
+      text-transform: uppercase;
+      line-height: 1;
+      color: #fff;
+      text-shadow: 0 0 20px var(--primary-red);
+      margin-bottom: 10px;
+    }
+
+    .brand-subtitle {
+      font-family: 'Orbitron', sans-serif;
+      color: #444;
+      letter-spacing: 4px;
+      font-size: 14px;
+      margin-bottom: 50px;
+    }
+
+    /* HUD Stats decorations */
+    .hud-stats {
+      width: 100%;
+      border-top: 1px solid #222;
+      padding-top: 30px;
+      display: flex;
+      justify-content: space-around;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+    .stat-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 24px;
+      color: var(--primary-red);
       font-weight: 700;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-      margin-bottom: 8px;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
     }
 
-    .logo-subtitle {
-      font-size: 13px;
-      color: #94a3b8;
-      font-weight: 500;
+    /* --- Form Section (Right) --- */
+    .login-form-wrapper {
+      width: 100%;
+      max-width: 400px;
+      padding: 20px;
+    }
+
+    .form-header {
+      margin-bottom: 40px;
+      border-left: 3px solid var(--primary-red);
+      padding-left: 20px;
+    }
+
+    .form-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 32px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 5px;
+    }
+
+    .form-desc {
+      color: #555;
+      font-size: 15px;
     }
 
     .form-group {
-      margin-bottom: 20px;
-      animation: fadeIn 0.8s ease-out 0.3s both;
+      margin-bottom: 25px;
     }
 
     label {
       display: block;
-      font-size: 13px;
-      font-weight: 600;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 1px;
       margin-bottom: 8px;
-      color: #cbd5e1;
+      color: #888;
     }
 
-    input {
+    input[type="email"], 
+    input[type="password"] {
       width: 100%;
-      padding: 12px 16px;
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      border-radius: 10px;
-      color: #e2e8f0;
-      font-size: 14px;
+      padding: 14px 16px;
+      background: var(--input-bg);
+      border: 1px solid #222;
+      color: var(--text-main);
+      font-size: 16px;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
       transition: all 0.3s ease;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      border-radius: 0;
     }
 
     input:focus {
       outline: none;
-      background: rgba(255, 255, 255, 0.12);
-      border-color: rgba(102, 126, 234, 0.5);
-      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      background: #000;
+      border-color: var(--primary-red);
+      box-shadow: 0 0 10px rgba(255, 0, 51, 0.2);
+      color: #fff;
     }
 
     input::placeholder {
-      color: #64748b;
+      color: #444;
+      font-weight: 500;
     }
 
     .form-footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 25px;
+      margin-bottom: 30px;
       font-size: 13px;
-      animation: fadeIn 0.8s ease-out 0.35s both;
     }
 
+    /* Custom Checkbox */
     .remember-me {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 10px;
       cursor: pointer;
+      color: #888;
     }
 
     input[type="checkbox"] {
-      width: auto;
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #111;
+      border: 1px solid #333;
       cursor: pointer;
+      position: relative;
+    }
+
+    input[type="checkbox"]:checked {
+      background: var(--primary-red);
+      border-color: var(--primary-red);
+    }
+
+    input[type="checkbox"]:checked::after {
+      content: "✓";
+      position: absolute;
+      color: #fff;
+      font-size: 10px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
     }
 
     .forgot-password {
-      color: #667eea;
+      color: #888;
       text-decoration: none;
       transition: all 0.3s ease;
+      font-weight: 600;
     }
 
     .forgot-password:hover {
-      color: #764ba2;
-    }
-
-    .btn-group {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      animation: fadeIn 0.8s ease-out 0.4s both;
-    }
-
-    .btn {
-      padding: 12px 24px;
-      border: none;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 600;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
+      color: var(--primary-red);
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      width: 100%;
+      padding: 16px;
+      border: none;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      background: linear-gradient(90deg, var(--primary-red), var(--dark-red));
       color: white;
-      box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+      box-shadow: 0 0 20px rgba(255, 0, 51, 0.3);
+      transition: all 0.3s ease;
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
     }
 
     .btn-primary:hover {
       transform: translateY(-2px);
-      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+      box-shadow: 0 0 30px rgba(255, 0, 51, 0.6);
     }
 
     .btn-primary:active {
@@ -188,96 +294,144 @@
     .btn-primary:disabled {
       opacity: 0.6;
       cursor: not-allowed;
+      transform: none;
     }
 
     .signup-link {
       text-align: center;
-      margin-top: 20px;
-      font-size: 13px;
-      color: #94a3b8;
-      animation: fadeIn 0.8s ease-out 0.45s both;
+      margin-top: 30px;
+      font-size: 14px;
+      color: #555;
     }
 
     .signup-link a {
-      color: #667eea;
+      color: #fff;
       text-decoration: none;
-      font-weight: 600;
+      font-weight: 700;
+      border-bottom: 1px solid transparent;
       transition: all 0.3s ease;
     }
 
     .signup-link a:hover {
-      color: #764ba2;
+      color: var(--primary-red);
+      border-bottom: 1px solid var(--primary-red);
     }
 
+    /* Back Button */
     .back-button {
       position: absolute;
-      top: 20px;
-      left: 20px;
-      background: rgba(255, 255, 255, 0.1);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #cbd5e1;
-      border-radius: 8px;
-      padding: 8px 12px;
+      top: 30px;
+      left: 30px;
+      background: transparent;
+      border: 1px solid #333;
+      color: #888;
+      padding: 10px 20px;
       cursor: pointer;
-      font-size: 13px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
       transition: all 0.3s ease;
-      text-decoration: none;
+      z-index: 10;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
 
     .back-button:hover {
-      background: rgba(255, 255, 255, 0.15);
-      border-color: rgba(255, 255, 255, 0.3);
+      border-color: var(--primary-red);
+      color: var(--primary-red);
+      background: rgba(255, 0, 51, 0.05);
     }
 
     .error-message {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid rgba(239, 68, 68, 0.4);
-      color: #fca5a5;
+      background: rgba(255, 0, 51, 0.05);
+      border: 1px solid rgba(255, 0, 51, 0.3);
+      color: #ff4d4d;
       padding: 12px 16px;
-      border-radius: 10px;
-      margin-bottom: 20px;
+      margin-bottom: 25px;
       font-size: 13px;
       display: none;
-      animation: fadeIn 0.3s ease-out;
+      text-align: center;
     }
 
     .error-message.show {
       display: block;
+      animation: fadeIn 0.3s ease-out;
     }
 
-    .loading {
-      display: none;
-      text-align: center;
-      color: #667eea;
-      font-size: 13px;
-    }
-
+    /* Loading Spinner */
     .spinner {
       display: inline-block;
       width: 16px;
       height: 16px;
-      border: 2px solid rgba(102, 126, 234, 0.3);
-      border-top: 2px solid #667eea;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top: 2px solid #fff;
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
       margin-right: 8px;
       vertical-align: middle;
     }
 
+    /* Animations */
+    @keyframes gridMove {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(-40px, -40px); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     @keyframes spin {
       to { transform: rotate(360deg); }
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .brand-panel { display: none; }
+      .form-panel { 
+        flex: 1; 
+        align-items: flex-start; 
+        justify-content: center;
+        padding-top: 100px;
+      }
     }
   </style>
 </head>
 <body>
   <button class="back-button" id="backBtn">← Back</button>
 
-  <div class="login-container">
-    <div class="login-card">
-      <div class="logo-section">
-        <div class="logo">🔗</div>
-        <div class="logo-text">ConnectXP</div>
-        <div class="logo-subtitle">User Login</div>
+  <!-- Left Side: Branding -->
+  <div class="brand-panel">
+    <div class="brand-content">
+      <div class="brand-logo">🔗</div>
+      <div class="brand-title">ConnectXP</div>
+      <div class="brand-subtitle">Gaming Network</div>
+      
+      <div class="hud-stats">
+        <div class="stat-item">
+          <div class="stat-value">SECURE</div>
+          <div class="stat-label">Connection</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">ONLINE</div>
+          <div class="stat-label">Status</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side: Form -->
+  <div class="form-panel">
+    <div class="login-form-wrapper">
+      <div class="form-header">
+        <div class="form-title">User Login</div>
+        <div class="form-desc">Enter your credentials to access the network.</div>
       </div>
 
       <form id="loginForm">
@@ -313,12 +467,10 @@
           <a href="#" class="forgot-password">Forgot Password?</a>
         </div>
 
-        <div class="btn-group">
-          <button type="submit" class="btn btn-primary" id="loginBtn">
-            <span class="spinner" style="display: none;"></span>
-            <span id="loginText">Sign In</span>
-          </button>
-        </div>
+        <button type="submit" class="btn btn-primary" id="loginBtn">
+          <span class="spinner" style="display: none;"></span>
+          <span id="loginText">Sign In</span>
+        </button>
       </form>
 
       <div class="signup-link">
