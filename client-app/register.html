@@ -417,8 +417,8 @@
         <div class="form-grid">
           <!-- Row 1 -->
           <div class="form-group">
-            <label for="name">Full Name</label>
-            <input type="text" id="name" name="name" placeholder="John Doe" required />
+            <label for="customer_name">Full Name</label>
+            <input type="text" id="customer_name" name="customer_name" placeholder="John Doe" required />
           </div>
           <div class="form-group">
             <label for="email">Email Address</label>
@@ -427,18 +427,20 @@
 
           <!-- Row 2 -->
           <div class="form-group full-width">
-            <label for="phoneNumber">Phone Number</label>
-            <input type="tel" id="phoneNumber" name="phoneNumber" placeholder="10-15 digit number" required />
+            <label for="phone_number">Phone Number</label>
+            <input type="tel" id="phone_number" name="phone_number" placeholder="10-15 digit number" required />
           </div>
 
           <!-- Row 3 -->
-          <div class="form-group">
+          <div class="form-group full-width">
+            <label for="address">Address</label>
+            <input type="text" id="address" name="address" placeholder="Street, city, state" required />
+          </div>
+
+          <!-- Row 4 -->
+          <div class="form-group full-width">
             <label for="password">Password</label>
             <input type="password" id="password" name="password" placeholder="Create password" required />
-          </div>
-          <div class="form-group">
-            <label for="confirmPassword">Confirm Password</label>
-            <input type="password" id="confirmPassword" name="confirmPassword" placeholder="Re-enter password" required />
           </div>
 
           <!-- Requirements Box -->
@@ -446,26 +448,9 @@
             <div style="font-family: 'Orbitron'; font-size: 10px; margin-bottom: 8px; color: #888;">SECURITY PROTOCOL:</div>
             <div class="req-grid">
                 <div class="requirement" id="req-length">
-                  <span class="requirement-icon">✗</span> 8+ Characters
-                </div>
-                <div class="requirement" id="req-uppercase">
-                  <span class="requirement-icon">✗</span> Uppercase
-                </div>
-                <div class="requirement" id="req-lowercase">
-                  <span class="requirement-icon">✗</span> Lowercase
-                </div>
-                <div class="requirement" id="req-number">
-                  <span class="requirement-icon">✗</span> Number
+                  <span class="requirement-icon">✗</span> 6+ Characters
                 </div>
             </div>
-          </div>
-
-          <!-- Terms & Button -->
-          <div class="terms-checkbox">
-            <input type="checkbox" id="agreeTerms" name="agreeTerms" required />
-            <label for="agreeTerms" style="font-family: 'Rajdhani'; color: #666;">
-              I agree to the <a href="#" style="color: #888; text-decoration: underline;">Terms</a> and <a href="#" style="color: #888; text-decoration: underline;">Privacy Policy</a>
-            </label>
           </div>
 
           <button type="submit" class="btn btn-primary" id="registerBtn">
@@ -483,12 +468,11 @@
 
   <script>
     const form = document.getElementById('registerForm');
-    const nameInput = document.getElementById('name');
+    const nameInput = document.getElementById('customer_name');
     const emailInput = document.getElementById('email');
-    const phoneInput = document.getElementById('phoneNumber');
+    const phoneInput = document.getElementById('phone_number');
+    const addressInput = document.getElementById('address');
     const passwordInput = document.getElementById('password');
-    const confirmPasswordInput = document.getElementById('confirmPassword');
-    const agreeTermsCheckbox = document.getElementById('agreeTerms');
     const errorMessage = document.getElementById('errorMessage');
     const successMessage = document.getElementById('successMessage');
     const registerBtn = document.getElementById('registerBtn');
@@ -513,13 +497,13 @@
       const name = nameInput.value.trim();
       const email = emailInput.value.trim();
       const phoneNumber = phoneInput.value.trim();
+      const address = addressInput.value.trim();
       const password = passwordInput.value;
-      const confirmPassword = confirmPasswordInput.value;
 
       errorMessage.classList.remove('show');
       successMessage.classList.remove('show');
 
-      if (!name || !email || !phoneNumber || !password || !confirmPassword) {
+      if (!name || !email || !phoneNumber || !address || !password) {
         showError('Please fill in all fields');
         return;
       }
@@ -534,18 +518,8 @@
         return;
       }
 
-      if (password !== confirmPassword) {
-        showError('Passwords do not match');
-        return;
-      }
-
       if (!isValidPassword(password)) {
-        showError('Password does not meet security requirements');
-        return;
-      }
-
-      if (!agreeTermsCheckbox.checked) {
-        showError('Please agree to the Terms of Service');
+        showError('Password must be at least 6 characters long');
         return;
       }
 
@@ -554,23 +528,15 @@
       registerText.textContent = 'Processing...';
 
       try {
-        const response = await fetch('http://localhost:5000/api/auth/register', {
+        const response = await fetch('http://localhost:5000/api/customers/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            name, 
+            customer_name: name, 
             email, 
-            phoneNumber,
+            phone_number: phoneNumber,
             password,
-            confirmPassword,
-            address: {
-              street: 'Not provided',
-              city: 'Not provided',
-              district: 'Not provided',
-              state: 'Not provided',
-              country: 'India',
-              pinCode: '000000'
-            }
+            address
           })
         });
 
@@ -601,10 +567,7 @@
       passwordReqs.classList.add('show');
 
       const requirements = {
-        'req-length': password.length >= 8,
-        'req-uppercase': /[A-Z]/.test(password),
-        'req-lowercase': /[a-z]/.test(password),
-        'req-number': /\d/.test(password)
+        'req-length': password.length >= 6
       };
 
       Object.entries(requirements).forEach(([id, met]) => {
@@ -640,10 +603,7 @@
     }
 
     function isValidPassword(password) {
-      return password.length >= 8 && 
-             /[A-Z]/.test(password) && 
-             /[a-z]/.test(password) && 
-             /\d/.test(password);
+      return password.length >= 6;
     }
   </script>
 </body>
