@@ -22,6 +22,7 @@ let cachedApps = null; // Cache for installed apps
 let lastAppsCacheTime = 0;
 const APPS_CACHE_DURATION = 5000; // Cache for 5 seconds to avoid duplicate PowerShell calls
 let userToken = null; // Store user authentication token
+let userInfo = null; // Store authenticated user profile
 let currentPage = 'welcome'; // Track current page
 let currentStatus = 'DISCONNECTED'; // Track current connection status
 
@@ -79,9 +80,20 @@ function createWindow() {
     log(`User token stored`);
   });
 
+  // IPC handler for storing authenticated user details
+  ipcMain.on('store-user-info', (event, user) => {
+    userInfo = user;
+    log(`User info stored`);
+  });
+
   // IPC handler for retrieving authentication token
   ipcMain.handle('get-token', async (event) => {
     return userToken;
+  });
+
+  // IPC handler for retrieving authenticated user details
+  ipcMain.handle('get-user-info', async (event) => {
+    return userInfo;
   });
 
   // IPC handler for getting PC name
@@ -122,6 +134,7 @@ function navigateToPage(page) {
     'welcome': 'welcome.html',
     'login': 'login.html',
     'register': 'register.html',
+    'userdashboard': 'userdashboard.html',
     'dashboard': 'index.html',
     'status': 'index.html'
   };

@@ -12,5 +12,7 @@ contextBridge.exposeInMainWorld("api", {
   timerExpired: (appName) => ipcRenderer.send("timer-expired", appName),
   navigateTo: (page) => ipcRenderer.send("navigate", page),
   storeToken: (token) => ipcRenderer.send("store-token", token),
-  getToken: (cb) => ipcRenderer.invoke("get-token").then(cb)
+  getToken: (cb) => ipcRenderer.invoke("get-token").then(cb),
+  storeUserInfo: (user) => ipcRenderer.send("store-user-info", user),
+  getUserInfo: (cb) => ipcRenderer.invoke("get-user-info").then(cb)
 });

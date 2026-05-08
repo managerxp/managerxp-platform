@@ -521,7 +521,7 @@
 
       try {
         // Call API to login
-        const response = await fetch('http://localhost:5000/api/auth/login', {
+        const response = await fetch('http://localhost:5000/api/customers/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -538,7 +538,8 @@
 
         // Store token and redirect to dashboard
         window.api.storeToken(data.token);
-        window.api.navigateTo('dashboard');
+        window.api.storeUserInfo(data.data.user);
+        window.api.navigateTo('userdashboard');
       } catch (error) {
         showError('Connection error. Please try again.');
         console.error('Login error:', error);
