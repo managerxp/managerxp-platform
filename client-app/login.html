@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>ConnectXP - Login</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-red: #ff0033;
+      --dark-red: #8a001c;
+      --accent-green: #00ff41;
+      --bg-dark: #050505;
+      --text-main: #ffffff;
+      --text-dim: #666666;
+      --input-bg: #0a0a0a;
+      --border-tech: #222;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex; /* Split Screen Layout */
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* --- Background Effects --- */
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 200%;
+      height: 200%;
+      background-image: 
+        linear-gradient(rgba(255, 0, 51, 0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 0, 51, 0.03) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridMove 20s linear infinite;
+      z-index: 0;
+    }
+
+    /* --- Split Layout Containers --- */
+    .brand-panel {
+      flex: 1;
+      background: linear-gradient(135deg, #0a0a0a 0%, #000000 100%);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-right: 1px solid var(--border-tech);
+      position: relative;
+      z-index: 1;
+      padding: 40px;
+      /* Angled cut on the right side */
+      clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%);
+    }
+
+    /* Glowing line separator */
+    .brand-panel::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      height: 100%;
+      width: 2px;
+      background: linear-gradient(to bottom, transparent, var(--primary-red), transparent);
+      box-shadow: 0 0 15px var(--primary-red);
+    }
+
+    .form-panel {
+      flex: 1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+      padding: 40px;
+    }
+
+    /* --- Branding Section (Left) --- */
+    .brand-content {
+      text-align: center;
+      max-width: 400px;
+    }
+
+    .brand-logo {
+      font-size: 80px;
+      margin-bottom: 20px;
+      filter: drop-shadow(0 0 20px var(--primary-red));
+      animation: float 6s ease-in-out infinite;
+    }
+
+    .brand-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 56px;
+      font-weight: 900;
+      text-transform: uppercase;
+      line-height: 1;
+      color: #fff;
+      text-shadow: 0 0 20px var(--primary-red);
+      margin-bottom: 10px;
+    }
+
+    .brand-subtitle {
+      font-family: 'Orbitron', sans-serif;
+      color: #444;
+      letter-spacing: 4px;
+      font-size: 14px;
+      margin-bottom: 50px;
+    }
+
+    /* HUD Stats decorations */
+    .hud-stats {
+      width: 100%;
+      border-top: 1px solid #222;
+      padding-top: 30px;
+      display: flex;
+      justify-content: space-around;
+    }
+
+    .stat-item {
+      text-align: center;
+    }
+    .stat-value {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 24px;
+      color: var(--primary-red);
+      font-weight: 700;
+    }
+    .stat-label {
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+    }
+
+    /* --- Form Section (Right) --- */
+    .login-form-wrapper {
+      width: 100%;
+      max-width: 400px;
+      padding: 20px;
+    }
+
+    .form-header {
+      margin-bottom: 40px;
+      border-left: 3px solid var(--primary-red);
+      padding-left: 20px;
+    }
+
+    .form-title {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 32px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #fff;
+      margin-bottom: 5px;
+    }
+
+    .form-desc {
+      color: #555;
+      font-size: 15px;
+    }
+
+    .form-group {
+      margin-bottom: 25px;
+    }
+
+    label {
+      display: block;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      color: #888;
+    }
+
+    input[type="email"], 
+    input[type="password"] {
+      width: 100%;
+      padding: 14px 16px;
+      background: var(--input-bg);
+      border: 1px solid #222;
+      color: var(--text-main);
+      font-size: 16px;
+      font-family: 'Rajdhani', sans-serif;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      border-radius: 0;
+    }
+
+    input:focus {
+      outline: none;
+      background: #000;
+      border-color: var(--primary-red);
+      box-shadow: 0 0 10px rgba(255, 0, 51, 0.2);
+      color: #fff;
+    }
+
+    input::placeholder {
+      color: #444;
+      font-weight: 500;
+    }
+
+    .form-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      font-size: 13px;
+    }
+
+    /* Custom Checkbox */
+    .remember-me {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      color: #888;
+    }
+
+    input[type="checkbox"] {
+      -webkit-appearance: none;
+      width: 16px;
+      height: 16px;
+      background: #111;
+      border: 1px solid #333;
+      cursor: pointer;
+      position: relative;
+    }
+
+    input[type="checkbox"]:checked {
+      background: var(--primary-red);
+      border-color: var(--primary-red);
+    }
+
+    input[type="checkbox"]:checked::after {
+      content: "✓";
+      position: absolute;
+      color: #fff;
+      font-size: 10px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+    }
+
+    .forgot-password {
+      color: #888;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      font-weight: 600;
+    }
+
+    .forgot-password:hover {
+      color: var(--primary-red);
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 16px;
+      border: none;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      background: linear-gradient(90deg, var(--primary-red), var(--dark-red));
+      color: white;
+      box-shadow: 0 0 20px rgba(255, 0, 51, 0.3);
+      transition: all 0.3s ease;
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 30px rgba(255, 0, 51, 0.6);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .signup-link {
+      text-align: center;
+      margin-top: 30px;
+      font-size: 14px;
+      color: #555;
+    }
+
+    .signup-link a {
+      color: #fff;
+      text-decoration: none;
+      font-weight: 700;
+      border-bottom: 1px solid transparent;
+      transition: all 0.3s ease;
+    }
+
+    .signup-link a:hover {
+      color: var(--primary-red);
+      border-bottom: 1px solid var(--primary-red);
+    }
+
+    /* Back Button */
+    .back-button {
+      position: absolute;
+      top: 30px;
+      left: 30px;
+      background: transparent;
+      border: 1px solid #333;
+      color: #888;
+      padding: 10px 20px;
+      cursor: pointer;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      font-weight: 600;
+      transition: all 0.3s ease;
+      z-index: 10;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .back-button:hover {
+      border-color: var(--primary-red);
+      color: var(--primary-red);
+      background: rgba(255, 0, 51, 0.05);
+    }
+
+    .error-message {
+      background: rgba(255, 0, 51, 0.05);
+      border: 1px solid rgba(255, 0, 51, 0.3);
+      color: #ff4d4d;
+      padding: 12px 16px;
+      margin-bottom: 25px;
+      font-size: 13px;
+      display: none;
+      text-align: center;
+    }
+
+    .error-message.show {
+      display: block;
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Loading Spinner */
+    .spinner {
+      display: inline-block;
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      border-top: 2px solid #fff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    /* Animations */
+    @keyframes gridMove {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(-40px, -40px); }
+    }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-15px); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .brand-panel { display: none; }
+      .form-panel { 
+        flex: 1; 
+        align-items: flex-start; 
+        justify-content: center;
+        padding-top: 100px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <button class="back-button" id="backBtn">← Back</button>
+
+  <!-- Left Side: Branding -->
+  <div class="brand-panel">
+    <div class="brand-content">
+      <div class="brand-logo">🔗</div>
+      <div class="brand-title">ConnectXP</div>
+      <div class="brand-subtitle">Gaming Network</div>
+      
+      <div class="hud-stats">
+        <div class="stat-item">
+          <div class="stat-value">SECURE</div>
+          <div class="stat-label">Connection</div>
+        </div>
+        <div class="stat-item">
+          <div class="stat-value">ONLINE</div>
+          <div class="stat-label">Status</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Side: Form -->
+  <div class="form-panel">
+    <div class="login-form-wrapper">
+      <div class="form-header">
+        <div class="form-title">User Login</div>
+        <div class="form-desc">Enter your credentials to access the network.</div>
+      </div>
+
+      <form id="loginForm">
+        <div class="error-message" id="errorMessage"></div>
+
+        <div class="form-group">
+          <label for="email">Email Address</label>
+          <input 
+            type="email" 
+            id="email" 
+            name="email" 
+            placeholder="you@example.com"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input 
+            type="password" 
+            id="password" 
+            name="password" 
+            placeholder="Enter your password"
+            required
+          />
+        </div>
+
+        <div class="form-footer">
+          <label class="remember-me">
+            <input type="checkbox" id="rememberMe" name="rememberMe" />
+            <span>Remember me</span>
+          </label>
+          <a href="#" class="forgot-password">Forgot Password?</a>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="loginBtn">
+          <span class="spinner" style="display: none;"></span>
+          <span id="loginText">Sign In</span>
+        </button>
+      </form>
+
+      <div class="signup-link">
+        Don't have an account? 
+        <a href="#" id="registerLink">Create one</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('loginForm');
+    const emailInput = document.getElementById('email');
+    const passwordInput = document.getElementById('password');
+    const errorMessage = document.getElementById('errorMessage');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginText = document.getElementById('loginText');
+    const spinner = loginBtn.querySelector('.spinner');
+
+    document.getElementById('backBtn').addEventListener('click', () => {
+      window.api.navigateTo('welcome');
+    });
+
+    document.getElementById('registerLink').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.api.navigateTo('register');
+    });
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const email = emailInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!email || !password) {
+        showError('Please fill in all fields');
+        return;
+      }
+
+      if (!isValidEmail(email)) {
+        showError('Please enter a valid email address');
+        return;
+      }
+
+      loginBtn.disabled = true;
+      spinner.style.display = 'inline-block';
+      loginText.textContent = 'Signing in...';
+      errorMessage.classList.remove('show');
+
+      try {
+        // Call API to login
+        const response = await fetch('http://localhost:5000/api/customers/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.message || 'Login failed');
+          return;
+        }
+
+        // Store token and redirect to dashboard
+        window.api.storeToken(data.token);
+        window.api.storeUserInfo(data.data.user);
+        window.api.navigateTo('userdashboard');
+      } catch (error) {
+        showError('Connection error. Please try again.');
+        console.error('Login error:', error);
+      } finally {
+        loginBtn.disabled = false;
+        spinner.style.display = 'none';
+        loginText.textContent = 'Sign In';
+      }
+    });
+
+    function showError(message) {
+      errorMessage.textContent = message;
+      errorMessage.classList.add('show');
+    }
+
+    function isValidEmail(email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      return emailRegex.test(email);
+    }
+  </script>
+</body>
+</html>

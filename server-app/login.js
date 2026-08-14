@@ -140,8 +140,16 @@ tokenBtn.addEventListener('click', async (e) => {
 
 // Handle successful login
 function handleLoginSuccess(user, token) {
+  console.log('===== LOGIN SUCCESS - SENDING TOKEN =====');
+  console.log('[LoginPage] User:', user.email || user.name);
+  console.log('[LoginPage] Token length:', token ? token.length : 0);
+  console.log('[LoginPage] Calling window.api.setAuth()...');
+  
   // Use auth context through IPC
   window.api.setAuth(user, token);
+  
+  console.log('[LoginPage] window.api.setAuth() called');
+  console.log('===== TOKEN SENT TO MAIN PROCESS =====');
 }
 
 // Show error message

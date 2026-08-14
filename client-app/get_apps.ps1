@@ -5,13 +5,18 @@ function Clean-Path($path) {
     return ($path -split ",")[0].Trim('"')
 }
 
+# Add error action preference
+$ErrorActionPreference = 'SilentlyContinue'
+
 # -------------------------
-# 1️⃣ REGISTRY (Uninstall)
+# 1️⃣ REGISTRY (Uninstall - Primary Source)
 # -------------------------
 $regPaths = @(
   "HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*",
   "HKLM:\Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
 )
+
+Write-Output "[Info] Scanning registry for installed applications..."
 
 foreach ($path in $regPaths) {
   Get-ItemProperty $path -ErrorAction SilentlyContinue | ForEach-Object {
@@ -29,46 +34,70 @@ foreach ($path in $regPaths) {
       if ($exe) { $launch = $exe.FullName }
     }
 
+    # Second fallback: try UninstallString
+    if (-not $launch -and $_.UninstallString) {
+      $uninstall = Clean-Path $_.UninstallString
+      if (Test-Path $uninstall) { $launch = $uninstall }
+    }
+
+    # Include app even if no launch path found
     if (-not $results.ContainsKey($_.DisplayName)) {
       $results[$_.DisplayName] = [PSCustomObject]@{
         name    = $_.DisplayName
         version = $_.DisplayVersion
-        launch  = $launch
+        launch  = if ($launch) { $launch } else { "" }
       }
     }
   }
 }
 
+Write-Output "[Info] Registry scan complete. Found $($results.Count) applications so far..."
+
 # -------------------------
-# 2️⃣ START MENU SHORTCUTS
+# 2️⃣ START MENU SHORTCUTS (Secondary Source)
 # -------------------------
 $startMenuPaths = @(
   "$env:ProgramData\Microsoft\Windows\Start Menu\Programs",
   "$env:AppData\Microsoft\Windows\Start Menu\Programs"
 )
 
-$wsh = New-Object -ComObject WScript.Shell
+Write-Output "[Info] Scanning Start Menu for shortcuts..."
 
-foreach ($menu in $startMenuPaths) {
-  Get-ChildItem $menu -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
+try {
+  $wsh = New-Object -ComObject WScript.Shell
+  
+  foreach ($menu in $startMenuPaths) {
+    Get-ChildItem $menu -Recurse -Filter *.lnk -ErrorAction SilentlyContinue | ForEach-Object {
 
-    $shortcut = $wsh.CreateShortcut($_.FullName)
-    $name = $_.BaseName
-    $target = $shortcut.TargetPath
+      $shortcut = $wsh.CreateShortcut($_.FullName)
+      $name = $_.BaseName
+      $target = $shortcut.TargetPath
 
-    if ($target -and !$results.ContainsKey($name)) {
-      $results[$name] = [PSCustomObject]@{
-        name    = $name
-        version = $null
-        launch  = $target
+      if ($target -and !$results.ContainsKey($name)) {
+        $results[$name] = [PSCustomObject]@{
+          name    = $name
+          version = $null
+          launch  = $target
+        }
       }
     }
   }
+} catch {
+  Write-Output "[Warning] Error scanning Start Menu shortcuts"
 }
+
+Write-Output "[Info] Start Menu scan complete. Total applications found: $($results.Count)"
 
 # -------------------------
 # OUTPUT
 # -------------------------
 $json = $results.Values | Sort-Object name | ConvertTo-Json -Depth 3
+
+if (-not $json) {
+  $json = "[]"
+}
+
 $utf8NoBOM = New-Object System.Text.UTF8Encoding $false
 [System.IO.File]::WriteAllText("output\apps.json", $json, $utf8NoBOM)
+
+Write-Output "[Success] Exported $($results.Count) applications to output\apps.json"

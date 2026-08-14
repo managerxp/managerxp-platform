@@ -4,9 +4,13 @@ const os = require("os");
 const path = require("path");
 const { exec } = require("child_process");
 const fs = require("fs");
+const http = require("http");
 
 let SIM_ID = "SIM-01"; // Will be updated by server
 const CLIENT_PORT = 9090; // Port this client listens on
+const SERVER_APP_PORT = 3334; // Server app HTTP port for discovery
+let LOCAL_IP = null; // Will be set on startup
+let BROADCAST_INTERVAL = null; // For periodic IP/MAC broadcasts
 
 let win;
 let statusBarWin;
@@ -14,6 +18,13 @@ let timerCardWin;
 let wss; // WebSocket server instance (client listens)
 let serverConnection; // Connection from server
 let runningProcesses = new Map(); // appName -> { pid, appPath, timerCardWin }
+let cachedApps = null; // Cache for installed apps
+let lastAppsCacheTime = 0;
+const APPS_CACHE_DURATION = 5000; // Cache for 5 seconds to avoid duplicate PowerShell calls
+let userToken = null; // Store user authentication token
+let userInfo = null; // Store authenticated user profile
+let currentPage = 'welcome'; // Track current page
+let currentStatus = 'DISCONNECTED'; // Track current connection status
 
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -57,6 +68,43 @@ function createWindow() {
     log(`Timer expired for ${appName}, closing application...`);
     closeApplication(appName);
   });
+
+  // IPC handler for page navigation
+  ipcMain.on('navigate', (event, page) => {
+    navigateToPage(page);
+  });
+
+  // IPC handler for storing authentication token
+  ipcMain.on('store-token', (event, token) => {
+    userToken = token;
+    log(`User token stored`);
+  });
+
+  // IPC handler for storing authenticated user details
+  ipcMain.on('store-user-info', (event, user) => {
+    userInfo = user;
+    log(`User info stored`);
+  });
+
+  // IPC handler for retrieving authentication token
+  ipcMain.handle('get-token', async (event) => {
+    return userToken;
+  });
+
+  // IPC handler for retrieving authenticated user details
+  ipcMain.handle('get-user-info', async (event) => {
+    return userInfo;
+  });
+
+  // IPC handler for getting PC name
+  ipcMain.handle('get-pc-name', async (event) => {
+    return SIM_ID;
+  });
+
+  // IPC handler for getting current connection status
+  ipcMain.handle('get-status', async (event) => {
+    return currentStatus;
+  });
   
   // Create main client application window
   win = new BrowserWindow({
@@ -75,7 +123,27 @@ function createWindow() {
   // Remove the application menu
   Menu.setApplicationMenu(null);
 
+  currentPage = 'status';
   win.loadFile("index.html");
+}
+
+function navigateToPage(page) {
+  if (!win || win.isDestroyed()) return;
+  
+  const pages = {
+    'welcome': 'welcome.html',
+    'login': 'login.html',
+    'register': 'register.html',
+    'userdashboard': 'userdashboard.html',
+    'dashboard': 'index.html',
+    'status': 'index.html'
+  };
+
+  const pageFile = pages[page] || 'welcome.html';
+  currentPage = page;
+  log(`Navigating to ${page} (${pageFile})`);
+  
+  win.loadFile(pageFile);
 }
 
 function log(message) {
@@ -83,8 +151,140 @@ function log(message) {
 }
 
 function updateStatus(status) {
+  currentStatus = status; // Update current status
+  
   if (win) win.webContents.send("status", status);
   if (statusBarWin) statusBarWin.webContents.send("status", status);
+  
+  // Navigate to welcome page when connected
+  if (status === "CONNECTED" && currentPage === 'status') {
+    setTimeout(() => {
+      navigateToPage('welcome');
+    }, 500);
+  }
+  
+  // Navigate back to the home/logs page when disconnected
+  if (status === "DISCONNECTED" && currentPage !== 'status') {
+    setTimeout(() => {
+      log("PC disconnected, navigating back to home page");
+      navigateToPage('status');
+    }, 500);
+  }
+}
+
+// Get the local IP address of the system
+function getLocalIPAddress() {
+  try {
+    const interfaces = os.networkInterfaces();
+    
+    // Try to find the first non-internal IPv4 address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      for (const addr of iface) {
+        // Find IPv4 addresses that are not internal (loopback)
+        if (addr.family === 'IPv4' && !addr.internal) {
+          log(`Found local IP address: ${addr.address} on interface: ${name}`);
+          return addr.address;
+        }
+      }
+    }
+    
+    // Fallback: return localhost
+    log('Warning: No local IP found, using localhost');
+    return '127.0.0.1';
+  } catch (error) {
+    log(`Error getting local IP address: ${error.message}`);
+    return '127.0.0.1';
+  }
+}
+
+// Broadcast PC information to server app for auto-discovery
+function broadcastPCInfo() {
+  try {
+    const macAddress = getSystemMacAddress();
+    const localIP = LOCAL_IP;
+    const hostname = os.hostname();
+
+    const payload = JSON.stringify({
+      type: 'PC_DISCOVERY',
+      ip_address: localIP,
+      mac_address: macAddress,
+      hostname: hostname,
+      port: CLIENT_PORT
+    });
+
+    const options = {
+      hostname: 'localhost',
+      port: SERVER_APP_PORT,
+      path: '/api/pc-discovery',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload)
+      }
+    };
+
+    const req = http.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        if (res.statusCode === 200) {
+          log(`✓ PC broadcast successful - IP: ${localIP}, MAC: ${macAddress}`);
+        } else {
+          log(`✗ PC broadcast failed - Status: ${res.statusCode}`);
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      log(`⚠ Broadcast error: ${error.message}`);
+    });
+
+    req.setTimeout(3000);
+    req.write(payload);
+    req.end();
+  } catch (error) {
+    log(`Error broadcasting PC info: ${error.message}`);
+  }
+}
+
+// Get the MAC address of the system
+function getSystemMacAddress() {
+  try {
+    const interfaces = os.networkInterfaces();
+    
+    // Try to find the first non-internal, active interface with a MAC address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      
+      // Skip loopback and internal interfaces
+      if (iface[0]?.family === 'IPv4' && !iface[0]?.internal) {
+        const macAddress = iface[0]?.mac;
+        if (macAddress && macAddress !== '00:00:00:00:00:00') {
+          log(`Found MAC address: ${macAddress} on interface: ${name}`);
+          return macAddress;
+        }
+      }
+    }
+    
+    // Fallback: get the first available MAC address
+    for (const name of Object.keys(interfaces)) {
+      const iface = interfaces[name];
+      for (const addr of iface) {
+        const macAddress = addr.mac;
+        if (macAddress && macAddress !== '00:00:00:00:00:00') {
+          log(`Found fallback MAC address: ${macAddress} on interface: ${name}`);
+          return macAddress;
+        }
+      }
+    }
+    
+    log('Warning: No valid MAC address found, using default');
+    return 'unknown';
+  } catch (error) {
+    log(`Error getting MAC address: ${error.message}`);
+    return 'error';
+  }
 }
 
 function createTimerCard(appName, timerMinutes) {
@@ -124,6 +324,14 @@ function createTimerCard(appName, timerMinutes) {
 
 function getInstalledApps() {
   return new Promise((resolve, reject) => {
+    // Return cached apps if still fresh
+    const now = Date.now();
+    if (cachedApps && (now - lastAppsCacheTime) < APPS_CACHE_DURATION) {
+      log(`✅ Using cached apps (${cachedApps.length} items)`);
+      resolve(cachedApps);
+      return;
+    }
+
     const scriptPath = path.join(__dirname, "get_apps.ps1");
     const outputDir = path.join(__dirname, "output");
     const outputFile = path.join(outputDir, "apps.json");
@@ -133,24 +341,59 @@ function getInstalledApps() {
       fs.mkdirSync(outputDir, { recursive: true });
     }
 
-    exec(
-      `powershell -NoProfile -ExecutionPolicy Bypass -File "${scriptPath}"`,
-      { cwd: __dirname },
-      (err) => {
-        if (err) {
-          reject(err);
-          return;
+    const startTime = Date.now();
+    let retryCount = 0;
+    const maxRetries = 1;
+
+    const executeScript = () => {
+      exec(
+        `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`,
+        { cwd: __dirname, timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+        (err) => {
+          const duration = Date.now() - startTime;
+          
+          if (err) {
+            log(`❌ PowerShell error (${duration}ms): ${err.message}`);
+            if (retryCount < maxRetries) {
+              retryCount++;
+              log(`🔄 Retrying PowerShell execution (attempt ${retryCount}/${maxRetries})...`);
+              setTimeout(executeScript, 500); // Retry after 500ms
+            } else {
+              reject(err);
+            }
+            return;
+          }
+          
+          // Add delay to ensure file is fully written
+          setTimeout(() => {
+            try {
+              if (!fs.existsSync(outputFile)) {
+                reject(new Error('Output file not created by PowerShell script'));
+                return;
+              }
+              
+              const fileStats = fs.statSync(outputFile);
+              log(`📄 Output file size: ${fileStats.size} bytes`);
+              
+              const data = fs.readFileSync(outputFile, "utf8");
+              const apps = JSON.parse(data);
+              
+              // Cache the result
+              cachedApps = apps;
+              lastAppsCacheTime = Date.now();
+              
+              log(`✅ Parsed ${apps.length} apps (${duration}ms)`);
+              resolve(apps);
+            } catch (parseErr) {
+              log(`❌ Parse error (${duration}ms): ${parseErr.message}`);
+              reject(parseErr);
+            }
+          }, 500); // Wait 500ms for file to be fully written
         }
-        
-        try {
-          const data = fs.readFileSync(outputFile, "utf8");
-          const apps = JSON.parse(data);
-          resolve(apps);
-        } catch (parseErr) {
-          reject(parseErr);
-        }
-      }
-    );
+      );
+    };
+
+    executeScript();
   });
 }
 
@@ -244,6 +487,8 @@ function listen() {
       if (msg.type === "REFRESH_APPS") {
         log("Refreshing apps list...");
         try {
+          // Force fresh fetch for refresh
+          cachedApps = null;
           const apps = await getInstalledApps();
           ws.send(JSON.stringify({
             type: "APPS_LIST",
@@ -259,6 +504,51 @@ function listen() {
       if (msg.type === "CLOSE_APP") {
         log(`Closing application: ${msg.appName}`);
         closeApplication(msg.appName);
+      }
+      
+      if (msg.type === "GET_MAC_ADDRESS") {
+        const macAddress = getSystemMacAddress();
+        log(`Sending MAC address: ${macAddress}`);
+        ws.send(JSON.stringify({
+          type: "MAC_ADDRESS",
+          macAddress: macAddress
+        }));
+      }
+      
+      if (msg.type === "GET_SOFTWARE_LIST") {
+        log("Fetching software list...");
+        try {
+          const startTime = Date.now();
+          // Force fresh fetch, bypass cache for software list requests
+          cachedApps = null;
+          const apps = await getInstalledApps();
+          const duration = Date.now() - startTime;
+          log(`Fetched ${apps.length} apps in ${duration}ms`);
+          
+          const software = apps.map(app => ({
+            name: app.name,
+            version: app.version,
+            path: app.launch
+          }));
+          
+          const message = {
+            type: "SOFTWARE_LIST",
+            simId: SIM_ID,
+            software: software,
+            count: software.length
+          };
+          
+          ws.send(JSON.stringify(message));
+          log(`✅ Software list sent: ${software.length} items`);
+        } catch (err) {
+          log(`❌ Error fetching software: ${err.message}`);
+          ws.send(JSON.stringify({
+            type: "SOFTWARE_LIST",
+            simId: SIM_ID,
+            software: [],
+            error: err.message
+          }));
+        }
       }
     });
 
@@ -352,8 +642,19 @@ function closeByExecutableName(appPath, appName) {
 }
 
 app.whenReady().then(() => {
+  // Get local IP on startup
+  LOCAL_IP = getLocalIPAddress();
+  
   createWindow();
   listen();
+  
+  // Start broadcasting PC info every 10 seconds
+  BROADCAST_INTERVAL = setInterval(() => {
+    broadcastPCInfo();
+  }, 10000);
+  
+  // Initial broadcast immediately
+  broadcastPCInfo();
 });
 
 /* ---- HEARTBEAT ---- */

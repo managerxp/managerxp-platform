@@ -25,6 +25,11 @@
         "launch":  "C:\\WINDOWS\\system32\\cmd.exe"
     },
     {
+        "name":  "Command prompt for Orthanc tools",
+        "version":  null,
+        "launch":  "C:\\WINDOWS\\system32\\cmd.exe"
+    },
+    {
         "name":  "Component Services",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\comexp.msc"
@@ -33,6 +38,11 @@
         "name":  "Computer Management",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\compmgmt.msc"
+    },
+    {
+        "name":  "Copilot",
+        "version":  "147.0.3912.98",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.98\\mscopilot.exe"
     },
     {
         "name":  "DBeaver",
@@ -53,6 +63,11 @@
         "name":  "Documentation",
         "version":  null,
         "launch":  "C:\\Program Files\\VideoLAN\\VLC\\Documentation.url"
+    },
+    {
+        "name":  "Edit Orthanc settings",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Orthanc Server\\Configuration"
     },
     {
         "name":  "Event Viewer",
@@ -96,13 +111,18 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "146.0.7680.178",
+        "version":  "147.0.7727.138",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
+    },
+    {
+        "name":  "Help to use Orthanc",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Orthanc Server\\README.txt"
     },
     {
         "name":  "HP Audio Switch",
         "version":  "1.0.179.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "HP Connection Optimizer",
@@ -161,18 +181,23 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19822.20142",
+        "version":  "16.0.19929.20106",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "146.0.3856.109",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\146.0.3856.109\\msedge.exe"
+        "version":  "147.0.3912.98",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.98\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.040.0301.0001",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.040.0301.0001\\OneDriveSetup.exe"
+        "version":  "26.063.0405.0002",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.063.0405.0002\\OneDriveSetup.exe"
+    },
+    {
+        "name":  "Microsoft Teams Meeting Add-in for Microsoft Office",
+        "version":  "1.25.28902",
+        "launch":  ""
     },
     {
         "name":  "Microsoft Visual C++ v14 Redistributable (x64) - 14.50.35719",
@@ -192,7 +217,7 @@
     {
         "name":  "MongoDB 8.2.1 2008R2Plus SSL (64 bit)",
         "version":  "8.2.1",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "MongoDB Compass",
@@ -207,7 +232,7 @@
     {
         "name":  "Node.js",
         "version":  "22.20.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "Node.js command prompt",
@@ -243,6 +268,11 @@
         "name":  "On-Screen Keyboard",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\osk.exe"
+    },
+    {
+        "name":  "Orthanc 26.4.0",
+        "version":  "26.4.0",
+        "launch":  "C:\\Program Files\\Orthanc Server\\Orthanc.exe"
     },
     {
         "name":  "Outlook (classic)",
@@ -322,7 +352,7 @@
     {
         "name":  "Python Launcher",
         "version":  "3.11.9150.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "RecoveryDrive",
@@ -415,9 +445,19 @@
         "launch":  "C:\\Windows\\SysWOW64\\msiexec.exe"
     },
     {
+        "name":  "Uninstall Orthanc 26.4.0",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Orthanc Server\\unins000.exe"
+    },
+    {
         "name":  "Uninstall XAMPP",
         "version":  null,
         "launch":  "C:\\xampp\\uninstall.exe"
+    },
+    {
+        "name":  "uTorrent Web",
+        "version":  null,
+        "launch":  "C:\\Users\\chotu\\AppData\\Roaming\\uTorrent Web\\utweb.exe"
     },
     {
         "name":  "VideoLAN Website",
@@ -456,7 +496,7 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1105",
+        "version":  "4.1.1.1113",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {
@@ -502,7 +542,7 @@
     {
         "name":  "Windows SDK AddOn",
         "version":  "10.1.0.0",
-        "launch":  null
+        "launch":  ""
     },
     {
         "name":  "Word",

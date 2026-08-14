@@ -22,13 +22,28 @@ contextBridge.exposeInMainWorld("api", {
   onClients: (cb) => ipcRenderer.on("clients", (_, list) => cb(list)),
   onAppsUpdated: (cb) => ipcRenderer.on("apps-updated", (_, data) => cb(data)),
   onUserUpdated: (cb) => ipcRenderer.on("user:updated", (_, user) => cb(user)),
+  onDiscoveredPCs: (cb) => ipcRenderer.on("discovered-pcs", (_, data) => cb(data)),
+  onPCConnectionStatus: (cb) => ipcRenderer.on("pc-connection-status", (_, data) => cb(data)),
+  onPCListRefreshed: (cb) => ipcRenderer.on("pc-list-refreshed", (_, data) => cb(data)),
   
   // App management
   launchApp: (data) => ipcRenderer.invoke("launch-app", data),
   refreshApps: (simId) => ipcRenderer.invoke("refresh-apps", simId),
   getClientApps: (simId) => ipcRenderer.invoke("get-client-apps", simId),
   closeApp: (data) => ipcRenderer.invoke("close-app", data),
+  fetchPcSoftware: (simId) => ipcRenderer.invoke("fetch-pc-software", simId),
+  getPcSoftwareFromAPI: (pcId) => ipcRenderer.invoke("get-pc-software-from-api", pcId),
   
   // PC data
-  getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs")
+  getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),
+  
+  // PC connection management (NEW)
+  connectToPC: (ip, port, pcName) => ipcRenderer.invoke("pc:connect-to-pc", { ip, port, pcName }),
+  reconnectAllPCs: () => ipcRenderer.invoke("pc:reconnect-all"),
+  getConnectionStatus: () => ipcRenderer.invoke("pc:get-connection-status"),
+  clearPCFailures: (pcName) => ipcRenderer.invoke("pc:clear-failures", { pcName }),
+  refreshPCList: () => ipcRenderer.invoke("pc:refresh-list"),
+  
+  // System info
+  getMacAddress: () => ipcRenderer.invoke("system:get-mac-address")
 });
