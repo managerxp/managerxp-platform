@@ -1,388 +1,44 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ConnectXP - Gaming Hub</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --primary-neon: #ff0033; /* Intense Red */
-      --secondary-neon: #8a001c; /* Dark Blood Red */
-      --accent-online: #00ff41; /* Terminal Green for contrast */
-      --bg-dark: #000000;
-      --bg-panel: #0a0a0a;
-      --text-main: #ffffff;
-      --text-dim: #666666;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Rajdhani', sans-serif;
-      background-color: var(--bg-dark);
-      color: var(--text-main);
-      min-height: 100vh;
-      overflow-x: hidden;
-      /* Tech grid background with Red tint */
-      background-image: 
-        linear-gradient(rgba(255, 0, 51, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 0, 51, 0.03) 1px, transparent 1px);
-      background-size: 40px 40px;
-      position: relative;
-    }
-
-    /* Dark Vignette */
-    body::after {
-      content: "";
-      position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: radial-gradient(circle at center, transparent 0%, #000000 90%);
-      pointer-events: none;
-      z-index: 1;
-    }
-
-    .container {
-      max-width: 700px;
-      margin: 0 auto;
-      padding: 40px 20px;
-      position: relative;
-      z-index: 2;
-    }
-
-    /* --- Header Section --- */
-    .header {
-      text-align: center;
-      margin-bottom: 40px;
-      position: relative;
-    }
-
-    .logo {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 42px;
-      font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 4px;
-      color: #fff;
-      /* Text Shadow for Neon Red Glow */
-      text-shadow: 
-        0 0 10px var(--primary-neon),
-        0 0 20px var(--primary-neon),
-        2px 2px 0px var(--secondary-neon);
-      margin-bottom: 5px;
-      position: relative;
-      display: inline-block;
-    }
-
-    /* Decorative HUD brackets */
-    .logo::before, .logo::after {
-      content: "";
-      position: absolute;
-      top: 50%;
-      width: 30px;
-      height: 30px;
-      border: 2px solid var(--primary-neon);
-      box-shadow: 0 0 8px var(--primary-neon);
-      transition: all 0.3s ease;
-    }
-
-    .logo:hover::before, .logo:hover::after {
-      transform: translateY(-50%) scale(1.1);
-      box-shadow: 0 0 15px var(--primary-neon);
-    }
-
-    .logo::before {
-      left: -45px;
-      border-right: none;
-      transform: translateY(-50%);
-    }
-
-    .logo::after {
-      right: -45px;
-      border-left: none;
-      transform: translateY(-50%);
-    }
-
-    .subtitle {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 12px;
-      color: #555;
-      letter-spacing: 6px;
-      text-transform: uppercase;
-      font-weight: 500;
-    }
-
-    /* --- Status Card --- */
-    .status-card {
-      background: linear-gradient(135deg, rgba(20, 20, 20, 0.9) 0%, rgba(5, 5, 5, 0.95) 100%);
-      border: 1px solid #222;
-      border-top: 3px solid var(--primary-neon);
-      position: relative;
-      padding: 30px;
-      margin-bottom: 30px;
-      /* Angled Cut Corner */
-      clip-path: polygon(
-        0 0, 
-        100% 0, 
-        100% calc(100% - 20px), 
-        calc(100% - 20px) 100%, 
-        0 100%
-      );
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-
-    /* Corner accents */
-    .status-card::before {
-      content: "";
-      position: absolute;
-      bottom: 0;
-      right: 0;
-      width: 20px;
-      height: 20px;
-      border-bottom: 2px solid var(--primary-neon);
-      border-right: 2px solid var(--primary-neon);
-    }
-
-    .status-indicator {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 15px;
-      padding: 15px;
-      margin-bottom: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      background: rgba(0, 0, 0, 0.5);
-      position: relative;
-    }
-
-    .status-dot {
-      width: 12px;
-      height: 12px;
-      border-radius: 50%;
-      background: #333;
-      box-shadow: none;
-    }
-
-    #statusText {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 20px;
-      font-weight: 700;
-      letter-spacing: 3px;
-      color: #555;
-      transition: color 0.3s;
-    }
-
-    /* Connected State - Green for usability */
-    .connected #statusText {
-      color: var(--accent-online);
-      text-shadow: 0 0 10px var(--accent-online);
-    }
-    .connected .status-dot {
-      background: var(--accent-online);
-      box-shadow: 0 0 15px var(--accent-online);
-      animation: pulse-glow 1s infinite alternate;
-    }
-    .connected .status-indicator {
-      border-color: rgba(0, 255, 65, 0.3);
-      background: rgba(0, 255, 65, 0.05);
-    }
-
-    /* Disconnected State - Red */
-    .disconnected #statusText {
-      color: var(--primary-neon);
-      text-shadow: 0 0 10px var(--primary-neon);
-    }
-    .disconnected .status-dot {
-      background: var(--primary-neon);
-      box-shadow: 0 0 15px var(--primary-neon);
-    }
-    .disconnected .status-indicator {
-      border-color: rgba(255, 0, 51, 0.3);
-      background: rgba(255, 0, 51, 0.05);
-    }
-
-    .status-message {
-      text-align: center;
-      font-size: 14px;
-      color: #888;
-      margin-bottom: 20px;
-      letter-spacing: 1px;
-    }
-
-    /* --- Info Grid --- */
-    .info-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 15px;
-    }
-
-    .info-item {
-      background: rgba(0, 0, 0, 0.6);
-      border-left: 3px solid var(--primary-neon);
-      padding: 15px;
-      position: relative;
-    }
-
-    /* Arrow accent */
-    .info-item::after {
-      content: "";
-      position: absolute;
-      top: 0;
-      right: 0;
-      width: 0;
-      height: 0;
-      border-style: solid;
-      border-width: 0 10px 10px 0;
-      border-color: transparent rgba(255, 255, 255, 0.1) transparent transparent;
-    }
-
-    .info-label {
-      font-size: 11px;
-      color: var(--primary-neon);
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 4px;
-      font-weight: 600;
-    }
-
-    .info-value {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 14px;
-      color: #eee;
-      font-weight: 400;
-    }
-
-    /* --- Logs Card --- */
-    .logs-card {
-      background: rgba(10, 10, 10, 0.8);
-      border: 1px solid #222;
-      padding: 20px;
-      position: relative;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-    }
-
-    .logs-header {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 14px;
-      color: var(--primary-neon);
-      letter-spacing: 2px;
-      margin-bottom: 15px;
-      border-bottom: 1px solid #222;
-      padding-bottom: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-
-    .logs-header::after {
-      content: "SYS://STREAM";
-      font-size: 10px;
-      color: #555;
-      font-weight: 400;
-    }
-
-    #logs {
-      background: #000;
-      border: 1px solid #111;
-      padding: 15px;
-      height: 220px;
-      overflow-y: auto;
-      font-family: 'Courier New', monospace;
-      font-size: 13px;
-      line-height: 1.5;
-      color: #666;
-    }
-
-    #logs::-webkit-scrollbar {
-      width: 8px;
-    }
-    #logs::-webkit-scrollbar-track {
-      background: #111;
-    }
-    #logs::-webkit-scrollbar-thumb {
-      background: var(--secondary-neon);
-      border-radius: 0;
-    }
-
-    #logs div {
-      margin-bottom: 8px;
-      position: relative;
-      padding-left: 15px;
-    }
-
-    /* Red arrow indicators for logs */
-    #logs div::before {
-      content: ">";
-      position: absolute;
-      left: 0;
-      color: var(--primary-neon);
-      font-weight: bold;
-    }
-
-    /* Animations */
-    @keyframes pulse-glow {
-      from { box-shadow: 0 0 5px var(--accent-online); }
-      to { box-shadow: 0 0 20px var(--accent-online), 0 0 5px #fff; }
-    }
-
-    @keyframes flicker {
-      0%, 19%, 21%, 23%, 25%, 54%, 56%, 100% {
-          opacity: 1;
-      }
-      20%, 24%, 55% {
-          opacity: 0.4;
-      }
-    }
-
-    /* Responsive adjustments */
-    @media (max-width: 480px) {
-      .logo { font-size: 28px; }
-      .logo::before, .logo::after { display: none; }
-      .info-grid { grid-template-columns: 1fr; }
-    }
-  </style>
+  <title>CafeXP</title>
+  <link rel="stylesheet" href="ui/tokens.css" />
+  <link rel="stylesheet" href="ui/base.css" />
+  <link rel="stylesheet" href="ui/components.css" />
+  <link rel="stylesheet" href="ui/portal.css" />
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <div class="logo">ConnectXP</div>
-      <div class="subtitle">Virtual Client Interface</div>
-    </div>
+  <div class="backdrop"></div>
 
-    <!-- Functionality preserved: IDs and Classes match original -->
-    <div class="status-card" id="statusCard">
-      <div class="status-indicator" id="status">
-        <span class="status-dot"></span>
-        <span id="statusText">OFFLINE</span>
+  <main class="kiosk">
+    <div class="kiosk-inner">
+      <div class="conn-orb" id="connOrb" data-status="idle">
+        <svg width="46" height="46" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M5 12.5a10 10 0 0 1 14 0"></path>
+          <path d="M8.5 16a5 5 0 0 1 7 0"></path>
+          <path d="M12 20h.01"></path>
+          <path d="M2 9a15 15 0 0 1 20 0"></path>
+        </svg>
       </div>
-      <div class="status-message" id="statusMessage">Establishing secure connection...</div>
-      
-      <div class="info-grid">
-        <div class="info-item">
-          <div class="info-label">Client ID</div>
-          <div class="info-value" id="clientIdValue">WAITING...</div>
-        </div>
-        <div class="info-item">
-          <div class="info-label">Server Node</div>
-          <div class="info-value">localhost:8080</div>
-        </div>
-      </div>
-    </div>
 
-    <div class="logs-card">
-      <div class="logs-header">Terminal Output</div>
-      <div id="logs">
-        <div>System boot sequence initiated...</div>
-      </div>
-    </div>
-  </div>
+      <div class="kiosk-word">Cafe<span>XP</span></div>
+      <h1 class="kiosk-head" id="connHead">Connecting to the café server</h1>
+      <p class="kiosk-text" id="connText">Hold on — this station is looking for the CafeXP server on your network.</p>
 
+      <div class="kiosk-pc">
+        <span class="dot" id="connDot" data-status="idle"></span>
+        <span class="chip-label">Station</span>
+        <span class="kiosk-pc-name" id="clientIdValue">Not assigned</span>
+      </div>
+
+      <div class="conn-log" id="logs" aria-label="Connection log"></div>
+    </div>
+  </main>
+
+  <script src="vendor/motion.min.js"></script>
+  <script src="app/motion-kit.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

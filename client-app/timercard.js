@@ -1,39 +1,43 @@
+/* ==========================================================================
+   CafeXP Client — Launch timer card
+   Unchanged behaviour: counts down the minutes the server sent with
+   LAUNCH_APP and tells the main process when it hits zero so the application
+   is closed. Only the presentation changed.
+   ========================================================================== */
 const timerDisplayEl = document.getElementById("timerDisplay");
 const progressFillEl = document.getElementById("progressFill");
 const timerCardEl = document.getElementById("timerCard");
+const appNameEl = document.getElementById("appName");
+const timerLabelEl = document.getElementById("timerLabel");
 
 let remainingSeconds = 0;
 let totalSeconds = 0;
 let timerInterval = null;
 let currentAppName = "";
 
-// Listen for timer start event
 window.api.onStartTimer((data) => {
   currentAppName = data.appName;
   remainingSeconds = data.minutes * 60;
   totalSeconds = data.minutes * 60;
-  
-  // Add glow effect
-  timerCardEl.classList.add('glow');
-  
-  // Clear any existing interval
-  if (timerInterval) {
-    clearInterval(timerInterval);
-  }
-  
-  // Start countdown
+
+  appNameEl.textContent = currentAppName;
+  appNameEl.title = currentAppName;
+  timerCardEl.classList.add("glow");
+
+  if (timerInterval) clearInterval(timerInterval);
+
   updateDisplay();
   timerInterval = setInterval(() => {
     remainingSeconds--;
-    
+
     if (remainingSeconds <= 0) {
       remainingSeconds = 0;
       clearInterval(timerInterval);
-      timerCardEl.classList.remove('glow');
-      // Notify main process that timer expired
+      timerCardEl.classList.remove("glow");
+      timerLabelEl.textContent = "Time's up";
       window.api.timerExpired(currentAppName);
     }
-    
+
     updateDisplay();
   }, 1000);
 });
@@ -41,23 +45,19 @@ window.api.onStartTimer((data) => {
 function updateDisplay() {
   const minutes = Math.floor(remainingSeconds / 60);
   const seconds = remainingSeconds % 60;
-  
-  const timeString = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
-  timerDisplayEl.textContent = timeString;
-  
-  // Calculate progress percentage
-  const progressPercent = (remainingSeconds / totalSeconds) * 100;
+  timerDisplayEl.textContent =
+    `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+
+  const progressPercent = totalSeconds > 0 ? (remainingSeconds / totalSeconds) * 100 : 0;
   progressFillEl.style.width = `${progressPercent}%`;
-  
-  // Update color based on remaining time
-  timerDisplayEl.className = 'timer-display';
-  progressFillEl.className = 'progress-fill';
-  
-  if (remainingSeconds <= 60) {
-    timerDisplayEl.classList.add('danger');
-    progressFillEl.classList.add('danger');
-  } else if (remainingSeconds <= 300) {
-    timerDisplayEl.classList.add('warning');
-    progressFillEl.classList.add('warning');
+
+  // One attribute drives the card, the numerals and the bar together.
+  let state = "gaming";
+  if (remainingSeconds <= 60) state = "expired";
+  else if (remainingSeconds <= 300) state = "warning";
+
+  timerCardEl.setAttribute("data-status", state);
+  if (remainingSeconds > 0) {
+    timerLabelEl.textContent = state === "expired" ? "Ending now" : "Remaining";
   }
 }

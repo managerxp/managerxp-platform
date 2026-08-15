@@ -64,6 +64,8 @@ function createLoginWindow() {
     });
   } else {
     console.log('[Navigation] Window exists, navigating to login page');
+    // Relax the console's minimum before shrinking back to the login size.
+    win.setMinimumSize(400, 500);
     win.setSize(500, 600);
     win.center();
     
@@ -86,10 +88,11 @@ function createWindow() {
   if (!win || win.isDestroyed()) {
     console.log('[Navigation] Creating main window with home page');
     win = new BrowserWindow({
-      width: 950,
-      height: 700,
-      minWidth: 800,
-      minHeight: 600,
+      width: 1440,
+      height: 900,
+      minWidth: 1120,
+      minHeight: 720,
+      backgroundColor: '#07070b', // matches the console background, avoids a white flash
       show: false, // Don't show until ready
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -131,7 +134,8 @@ function createWindow() {
     });
   } else {
     console.log('[Navigation] Window exists, navigating to home page');
-    win.setSize(950, 700);
+    win.setMinimumSize(1120, 720);
+    win.setSize(1440, 900);
     win.center();
     
     // Load the home page
