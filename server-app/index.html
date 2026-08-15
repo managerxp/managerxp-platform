@@ -65,6 +65,21 @@
           <span class="clock" id="clock">--:--:--</span>
 
           <button class="btn btn-ghost btn-icon" id="reconnectAllBtn" data-tip="Reconnect all stations" aria-label="Reconnect all"></button>
+
+          <!-- Custom window controls; the OS frame is disabled -->
+          <div class="win-controls" id="winControls">
+            <button class="win-btn" id="winMin" aria-label="Minimise" title="Minimise">
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
+            </button>
+            <button class="win-btn" id="winMax" aria-label="Maximise" title="Maximise">
+              <svg viewBox="0 0 12 12" aria-hidden="true" data-restore="false">
+                <rect x="2.5" y="2.5" width="7" height="7" rx="1"/>
+              </svg>
+            </button>
+            <button class="win-btn win-btn-close" id="winClose" aria-label="Close" title="Close">
+              <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+            </button>
+          </div>
         </div>
       </header>
 

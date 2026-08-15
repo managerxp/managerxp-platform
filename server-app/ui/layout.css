@@ -219,12 +219,56 @@
   align-items: center;
   gap: var(--s-4);
   height: var(--topbar-h);
-  padding: 0 var(--s-6);
+  padding: 0 0 0 var(--s-6);   /* window controls sit flush to the right edge */
   flex: none;
   border-bottom: 1px solid var(--line);
   background: rgba(13, 13, 19, 0.86);
   backdrop-filter: blur(12px);
+  /* The OS frame is off, so the bar itself is the drag handle. */
+  -webkit-app-region: drag;
 }
+/* Anything interactive must opt back out of the drag region. */
+.topbar button,
+.topbar input,
+.topbar .status-pill,
+.topbar .segmented,
+.topbar select { -webkit-app-region: no-drag; }
+
+/* ==========================================================================
+   WINDOW CONTROLS
+   ========================================================================== */
+.win-controls {
+  display: flex;
+  align-items: stretch;
+  align-self: stretch;
+  margin-left: var(--s-3);
+  -webkit-app-region: no-drag;
+}
+.win-btn {
+  width: 46px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+}
+.win-btn svg {
+  width: 12px; height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+}
+.win-btn:hover { background: rgba(255, 255, 255, 0.07); color: var(--text); }
+.win-btn:active { background: rgba(255, 255, 255, 0.12); }
+
+/* Close reads red on hover — the one destructive control up here. */
+.win-btn-close:hover {
+  background: linear-gradient(180deg, var(--accent-hot), var(--accent));
+  color: #fff;
+}
+.win-btn-close:active { background: var(--accent-deep); }
 .topbar-title { font-size: var(--t-h1); font-weight: 650; letter-spacing: -0.015em; }
 .topbar-crumb { font-size: var(--t-sm); color: var(--text-3); }
 .topbar-tools { display: flex; align-items: center; gap: var(--s-2); margin-left: auto; }

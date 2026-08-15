@@ -31,6 +31,8 @@ function createLoginWindow() {
       height: 600,
       minWidth: 400,
       minHeight: 500,
+      frame: false,
+      backgroundColor: '#07070b',
       show: false,
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -92,6 +94,7 @@ function createWindow() {
       height: 900,
       minWidth: 1120,
       minHeight: 720,
+      frame: false, // custom CafeXP title bar drawn in the topbar
       backgroundColor: '#07070b', // matches the console background, avoids a white flash
       show: false, // Don't show until ready
       webPreferences: {
@@ -126,6 +129,15 @@ function createWindow() {
       }
     });
     
+    // Keep the custom title bar's maximise icon in step with the real state.
+    const pushMaximizeState = () => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('window:maximized-changed', win.isMaximized());
+      }
+    };
+    win.on('maximize', pushMaximizeState);
+    win.on('unmaximize', pushMaximizeState);
+
     // Handle window close event
     win.on('closed', () => {
       console.log('[Navigation] Window closed');
@@ -979,6 +991,25 @@ function registerIPCHandlers() {
       console.error("Error fetching PCs:", error.message);
       return { success: false, data: [], error: error.message };
     }
+  });
+
+  // ---- Custom window controls (the frame is drawn by the renderer) ----
+  ipcMain.on("window:minimize", () => {
+    if (win && !win.isDestroyed()) win.minimize();
+  });
+
+  ipcMain.on("window:toggle-maximize", () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+
+  ipcMain.on("window:close", () => {
+    if (win && !win.isDestroyed()) win.close();
+  });
+
+  ipcMain.handle("window:is-maximized", () => {
+    return !!win && !win.isDestroyed() && win.isMaximized();
   });
 
   ipcMain.on("auth:open-web-app", (event) => {

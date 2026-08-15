@@ -156,7 +156,13 @@
     }
 
     if (outgoing && Motion.enabled) {
-      Promise.resolve(Motion.exit(outgoing, { y: -6, duration: 0.12 })).then(swap);
+      // A stalled animation must never strand staff on a blank page: whichever
+      // settles first — the exit or a short deadline — triggers the swap, and
+      // the token guard stops it running twice.
+      Promise.race([
+        Promise.resolve(Motion.exit(outgoing, { y: -6, duration: 0.12 })),
+        new Promise(function (resolve) { setTimeout(resolve, 240); })
+      ]).then(swap);
     } else {
       swap();
     }

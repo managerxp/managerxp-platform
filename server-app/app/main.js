@@ -100,8 +100,53 @@
     });
   }
 
+  /* ---------- Window controls (the OS frame is disabled) ---------- */
+  var MAXIMISE_GLYPH = '<rect x="2.5" y="2.5" width="7" height="7" rx="1"/>';
+  var RESTORE_GLYPH =
+    '<rect x="2" y="4" width="6" height="6" rx="1"/>' +
+    '<path d="M4.4 4V2.6A.6.6 0 0 1 5 2h4.4a.6.6 0 0 1 .6.6V7a.6.6 0 0 1-.6.6H8.6"/>';
+
+  function setMaximizedGlyph(isMaximized) {
+    var btn = document.getElementById("winMax");
+    if (!btn) return;
+    btn.querySelector("svg").innerHTML = isMaximized ? RESTORE_GLYPH : MAXIMISE_GLYPH;
+    btn.setAttribute("aria-label", isMaximized ? "Restore" : "Maximise");
+    btn.setAttribute("title", isMaximized ? "Restore" : "Maximise");
+  }
+
+  function wireWindowControls() {
+    var api = global.api || {};
+    var min = document.getElementById("winMin");
+    var max = document.getElementById("winMax");
+    var close = document.getElementById("winClose");
+    if (!min || !max || !close) return;
+
+    // Without the bridge these would be dead controls in the title bar.
+    if (!api.windowMinimize) {
+      document.getElementById("winControls").classList.add("hidden");
+      return;
+    }
+
+    min.addEventListener("click", function () { api.windowMinimize(); });
+    max.addEventListener("click", function () { api.windowToggleMaximize(); });
+    close.addEventListener("click", function () { api.windowClose(); });
+
+    // Double-clicking the bar toggles maximise, as a native title bar does.
+    var topbar = document.querySelector(".topbar");
+    if (topbar) {
+      topbar.addEventListener("dblclick", function (e) {
+        if (e.target.closest("button, input, select, .status-pill")) return;
+        api.windowToggleMaximize();
+      });
+    }
+
+    if (api.onWindowMaximizedChanged) api.onWindowMaximizedChanged(setMaximizedGlyph);
+    if (api.windowIsMaximized) api.windowIsMaximized().then(setMaximizedGlyph).catch(function () {});
+  }
+
   /* ---------- Boot ---------- */
   function boot() {
+    wireWindowControls();
     // Icons that live in static markup
     document.getElementById("sidebarToggle").innerHTML = Icon("chevronL", 16);
     var reconnectBtn = document.getElementById("reconnectAllBtn");

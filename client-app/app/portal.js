@@ -65,7 +65,13 @@
     }
 
     if (outgoing && Motion.enabled) {
-      Promise.resolve(Motion.exit(outgoing, { y: -8, duration: 0.14 })).then(swap);
+      // Never let a stalled animation strand the customer on a blank view:
+      // whichever settles first — the exit or a short deadline — triggers the
+      // swap, and the token guard keeps it from running twice.
+      Promise.race([
+        Promise.resolve(Motion.exit(outgoing, { y: -8, duration: 0.14 })),
+        new Promise(function (resolve) { setTimeout(resolve, 260); })
+      ]).then(swap);
     } else {
       swap();
     }
@@ -104,8 +110,20 @@
       value.textContent = online ? (Session.state.pcName || "Ready") : "Offline";
     }
 
-    // Wallet has no backend; the chip stays neutral and explains on click.
-    document.getElementById("walletChipValue").textContent = "—";
+    // Wallet balance, live from the server.
+    var Wallet = global.CXWallet;
+    var walletValue = document.getElementById("walletChipValue");
+    var walletChip = document.getElementById("walletChip");
+    if (Wallet.state.error || Wallet.state.balance === null) {
+      walletValue.textContent = Wallet.state.loading ? "…" : "—";
+      walletChip.setAttribute("data-status", Wallet.state.error ? "warning" : "idle");
+    } else {
+      walletChip.setAttribute("data-status", "accent");
+      Motion.countTo(walletValue, Number(Wallet.state.balance), {
+        duration: 0.6,
+        format: function (v) { return Wallet.amount(v); }
+      });
+    }
 
     var orb = document.getElementById("avatarOrb");
     var name = document.getElementById("avatarName");
@@ -209,6 +227,7 @@
     host = document.getElementById("viewHost");
 
     document.getElementById("notifyBtn").innerHTML = Icon("bell", 18);
+    document.getElementById("walletChipCoin").innerHTML = global.CXCoin(22, { detail: "plain" });
 
     Session.init();
     buildNav();
@@ -281,12 +300,12 @@
       );
     });
 
-    document.getElementById("walletChip").addEventListener("click", function () {
-      explainChip(
-        "Wallet",
-        "Your café hasn't switched on wallet balances yet. Once it does, your balance, top-ups and spending will show here."
-      );
-    });
+    document.getElementById("walletChip").addEventListener("click", function () { go("wallet"); });
+
+    // Keep the chip in step with the wallet, and reload once the token lands.
+    global.CXWallet.on(paintChips);
+    Session.on("token", function (token) { if (token) global.CXWallet.load(); });
+    Session.on("user", function () { global.CXWallet.load(); });
 
     document.getElementById("notifyBtn").addEventListener("click", function () {
       explainChip(

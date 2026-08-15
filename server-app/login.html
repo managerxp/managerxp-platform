@@ -109,9 +109,44 @@
       font-size: 11px;
       color: var(--text-3);
     }
+
+    /* The OS frame is off on this window too, so it needs its own drag strip
+       and a way out. */
+    .titlebar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 38px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      -webkit-app-region: drag;
+      z-index: 10;
+    }
+    .titlebar button { -webkit-app-region: no-drag; }
+    .win-btn {
+      width: 46px; height: 38px;
+      display: grid;
+      place-items: center;
+      border: 0;
+      background: transparent;
+      color: var(--text-3);
+      transition: background var(--dur-fast) var(--ease-out), color var(--dur-fast) var(--ease-out);
+    }
+    .win-btn svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.3; stroke-linecap: round; }
+    .win-btn:hover { background: rgba(255,255,255,.07); color: var(--text); }
+    .win-btn-close:hover { background: linear-gradient(180deg, var(--accent-hot), var(--accent)); color: #fff; }
   </style>
 </head>
 <body>
+
+  <div class="titlebar">
+    <button class="win-btn" id="winMin" aria-label="Minimise" title="Minimise">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
+    </button>
+    <button class="win-btn win-btn-close" id="winClose" aria-label="Close" title="Close">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
+    </button>
+  </div>
 
   <main class="auth">
     <div class="auth-brand">
@@ -167,6 +202,19 @@
     </div>
   </main>
 
+  <script>
+    // Window controls for this frameless window.
+    (function () {
+      var min = document.getElementById("winMin");
+      var close = document.getElementById("winClose");
+      if (!window.api || !window.api.windowMinimize) {
+        document.querySelector(".titlebar").style.display = "none";
+        return;
+      }
+      min.addEventListener("click", function () { window.api.windowMinimize(); });
+      close.addEventListener("click", function () { window.api.windowClose(); });
+    })();
+  </script>
   <script src="auth.js"></script>
   <script src="login.js"></script>
 </body>

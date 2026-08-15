@@ -45,5 +45,12 @@ contextBridge.exposeInMainWorld("api", {
   refreshPCList: () => ipcRenderer.invoke("pc:refresh-list"),
   
   // System info
-  getMacAddress: () => ipcRenderer.invoke("system:get-mac-address")
+  getMacAddress: () => ipcRenderer.invoke("system:get-mac-address"),
+
+  // Custom window controls
+  windowMinimize: () => ipcRenderer.send("window:minimize"),
+  windowToggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
+  windowClose: () => ipcRenderer.send("window:close"),
+  windowIsMaximized: () => ipcRenderer.invoke("window:is-maximized"),
+  onWindowMaximizedChanged: (cb) => ipcRenderer.on("window:maximized-changed", (_, v) => cb(v))
 });

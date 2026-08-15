@@ -49,7 +49,10 @@
       });
     }
     if (api.getToken) {
-      api.getToken(function (token) { state.token = token || null; });
+      api.getToken(function (token) {
+        state.token = token || null;
+        emit("token", state.token);
+      });
     }
     if (api.getPcName) {
       api.getPcName(function (name) { state.pcName = name || null; emit("pc", state.pcName); });

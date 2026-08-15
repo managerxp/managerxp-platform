@@ -164,9 +164,20 @@
       el.textContent = format(to);
       return;
     }
-    M.animate(function (p) {
+
+    var duration = opts.duration || 0.55;
+    var anim = M.animate(function (p) {
       el.textContent = format(from + (to - from) * p);
-    }, { duration: opts.duration || 0.55, easing: EASE.out });
+    }, { duration: duration, easing: EASE.out });
+
+    // The driver above is the only thing writing the text, so if its frames
+    // never run — a hidden window, a dropped frame budget — the element would
+    // keep the stale value. Always land on the target.
+    var settle = function () {
+      if (Number(el.dataset.value) === to) el.textContent = format(to);
+    };
+    if (anim && anim.finished) anim.finished.then(settle).catch(settle);
+    setTimeout(settle, duration * 1000 + 150);
   }
 
   /** Animate a .meter-fill to a percentage. */

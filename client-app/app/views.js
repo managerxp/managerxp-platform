@@ -193,6 +193,7 @@
       var quick = UI.el("div", { class: "card card-pad col", style: { gap: "var(--s-3)" } });
       quick.innerHTML = '<div class="session-label" style="margin-bottom:var(--s-2)">Quick actions</div>';
       [
+        ["billing", "My wallet", "wallet"],
         ["fnb", "Order food", "food"],
         ["packages", "Visit the shop", "shop"],
         ["plan", "Rewards", "rewards"],
@@ -353,6 +354,183 @@
   };
 
   /* ==========================================================================
+     WALLET  (live, from /api/wallet)
+     ========================================================================== */
+  var TX_STATUS = { credit: "online", debit: "accent" };
+
+  function transactionRow(tx) {
+    var Wallet = global.CXWallet;
+    var isCredit = tx.direction === "credit";
+    var row = UI.el("div", { class: "tx-row", dataset: { status: TX_STATUS[tx.direction] || "idle" } });
+
+    var when = new Date(tx.created_at);
+    var meta = [
+      isNaN(when) ? null : when.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+      tx.method || null,
+      tx.note || null
+    ].filter(Boolean).join(" · ");
+
+    row.innerHTML =
+      '<span class="tx-icon">' + Icon(isCredit ? "plus" : "fnb", 18) + "</span>" +
+      '<div style="min-width:0">' +
+        '<div class="tx-title">' + UI.esc(Wallet.categoryLabel(tx.category)) + "</div>" +
+        '<div class="tx-meta truncate">' + UI.esc(meta) + "</div>" +
+      "</div>" +
+      "<div>" +
+        // The coin mark is illegible at this size, so the unit is spelled out.
+        '<div class="tx-amount">' + (isCredit ? "+" : "−") + UI.esc(Wallet.amount(tx.amount)) +
+          '<span style="font-size:11px;font-weight:700;letter-spacing:.06em;opacity:.72;margin-left:4px">XP</span>' +
+        "</div>" +
+        '<div class="tx-balance">' + UI.esc(Wallet.money(tx.balance_after)) + "</div>" +
+      "</div>";
+    return row;
+  }
+
+  global.CXViews.wallet = {
+    label: "Wallet",
+    icon: "billing",
+    title: "Wallet",
+    mount: function (root, ctx) {
+      var Wallet = global.CXWallet;
+
+      var view = UI.el("div", { class: "view" });
+      view.innerHTML =
+        '<div class="view-head">' +
+          "<div>" +
+            '<div class="view-title">Wallet</div>' +
+            '<div class="view-sub">Your café balance and everything it has paid for.</div>' +
+          "</div>" +
+          '<div class="row gap-3">' +
+            '<button class="btn btn-outline" id="walletRefresh">' + Icon("refresh", 16) +
+              '<span class="btn-label">Refresh</span></button>' +
+          "</div>" +
+        "</div>" +
+        '<div style="display:grid;grid-template-columns:minmax(320px,420px) minmax(0,1fr);gap:var(--s-6);align-items:start" id="walletGrid">' +
+          '<div id="walletBalance"></div>' +
+          '<div class="card card-body-flush" id="walletLedger"></div>' +
+        "</div>";
+      root.appendChild(view);
+
+      var balanceHost = view.querySelector("#walletBalance");
+      var ledgerHost = view.querySelector("#walletLedger");
+
+      function renderBalance(s) {
+        UI.clear(balanceHost);
+
+        if (s.loading && s.balance === null) {
+          var skel = UI.el("div", { class: "wallet-card col", style: { gap: "var(--s-4)" } });
+          skel.innerHTML =
+            '<div class="skel skel-line" style="width:40%"></div>' +
+            '<div class="skel" style="height:52px;width:70%"></div>' +
+            '<div class="skel skel-line" style="width:55%"></div>';
+          balanceHost.appendChild(skel);
+          return;
+        }
+
+        if (s.error) {
+          balanceHost.appendChild(walletError(s.error));
+          return;
+        }
+
+        var card = UI.el("div", { class: "wallet-card" });
+        card.innerHTML =
+          '<div class="row gap-6" style="align-items:center">' +
+            '<div class="grow">' +
+              '<div class="wallet-label">XP Coin balance</div>' +
+              '<div class="wallet-amount-row">' +
+                '<span class="wallet-balance" id="walletAmount">' + UI.esc(Wallet.amount(s.balance)) + "</span>" +
+                '<span class="wallet-unit">XP</span>' +
+              "</div>" +
+            "</div>" +
+            global.CXCoin(112, { detail: "full", spin: true }).replace('class="xp-coin', 'class="xp-coin xp-coin-hero') +
+          "</div>" +
+          '<div class="wallet-sub">Earn · Redeem · Grow — ask a member of staff to add coins at the counter.</div>';
+        balanceHost.appendChild(card);
+
+        // Count the balance up on first paint and on any change.
+        var amountEl = card.querySelector("#walletAmount");
+        var previous = amountEl.dataset.shown != null ? Number(amountEl.dataset.shown) : 0;
+        Motion.countTo(amountEl, Number(s.balance), {
+          duration: 0.6,
+          format: function (v) { return Wallet.amount(v); }
+        });
+        amountEl.dataset.shown = s.balance;
+        if (previous !== s.balance) Motion.pulse(card, "rgba(255,23,68,.32)");
+      }
+
+      function walletError(code) {
+        var copy = {
+          "not-signed-in": ["You're not signed in", "Sign in to see your wallet balance."],
+          "no-token": ["Your session needs refreshing", "Please sign in again to load your wallet."],
+          denied: ["We can't show this wallet", "Please sign in again, or ask a staff member for help."],
+          missing: ["No wallet found", "Ask a staff member to set up your wallet at the counter."],
+          unreachable: ["Can't reach your wallet", "The café server didn't respond. Please try again."]
+        }[code] || ["Something went wrong", "We couldn't load your wallet."];
+
+        return UI.emptyState({
+          icon: "alert",
+          status: code === "unreachable" || code === "denied" ? "error" : "warning",
+          title: copy[0],
+          text: copy[1],
+          actions: [{ label: "Try again", icon: "refresh", variant: "outline", onClick: function () { Wallet.load(); } }]
+        });
+      }
+
+      function renderLedger(s) {
+        UI.clear(ledgerHost);
+        ledgerHost.appendChild(UI.el("div", {
+          class: "card-head",
+          html: "<h2>Recent activity</h2>" +
+            (s.total ? '<span class="badge badge-plain">' + s.total + " total</span>" : "")
+        }));
+
+        if (s.loading && !s.transactions.length) {
+          ledgerHost.appendChild(UI.skeletonRows(5));
+          return;
+        }
+        if (s.error) {
+          ledgerHost.appendChild(UI.el("div", { class: "card-body" }, [walletError(s.error)]));
+          return;
+        }
+        if (!s.transactions.length) {
+          ledgerHost.appendChild(UI.emptyState({
+            icon: "billing",
+            title: "Nothing here yet",
+            text: "Top-ups and anything you spend at the café will be listed here."
+          }));
+          return;
+        }
+
+        var list = UI.el("div");
+        var rows = [];
+        s.transactions.forEach(function (tx) {
+          var row = transactionRow(tx);
+          list.appendChild(row);
+          rows.push(row);
+        });
+        ledgerHost.appendChild(list);
+        Motion.stagger(rows, { step: 0.02, y: 8, maxDelay: 0.2 });
+      }
+
+      function paint(s) { renderBalance(s); renderLedger(s); }
+
+      var off = Wallet.on(function (s) {
+        if (!view.isConnected) { off(); return; }
+        paint(s);
+      });
+
+      var refreshBtn = view.querySelector("#walletRefresh");
+      refreshBtn.addEventListener("click", function () {
+        UI.withBusy(refreshBtn, function () { return Wallet.load(); });
+      });
+
+      paint(Wallet.state);
+      Wallet.load();
+      Motion.enter(view, { y: 14 });
+    }
+  };
+
+  /* ==========================================================================
      ACCOUNT  (real customer data)
      ========================================================================== */
   global.CXViews.account = {
@@ -432,6 +610,35 @@
 
       var side = UI.el("div", { class: "col", style: { gap: "var(--s-5)" } });
       side.appendChild(stationCard());
+
+      // Wallet summary, straight from the live balance.
+      var Wallet = global.CXWallet;
+      var walletBox = UI.el("div", { class: "card card-pad" });
+      function paintWalletBox(s) {
+        walletBox.innerHTML =
+          '<div class="row-between" style="align-items:center">' +
+            '<div><div class="session-label">XP Coin</div>' +
+              '<div class="coin-inline" style="margin-top:6px">' +
+                '<span style="font-size:30px;font-weight:800;letter-spacing:-.03em;font-variant-numeric:tabular-nums">' +
+                  (s.error ? "—" : s.balance === null ? "…" : UI.esc(Wallet.amount(s.balance))) + "</span>" +
+                '<span style="font-size:13px;font-weight:750;letter-spacing:.08em;color:var(--accent-hot)">XP</span>' +
+              "</div>" +
+            "</div>" +
+            (s.error
+              ? '<span class="badge" data-status="warning">Unavailable</span>'
+              : global.CXCoin(52, { detail: "plain", spin: true })) +
+          "</div>" +
+          '<button class="btn btn-outline btn-block" style="margin-top:var(--s-4)" id="walletOpen">' +
+            Icon("billing", 16) + '<span class="btn-label">View wallet</span></button>';
+        walletBox.querySelector("#walletOpen").addEventListener("click", function () { ctx.go("wallet"); });
+      }
+      paintWalletBox(Wallet.state);
+      var offWallet = Wallet.on(function (s) {
+        if (!walletBox.isConnected) { offWallet(); return; }
+        paintWalletBox(s);
+      });
+      side.appendChild(walletBox);
+
       split.appendChild(side);
 
       view.appendChild(split);

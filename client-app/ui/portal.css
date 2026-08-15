@@ -784,6 +784,118 @@
 }
 
 /* ==========================================================================
+   WALLET
+   ========================================================================== */
+.wallet-card {
+  position: relative;
+  overflow: hidden;
+  padding: var(--s-8);
+  border-radius: var(--r-xl);
+  border: 1px solid var(--accent-line);
+  background:
+    radial-gradient(680px 260px at 8% -30%, rgba(255, 23, 68, 0.24), transparent 62%),
+    linear-gradient(160deg, var(--bg-raised-2), var(--bg-raised));
+  box-shadow: var(--shadow-3);
+}
+.wallet-card::after {
+  /* soft sheen across the top edge */
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+}
+.wallet-label {
+  font-size: var(--t-xs);
+  font-weight: 750;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.wallet-amount-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-4);
+  margin-top: var(--s-4);
+}
+.wallet-balance {
+  font-size: 58px;
+  font-weight: 820;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.wallet-unit {
+  font-size: var(--t-h3);
+  font-weight: 750;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--accent-hot);
+  align-self: flex-end;
+  padding-bottom: 6px;
+}
+.wallet-sub { margin-top: var(--s-4); font-size: var(--t-body); color: var(--text-2); }
+
+/* ---------- XP Coin ---------- */
+.xp-coin {
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 6px 18px rgba(255, 23, 68, 0.28));
+}
+.xp-coin-hero {
+  filter: drop-shadow(0 18px 44px rgba(255, 23, 68, 0.4));
+}
+/* A slow 3D tilt — one element, transform only, and it settles rather than
+   looping forever in the customer's peripheral vision. */
+.xp-coin-spin {
+  transform-style: preserve-3d;
+  animation: coin-tilt 7s var(--ease-in-out) infinite;
+}
+@keyframes coin-tilt {
+  0%, 100% { transform: perspective(600px) rotateY(-12deg) rotateX(4deg); }
+  50%      { transform: perspective(600px) rotateY(12deg) rotateX(-3deg); }
+}
+.xpc-ring { font-family: var(--font); }
+
+/* Coin sitting inline with a number (nav chip, ledger rows) */
+.coin-inline { display: inline-flex; align-items: center; gap: 7px; }
+.coin-inline .xp-coin { filter: none; }
+
+/* Ledger */
+.tx-row {
+  display: grid;
+  grid-template-columns: 40px 1fr auto;
+  gap: var(--s-4);
+  align-items: center;
+  padding: var(--s-4);
+  border-bottom: 1px solid var(--line-faint);
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.tx-row:last-child { border-bottom: 0; }
+.tx-row:hover { background: var(--bg-hover); }
+.tx-icon {
+  display: grid;
+  place-items: center;
+  width: 40px; height: 40px;
+  border-radius: var(--r-sm);
+  background: var(--st-soft, var(--idle-soft));
+  border: 1px solid var(--st-line, var(--idle-line));
+  color: var(--st, var(--idle));
+}
+.tx-title { font-size: var(--t-body); font-weight: 640; }
+.tx-meta { margin-top: 2px; font-size: var(--t-xs); color: var(--text-3); }
+.tx-amount {
+  text-align: right;
+  font-size: var(--t-h3);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+  color: var(--st, var(--text));
+  white-space: nowrap;
+}
+.tx-balance { margin-top: 2px; font-size: var(--t-xs); color: var(--text-3); text-align: right; }
+
+/* ==========================================================================
    CART DRAWER
    ========================================================================== */
 .cart-line {
