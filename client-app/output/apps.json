@@ -15,9 +15,24 @@
         "launch":  "C:\\Program Files\\PostgreSQL\\18\\bin\\stackbuilder.exe"
     },
     {
+        "name":  "Bitvise SSH Client",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\BvSsh.exe"
+    },
+    {
+        "name":  "Bitvise SSH Client 9.66 (remove only)",
+        "version":  "9.66",
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\uninst.exe"
+    },
+    {
         "name":  "Character Map",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\charmap.exe"
+    },
+    {
+        "name":  "Client Key Manager",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\BvSsh.exe"
     },
     {
         "name":  "Command Prompt",
@@ -41,8 +56,8 @@
     },
     {
         "name":  "Copilot",
-        "version":  "147.0.3912.98",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\147.0.3912.98\\mscopilot.exe"
+        "version":  "150.0.4078.96",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\150.0.4078.96\\mscopilot.exe"
     },
     {
         "name":  "DBeaver",
@@ -110,14 +125,24 @@
         "launch":  "C:\\Program Files\\Git\\ReleaseNotes.html"
     },
     {
+        "name":  "Global VPN Client",
+        "version":  "4.10.8",
+        "launch":  "C:\\Program Files\\SonicWall\\Global VPN Client\\SWGVC.exe"
+    },
+    {
         "name":  "Google Chrome",
-        "version":  "147.0.7727.138",
+        "version":  "151.0.7922.109",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
         "name":  "Help to use Orthanc",
         "version":  null,
         "launch":  "C:\\Program Files\\Orthanc Server\\README.txt"
+    },
+    {
+        "name":  "Host Key Manager",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\BvSsh.exe"
     },
     {
         "name":  "HP Audio Switch",
@@ -148,6 +173,11 @@
         "name":  "Install Additional Tools for Node.js",
         "version":  null,
         "launch":  "C:\\Windows\\System32\\cmd.exe"
+    },
+    {
+        "name":  "Installed Resources",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\BscInstalledResources.htm"
     },
     {
         "name":  "Internet Download Manager",
@@ -181,18 +211,18 @@
     },
     {
         "name":  "Microsoft 365 - en-us",
-        "version":  "16.0.19929.20106",
+        "version":  "16.0.20228.20158",
         "launch":  "C:\\Program Files\\Common Files\\Microsoft Shared\\ClickToRun\\OfficeClickToRun.exe"
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "147.0.3912.98",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\147.0.3912.98\\msedge.exe"
+        "version":  "151.0.4129.78",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.78\\msedge.exe"
     },
     {
         "name":  "Microsoft OneDrive",
-        "version":  "26.063.0405.0002",
-        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.063.0405.0002\\OneDriveSetup.exe"
+        "version":  "26.134.0713.0007",
+        "launch":  "C:\\Program Files\\Microsoft OneDrive\\26.134.0713.0007\\OneDriveSetup.exe"
     },
     {
         "name":  "Microsoft Teams Meeting Add-in for Microsoft Office",
@@ -280,6 +310,11 @@
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\OUTLOOK.EXE"
     },
     {
+        "name":  "Pageant",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PuTTY\\pageant.exe"
+    },
+    {
         "name":  "Pandoc 3.8.2.1",
         "version":  "3.8.2.1",
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Pandoc\\pandoc.exe"
@@ -315,9 +350,44 @@
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\POWERPNT.EXE"
     },
     {
+        "name":  "Proxy Settings",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\BvSsh.exe"
+    },
+    {
+        "name":  "PSFTP",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PuTTY\\psftp.exe"
+    },
+    {
         "name":  "Publisher",
         "version":  null,
         "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\MSPUB.EXE"
+    },
+    {
+        "name":  "PuTTY",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PuTTY\\putty.exe"
+    },
+    {
+        "name":  "PuTTY Manual",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PuTTY\\putty.chm"
+    },
+    {
+        "name":  "PuTTY release 0.84 (64-bit)",
+        "version":  "0.84.0.0",
+        "launch":  ""
+    },
+    {
+        "name":  "PuTTY Web Site",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PuTTY\\website.url"
+    },
+    {
+        "name":  "PuTTYgen",
+        "version":  null,
+        "launch":  "C:\\Program Files\\PuTTY\\puttygen.exe"
     },
     {
         "name":  "PyDoc (Python 3.14)",
@@ -385,6 +455,11 @@
         "launch":  "C:\\WINDOWS\\system32\\perfmon.exe"
     },
     {
+        "name":  "Send to OneNote",
+        "version":  null,
+        "launch":  "C:\\Program Files\\Microsoft Office\\root\\Office16\\ONENOTEM.EXE"
+    },
+    {
         "name":  "services",
         "version":  null,
         "launch":  "C:\\WINDOWS\\system32\\services.msc"
@@ -430,9 +505,24 @@
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\Programs\\MiKTeX\\miktex\\bin\\x64\\miktex-texworks.exe"
     },
     {
+        "name":  "UltraViewer",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\UltraViewer\\UltraViewer_Desktop.exe"
+    },
+    {
+        "name":  "UltraViewer version 6.6.124",
+        "version":  "6.6.124",
+        "launch":  "C:\\Program Files (x86)\\UltraViewer\\UltraViewer_Desktop.exe"
+    },
+    {
         "name":  "Uninstall",
         "version":  null,
         "launch":  "C:\\Users\\chotu\\AppData\\Local\\DBeaver\\Uninstall.exe"
+    },
+    {
+        "name":  "Uninstall Bitvise SSH Client",
+        "version":  null,
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\uninst.exe"
     },
     {
         "name":  "Uninstall Internet Download Manager",
@@ -496,7 +586,7 @@
     },
     {
         "name":  "WebAdvisor by McAfee",
-        "version":  "4.1.1.1113",
+        "version":  "4.1.2.110",
         "launch":  "C:\\Program Files\\McAfee\\WebAdvisor\\MFW\\packages\\builtin\\msac.ico"
     },
     {
@@ -543,6 +633,11 @@
         "name":  "Windows SDK AddOn",
         "version":  "10.1.0.0",
         "launch":  ""
+    },
+    {
+        "name":  "WinFsp installed by Bitvise SSH Client (remove only)",
+        "version":  "2.2.26194",
+        "launch":  "C:\\Program Files (x86)\\Bitvise SSH Client\\uninst.exe"
     },
     {
         "name":  "Word",
