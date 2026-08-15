@@ -1,432 +1,75 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ConnectXP - User Dashboard</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --bg: #050505;
-      --panel: rgba(10, 10, 10, 0.94);
-      --line: rgba(255, 0, 51, 0.22);
-      --text: #ffffff;
-      --muted: #8b8b8b;
-      --accent: #ff0033;
-      --accent-soft: #ff4d6d;
-      --good: #00ff41;
-    }
-
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-    }
-
-    body {
-      min-height: 100vh;
-      font-family: 'Rajdhani', sans-serif;
-      color: var(--text);
-      background:
-        radial-gradient(circle at top left, rgba(255, 0, 51, 0.16), transparent 34%),
-        radial-gradient(circle at bottom right, rgba(0, 255, 65, 0.08), transparent 30%),
-        linear-gradient(135deg, #020202 0%, #090909 50%, #020202 100%);
-      overflow: hidden;
-      position: relative;
-    }
-
-    body::before {
-      content: '';
-      position: absolute;
-      inset: 0;
-      background-image:
-        linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-      background-size: 44px 44px;
-      pointer-events: none;
-    }
-
-    .wrap {
-      position: relative;
-      z-index: 1;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 32px;
-    }
-
-    .panel {
-      width: min(920px, 100%);
-      background: var(--panel);
-      border: 1px solid var(--line);
-      box-shadow: 0 0 0 1px rgba(255, 0, 51, 0.06), 0 24px 80px rgba(0, 0, 0, 0.65);
-      border-radius: 28px;
-      padding: 34px;
-      position: relative;
-      overflow: hidden;
-      animation: fadeUp 0.7s ease both;
-    }
-
-    .panel::after {
-      content: '';
-      position: absolute;
-      inset: auto -15% -35% auto;
-      width: 320px;
-      height: 320px;
-      background: radial-gradient(circle, rgba(255, 0, 51, 0.18), transparent 68%);
-      pointer-events: none;
-    }
-
-    .topbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 16px;
-      margin-bottom: 28px;
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-
-    .brand-mark {
-      width: 52px;
-      height: 52px;
-      border-radius: 16px;
-      display: grid;
-      place-items: center;
-      background: linear-gradient(135deg, rgba(255, 0, 51, 0.22), rgba(255, 0, 51, 0.06));
-      border: 1px solid rgba(255, 0, 51, 0.28);
-      font-size: 24px;
-      box-shadow: 0 0 24px rgba(255, 0, 51, 0.16);
-    }
-
-    .brand-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 15px;
-      letter-spacing: 3px;
-      text-transform: uppercase;
-      color: #fff;
-    }
-
-    .brand-subtitle {
-      margin-top: 4px;
-      color: var(--muted);
-      font-size: 13px;
-    }
-
-    .logout-btn {
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: transparent;
-      color: #fff;
-      padding: 10px 16px;
-      border-radius: 999px;
-      font-family: 'Orbitron', sans-serif;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      cursor: pointer;
-      transition: 0.25s ease;
-    }
-
-    .logout-btn:hover {
-      border-color: var(--accent);
-      color: var(--accent);
-    }
-
-    .hero {
-      display: grid;
-      grid-template-columns: 1.4fr 0.9fr;
-      gap: 24px;
-      align-items: stretch;
-    }
-
-    .welcome-card,
-    .info-card {
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 24px;
-      background: rgba(255, 255, 255, 0.02);
-      padding: 28px;
-      backdrop-filter: blur(8px);
-    }
-
-    .eyebrow {
-      display: inline-block;
-      color: var(--good);
-      font-family: 'Orbitron', sans-serif;
-      text-transform: uppercase;
-      letter-spacing: 3px;
-      font-size: 11px;
-      margin-bottom: 16px;
-    }
-
-    .headline {
-      font-family: 'Orbitron', sans-serif;
-      font-size: clamp(30px, 4vw, 56px);
-      line-height: 1.05;
-      text-transform: uppercase;
-      margin-bottom: 14px;
-    }
-
-    .headline span {
-      color: var(--accent);
-    }
-
-    .copy {
-      color: var(--muted);
-      font-size: 18px;
-      line-height: 1.6;
-      max-width: 54ch;
-    }
-
-    .stats {
-      margin-top: 26px;
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 14px;
-    }
-
-    .stat {
-      border-radius: 18px;
-      background: rgba(0, 0, 0, 0.28);
-      border: 1px solid rgba(255, 255, 255, 0.07);
-      padding: 18px;
-    }
-
-    .stat-label {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 11px;
-      color: var(--muted);
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      margin-bottom: 8px;
-    }
-
-    .stat-value {
-      font-size: 19px;
-      color: #fff;
-      word-break: break-word;
-    }
-
-    .info-card {
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      gap: 18px;
-    }
-
-    .profile-badge {
-      width: 90px;
-      height: 90px;
-      border-radius: 24px;
-      background: linear-gradient(135deg, rgba(255, 0, 51, 0.2), rgba(255, 77, 109, 0.08));
-      border: 1px solid rgba(255, 0, 51, 0.26);
-      display: grid;
-      place-items: center;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 28px;
-      color: #fff;
-      margin-bottom: 14px;
-    }
-
-    .mini-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 12px;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      color: var(--muted);
-      margin-bottom: 8px;
-    }
-
-    .user-name {
-      font-size: 30px;
-      color: #fff;
-      line-height: 1.1;
-      margin-bottom: 10px;
-    }
-
-    .meta {
-      color: var(--muted);
-      font-size: 16px;
-      line-height: 1.6;
-    }
-
-    .actions {
-      display: flex;
-      gap: 12px;
-      flex-wrap: wrap;
-      margin-top: 10px;
-    }
-
-    .action-btn {
-      border: none;
-      border-radius: 999px;
-      padding: 12px 18px;
-      font-family: 'Orbitron', sans-serif;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      cursor: pointer;
-      transition: 0.25s ease;
-    }
-
-    .action-btn.primary {
-      background: linear-gradient(90deg, var(--accent), #8a001c);
-      color: #fff;
-    }
-
-    .action-btn.secondary {
-      background: rgba(255, 255, 255, 0.03);
-      color: #fff;
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-
-    .action-btn:hover {
-      transform: translateY(-1px);
-    }
-
-    .loading,
-    .missing {
-      color: var(--muted);
-      font-size: 17px;
-    }
-
-    @keyframes fadeUp {
-      from { opacity: 0; transform: translateY(18px); }
-      to { opacity: 1; transform: translateY(0); }
-    }
-
-    @media (max-width: 840px) {
-      body {
-        overflow: auto;
-      }
-
-      .panel {
-        padding: 22px;
-      }
-
-      .hero {
-        grid-template-columns: 1fr;
-      }
-
-      .stats {
-        grid-template-columns: 1fr;
-      }
-
-      .topbar {
-        flex-direction: column;
-        align-items: flex-start;
-      }
-    }
-  </style>
+  <title>CafeXP</title>
+  <link rel="stylesheet" href="ui/tokens.css" />
+  <link rel="stylesheet" href="ui/base.css" />
+  <link rel="stylesheet" href="ui/components.css" />
+  <link rel="stylesheet" href="ui/portal.css" />
 </head>
 <body>
-  <div class="wrap">
-    <div class="panel">
-      <div class="topbar">
-        <div class="brand">
-          <div class="brand-mark">◉</div>
-          <div>
-            <div class="brand-title">ConnectXP</div>
-            <div class="brand-subtitle">User Dashboard</div>
-          </div>
-        </div>
-        <button class="logout-btn" id="logoutBtn">Logout</button>
+  <div class="backdrop"></div>
+
+  <div class="portal">
+    <!-- ==================== TOP NAVIGATION ==================== -->
+    <header class="nav">
+      <div class="nav-brand">
+        <span class="nav-mark">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="6" width="20" height="12" rx="2.5"></rect>
+            <path d="M7 10v4M5 12h4M16 11h.01M18.5 13.5h.01"></path>
+          </svg>
+        </span>
+        <span class="nav-wordmark">Cafe<span>XP</span></span>
       </div>
 
-      <div class="hero">
-        <div class="welcome-card">
-          <div class="eyebrow">Access granted</div>
-          <div class="headline">Welcome back, <span id="welcomeName">Player</span></div>
-          <div class="copy">Your account is now active in the ConnectXP client. This dashboard is your starting point for the user session.</div>
+      <nav class="nav-links" id="navLinks"></nav>
 
-          <div class="stats">
-            <div class="stat">
-              <div class="stat-label">Status</div>
-              <div class="stat-value" id="accountStatus">Online</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Email</div>
-              <div class="stat-value" id="userEmail">Loading...</div>
-            </div>
-            <div class="stat">
-              <div class="stat-label">Member ID</div>
-              <div class="stat-value" id="userId">Loading...</div>
-            </div>
-          </div>
-        </div>
+      <div class="nav-right">
+        <button class="chip-stat chip-timer" id="sessionChip" data-status="idle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"
+               stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path>
+          </svg>
+          <span class="col">
+            <span class="chip-label">Session</span>
+            <span class="chip-value" id="sessionChipValue">—</span>
+          </span>
+        </button>
 
-        <div class="info-card">
-          <div>
-            <div class="profile-badge" id="profileBadge">UX</div>
-            <div class="mini-title">Signed in user</div>
-            <div class="user-name" id="profileName">Loading...</div>
-            <div class="meta" id="profileMeta">Fetching your account details...</div>
-          </div>
+        <button class="chip-stat" id="walletChip">
+          <span id="walletChipCoin"></span>
+          <span class="col">
+            <span class="chip-label">XP Coin</span>
+            <span class="chip-value" id="walletChipValue">—</span>
+          </span>
+        </button>
 
-          <div class="actions">
-            <button class="action-btn primary" id="goHomeBtn">Back to Login</button>
-            <button class="action-btn secondary" id="refreshBtn">Refresh</button>
-          </div>
-        </div>
+        <button class="btn btn-ghost btn-icon" id="notifyBtn" data-tip="Notifications" aria-label="Notifications"></button>
+
+        <button class="nav-avatar" id="accountBtn">
+          <span class="avatar-orb" id="avatarOrb">?</span>
+          <span class="nav-avatar-name truncate" id="avatarName">Guest</span>
+        </button>
       </div>
-    </div>
+    </header>
+
+    <!-- ==================== VIEWS ==================== -->
+    <main class="portal-scroll" id="portalScroll">
+      <div id="viewHost"></div>
+    </main>
   </div>
 
-  <script>
-    const welcomeName = document.getElementById('welcomeName');
-    const profileName = document.getElementById('profileName');
-    const profileMeta = document.getElementById('profileMeta');
-    const userEmail = document.getElementById('userEmail');
-    const userId = document.getElementById('userId');
-    const profileBadge = document.getElementById('profileBadge');
-
-    const renderUser = (user) => {
-      if (!user) {
-        welcomeName.textContent = 'Player';
-        profileName.textContent = 'Guest';
-        profileMeta.textContent = 'No signed-in user was found in this session.';
-        userEmail.textContent = 'Unavailable';
-        userId.textContent = 'Unavailable';
-        profileBadge.textContent = 'UX';
-        return;
-      }
-
-      const displayName = user.customer_name || user.name || 'Player';
-      welcomeName.textContent = displayName;
-      profileName.textContent = displayName;
-      profileMeta.textContent = `Welcome, ${displayName}. Your session is active.`;
-      userEmail.textContent = user.email || 'Unavailable';
-      userId.textContent = user.customer_id ? `#${user.customer_id}` : 'Unavailable';
-      profileBadge.textContent = displayName
-        .split(' ')
-        .map((part) => part[0])
-        .join('')
-        .slice(0, 2)
-        .toUpperCase();
-    };
-
-    const loadUser = () => {
-      window.api.getUserInfo((user) => {
-        renderUser(user);
-      });
-    };
-
-    document.getElementById('logoutBtn').addEventListener('click', () => {
-      window.api.storeToken(null);
-      window.api.storeUserInfo(null);
-      window.api.navigateTo('login');
-    });
-
-    document.getElementById('goHomeBtn').addEventListener('click', () => {
-      window.api.storeToken(null);
-      window.api.storeUserInfo(null);
-      window.api.navigateTo('login');
-    });
-
-    document.getElementById('refreshBtn').addEventListener('click', loadUser);
-
-    loadUser();
-  </script>
+  <script src="vendor/motion.min.js"></script>
+  <script src="app/motion-kit.js"></script>
+  <script src="app/icons.js"></script>
+  <script src="app/ui.js"></script>
+  <script src="app/coin.js"></script>
+  <script src="app/session.js"></script>
+  <script src="app/wallet.js"></script>
+  <script src="app/views.js"></script>
+  <script src="app/portal.js"></script>
 </body>
 </html>

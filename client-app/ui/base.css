@@ -1,0 +1,125 @@
+/* ==========================================================================
+   CafeXP Design System — Base / reset / typography
+   ========================================================================== */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bg-base);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--t-body);
+  line-height: var(--lh);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;              /* desktop app: panes scroll, not the page */
+  user-select: none;             /* app chrome feel; opt back in where needed */
+  cursor: default;
+}
+
+/* Ambient background wash — one soft accent bloom, no animation. */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(900px 500px at 12% -10%, rgba(255, 23, 68, 0.07), transparent 60%),
+    radial-gradient(700px 420px at 100% 0%, rgba(0, 176, 255, 0.035), transparent 55%);
+}
+
+h1, h2, h3, h4, p, figure { margin: 0; }
+ul, ol { margin: 0; padding: 0; list-style: none; }
+
+a { color: var(--accent-hot); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+button { cursor: pointer; }
+button:disabled { cursor: not-allowed; }
+
+/* Text that should be selectable/copyable */
+.selectable, input, textarea, .mono, code, pre { user-select: text; }
+
+/* ---------- Focus ---------- */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent-hot);
+  outline-offset: 2px;
+  border-radius: var(--r-xs);
+}
+
+/* ---------- Typography utilities ---------- */
+.page-title {
+  font-size: var(--t-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: var(--lh-tight);
+}
+.page-sub {
+  font-size: var(--t-body);
+  color: var(--text-2);
+  margin-top: var(--s-1);
+}
+.section-title {
+  font-size: var(--t-h1);
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+.eyebrow {
+  font-size: var(--t-xs);
+  font-weight: 650;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.mono { font-family: var(--font-mono); font-variant-ligatures: none; }
+.num  { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.muted { color: var(--text-2); }
+.faint { color: var(--text-3); }
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- Scrollbars ---------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.09);
+  border-radius: var(--r-pill);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.17); background-clip: content-box; }
+::-webkit-scrollbar-corner { background: transparent; }
+
+/* ---------- Selection ---------- */
+::selection { background: var(--accent-soft); color: var(--text); }
+
+/* ---------- Layout helpers ---------- */
+.row { display: flex; align-items: center; }
+.row-between { display: flex; align-items: center; justify-content: space-between; }
+.col { display: flex; flex-direction: column; }
+.gap-1 { gap: var(--s-1); } .gap-2 { gap: var(--s-2); } .gap-3 { gap: var(--s-3); }
+.gap-4 { gap: var(--s-4); } .gap-5 { gap: var(--s-5); } .gap-6 { gap: var(--s-6); }
+.grow { flex: 1 1 auto; min-width: 0; }
+.wrap { flex-wrap: wrap; }
+.hidden { display: none !important; }
+
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

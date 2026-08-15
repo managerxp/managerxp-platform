@@ -1,0 +1,145 @@
+/* ==========================================================================
+   CafeXP Client — Design tokens
+   Same token names as the Admin console so shared components behave
+   identically, retuned for a customer-facing screen: darker ground, larger
+   type, rounder surfaces, more presence.
+   ========================================================================== */
+
+:root {
+  /* ---------- Surface ramp ---------- */
+  --bg-base:        #050509;
+  --bg-surface:     #0a0a11;
+  --bg-raised:      #111119;
+  --bg-raised-2:    #17171f;
+  --bg-inset:       #08080d;
+  --bg-hover:       #1e1e28;
+  --bg-active:      #26262f;
+
+  /* Translucent panels for glass surfaces over artwork */
+  --glass:          rgba(17, 17, 25, 0.72);
+  --glass-strong:   rgba(10, 10, 17, 0.88);
+
+  /* ---------- Accent ---------- */
+  --accent:         #ff1744;
+  --accent-hot:     #ff4569;
+  --accent-deep:    #c40f31;
+  --accent-soft:    rgba(255, 23, 68, 0.14);
+  --accent-softer:  rgba(255, 23, 68, 0.07);
+  --accent-line:    rgba(255, 23, 68, 0.30);
+  --accent-glow:    rgba(255, 23, 68, 0.42);
+
+  /* ---------- Status ---------- */
+  --ok:             #00e676;
+  --ok-soft:        rgba(0, 230, 118, 0.14);
+  --ok-line:        rgba(0, 230, 118, 0.32);
+  --ok-glow:        rgba(0, 230, 118, 0.30);
+
+  --warn:           #ffab00;
+  --warn-soft:      rgba(255, 171, 0, 0.14);
+  --warn-line:      rgba(255, 171, 0, 0.32);
+
+  --danger:         #ff3b30;
+  --danger-soft:    rgba(255, 59, 48, 0.14);
+  --danger-line:    rgba(255, 59, 48, 0.32);
+
+  --info:           #00b0ff;
+  --info-soft:      rgba(0, 176, 255, 0.14);
+  --info-line:      rgba(0, 176, 255, 0.32);
+
+  --idle:           #6b7280;
+  --idle-soft:      rgba(107, 114, 128, 0.14);
+  --idle-line:      rgba(107, 114, 128, 0.30);
+
+  /* ---------- Text ---------- */
+  --text:           #f7f7fa;
+  --text-2:         #a9a9bb;
+  --text-3:         #71718a;
+  --text-on-accent: #ffffff;
+
+  /* ---------- Lines ---------- */
+  --line:           rgba(255, 255, 255, 0.08);
+  --line-strong:    rgba(255, 255, 255, 0.14);
+  --line-faint:     rgba(255, 255, 255, 0.045);
+
+  /* ---------- Elevation ---------- */
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.6);
+  --shadow-2: 0 6px 22px rgba(0, 0, 0, 0.5);
+  --shadow-3: 0 16px 50px rgba(0, 0, 0, 0.6);
+  --shadow-4: 0 32px 90px rgba(0, 0, 0, 0.72);
+  --ring:     0 0 0 3px rgba(255, 23, 68, 0.32);
+  --glow-accent: 0 0 40px rgba(255, 23, 68, 0.28);
+
+  /* ---------- Radius (rounder than the admin) ---------- */
+  --r-xs: 6px;
+  --r-sm: 9px;
+  --r-md: 14px;
+  --r-lg: 18px;
+  --r-xl: 26px;
+  --r-pill: 999px;
+
+  /* ---------- Spacing ---------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+  --s-16: 64px;
+
+  /* ---------- Typography (a step up from the admin scale) ---------- */
+  --font: "Inter", "Segoe UI Variable Display", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Cascadia Mono", "Consolas", ui-monospace, monospace;
+
+  --t-hero: 64px;
+  --t-display: 40px;
+  --t-h1: 27px;
+  --t-h2: 20px;
+  --t-h3: 16px;
+  --t-body: 15px;
+  --t-sm: 13px;
+  --t-xs: 12px;
+  --t-metric: 38px;
+  --t-metric-lg: 52px;
+
+  --lh-tight: 1.08;
+  --lh: 1.5;
+  --track-caps: 0.11em;
+
+  /* ---------- Layout ---------- */
+  --nav-h: 72px;
+  --shelf-gap: 20px;
+  --page-max: 1720px;
+  --drawer-w: 460px;
+
+  /* ---------- Motion ---------- */
+  --dur-instant: 90ms;
+  --dur-fast: 160ms;
+  --dur-base: 260ms;
+  --dur-slow: 420ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-snap: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Status colour mapping — identical contract to the admin console. */
+[data-status="online"], [data-status="available"], [data-status="active"], [data-status="ok"], [data-status="ready"] {
+  --st: var(--ok); --st-soft: var(--ok-soft); --st-line: var(--ok-line); --st-glow: var(--ok-glow);
+}
+[data-status="gaming"], [data-status="in-session"], [data-status="running"], [data-status="preparing"] {
+  --st: var(--info); --st-soft: var(--info-soft); --st-line: var(--info-line); --st-glow: rgba(0,176,255,.3);
+}
+[data-status="maintenance"], [data-status="warning"], [data-status="reserved"], [data-status="pending"] {
+  --st: var(--warn); --st-soft: var(--warn-soft); --st-line: var(--warn-line); --st-glow: rgba(255,171,0,.3);
+}
+[data-status="offline"], [data-status="error"], [data-status="failed"], [data-status="expired"] {
+  --st: var(--danger); --st-soft: var(--danger-soft); --st-line: var(--danger-line); --st-glow: rgba(255,59,48,.3);
+}
+[data-status="unknown"], [data-status="idle"], [data-status="disabled"], [data-status="inactive"] {
+  --st: var(--idle); --st-soft: var(--idle-soft); --st-line: var(--idle-line); --st-glow: rgba(107,114,128,.24);
+}
+[data-status="accent"] {
+  --st: var(--accent); --st-soft: var(--accent-soft); --st-line: var(--accent-line); --st-glow: var(--accent-glow);
+}

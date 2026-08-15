@@ -31,6 +31,8 @@ function createLoginWindow() {
       height: 600,
       minWidth: 400,
       minHeight: 500,
+      frame: false,
+      backgroundColor: '#07070b',
       show: false,
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -64,6 +66,8 @@ function createLoginWindow() {
     });
   } else {
     console.log('[Navigation] Window exists, navigating to login page');
+    // Relax the console's minimum before shrinking back to the login size.
+    win.setMinimumSize(400, 500);
     win.setSize(500, 600);
     win.center();
     
@@ -86,10 +90,12 @@ function createWindow() {
   if (!win || win.isDestroyed()) {
     console.log('[Navigation] Creating main window with home page');
     win = new BrowserWindow({
-      width: 950,
-      height: 700,
-      minWidth: 800,
-      minHeight: 600,
+      width: 1440,
+      height: 900,
+      minWidth: 1120,
+      minHeight: 720,
+      frame: false, // custom CafeXP title bar drawn in the topbar
+      backgroundColor: '#07070b', // matches the console background, avoids a white flash
       show: false, // Don't show until ready
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -123,6 +129,15 @@ function createWindow() {
       }
     });
     
+    // Keep the custom title bar's maximise icon in step with the real state.
+    const pushMaximizeState = () => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('window:maximized-changed', win.isMaximized());
+      }
+    };
+    win.on('maximize', pushMaximizeState);
+    win.on('unmaximize', pushMaximizeState);
+
     // Handle window close event
     win.on('closed', () => {
       console.log('[Navigation] Window closed');
@@ -131,7 +146,8 @@ function createWindow() {
     });
   } else {
     console.log('[Navigation] Window exists, navigating to home page');
-    win.setSize(950, 700);
+    win.setMinimumSize(1120, 720);
+    win.setSize(1440, 900);
     win.center();
     
     // Load the home page
@@ -975,6 +991,25 @@ function registerIPCHandlers() {
       console.error("Error fetching PCs:", error.message);
       return { success: false, data: [], error: error.message };
     }
+  });
+
+  // ---- Custom window controls (the frame is drawn by the renderer) ----
+  ipcMain.on("window:minimize", () => {
+    if (win && !win.isDestroyed()) win.minimize();
+  });
+
+  ipcMain.on("window:toggle-maximize", () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+
+  ipcMain.on("window:close", () => {
+    if (win && !win.isDestroyed()) win.close();
+  });
+
+  ipcMain.handle("window:is-maximized", () => {
+    return !!win && !win.isDestroyed() && win.isMaximized();
   });
 
   ipcMain.on("auth:open-web-app", (event) => {

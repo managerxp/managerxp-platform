@@ -106,13 +106,13 @@ function createWindow() {
     return currentStatus;
   });
   
-  // Create main client application window
+  // Create main client application window.
+  // The customer portal is a full-screen experience — no title bar, no chrome.
   win = new BrowserWindow({
-    width: 600,
-    height: 600,
-    minWidth: 550,
-    minHeight: 550,
-    y: 100,
+    fullscreen: true,
+    minWidth: 1024,
+    minHeight: 700,
+    backgroundColor: '#050509', // matches the portal background, avoids a white flash
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -120,8 +120,24 @@ function createWindow() {
     }
   });
 
+  // F11 toggles full screen so staff and testers are never trapped.
+  // This is presentation only — it adds no kiosk lockdown of its own.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type === 'keyDown' && input.key === 'F11') {
+      win.setFullScreen(!win.isFullScreen());
+      event.preventDefault();
+    }
+  });
+
   // Remove the application menu
   Menu.setApplicationMenu(null);
+
+  // Closing the portal shuts the client down, rather than leaving a headless
+  // process holding the WebSocket port and broadcasting to nobody.
+  win.on('closed', () => {
+    win = null;
+    app.quit();
+  });
 
   currentPage = 'status';
   win.loadFile("index.html");
@@ -146,15 +162,31 @@ function navigateToPage(page) {
   win.loadFile(pageFile);
 }
 
+// A closed BrowserWindow is not null, it is destroyed — touching webContents
+// on it throws. Every send goes through these guards.
+function alive(target) {
+  return !!target && !target.isDestroyed();
+}
+
+function sendToWindow(target, channel, payload) {
+  if (!alive(target)) return;
+  try {
+    target.webContents.send(channel, payload);
+  } catch (err) {
+    // The window can be torn down between the check and the send.
+    console.warn(`[send] ${channel} dropped: ${err.message}`);
+  }
+}
+
 function log(message) {
-  if (win) win.webContents.send("log", message);
+  sendToWindow(win, "log", message);
 }
 
 function updateStatus(status) {
   currentStatus = status; // Update current status
-  
-  if (win) win.webContents.send("status", status);
-  if (statusBarWin) statusBarWin.webContents.send("status", status);
+
+  sendToWindow(win, "status", status);
+  sendToWindow(statusBarWin, "status", status);
   
   // Navigate to welcome page when connected
   if (status === "CONNECTED" && currentPage === 'status') {
@@ -319,6 +351,11 @@ function createTimerCard(appName, timerMinutes) {
     });
   });
 
+  // Mirror the same event to the customer portal so it can show the countdown
+  // in its navigation bar. Display only — the timer card remains the window
+  // that reports expiry back to the main process.
+  sendToWindow(win, "start-timer", { appName: appName, minutes: timerMinutes });
+
   return timerCard;
 }
 
@@ -417,8 +454,8 @@ function listen() {
         log(`PC name set to: ${SIM_ID}`);
         
         // Send PC name to renderer
-        if (win) win.webContents.send("pc-name", SIM_ID);
-        if (statusBarWin) statusBarWin.webContents.send("pc-name", SIM_ID);
+        sendToWindow(win, "pc-name", SIM_ID);
+        sendToWindow(statusBarWin, "pc-name", SIM_ID);
         
         // Register this client with the server using the provided name
         ws.send(JSON.stringify({
@@ -457,9 +494,14 @@ function listen() {
       if (msg.type === "LAUNCH_APP") {
         log(`Launching: ${msg.appName}`);
         if (msg.appPath) {
+          // Tell the portal a launch started so it can show its transition.
+          // Purely a UI notification; the launch itself is unchanged.
+          sendToWindow(win, "app-launching", { appName: msg.appName });
+
           const child = exec(`"${msg.appPath}"`, (err) => {
             if (err) {
               log(`Error launching app: ${err.message}`);
+              sendToWindow(win, "app-launch-failed", { appName: msg.appName, error: err.message });
             } else {
               log(`Successfully launched: ${msg.appName}`);
             }
@@ -585,7 +627,10 @@ function closeApplication(appName) {
     
     // Remove from tracking first to avoid duplicate close attempts
     runningProcesses.delete(appName);
-    
+
+    // Let the portal show its session-ended screen. Notification only.
+    sendToWindow(win, "app-closed", { appName: appName });
+
     // Close the actual application
     closeByExecutableName(processInfo.appPath, appName);
   } else {
@@ -655,6 +700,19 @@ app.whenReady().then(() => {
   
   // Initial broadcast immediately
   broadcastPCInfo();
+});
+
+// Stop the discovery broadcast on the way out so it cannot fire against
+// windows that are already gone.
+app.on('before-quit', () => {
+  if (BROADCAST_INTERVAL) {
+    clearInterval(BROADCAST_INTERVAL);
+    BROADCAST_INTERVAL = null;
+  }
+});
+
+app.on('window-all-closed', () => {
+  app.quit();
 });
 
 /* ---- HEARTBEAT ---- */

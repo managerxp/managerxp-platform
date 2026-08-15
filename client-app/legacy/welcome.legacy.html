@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>ConnectXP - Init</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary-red: #ff0033;
+      --dark-red: #8a001c;
+      --accent-green: #00ff41;
+      --bg-dark: #050505;
+      --text-main: #ffffff;
+      --text-dim: #666666;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Rajdhani', sans-serif;
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Animated Grid Background */
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 200%;
+      height: 200%;
+      background-image: 
+        linear-gradient(rgba(255, 0, 51, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 0, 51, 0.05) 1px, transparent 1px);
+      background-size: 40px 40px;
+      animation: gridMove 20s linear infinite;
+      z-index: 0;
+    }
+
+    /* Vignette overlay */
+    body::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: radial-gradient(circle at center, transparent 0%, #000000 80%);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    @keyframes gridMove {
+      0% { transform: translate(0, 0); }
+      100% { transform: translate(-40px, -40px); }
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    @keyframes glitchFX {
+      0%, 100% { clip-path: inset(0 0 0 0); }
+      5% { clip-path: inset(10% 0 60% 0); }
+      10% { clip-path: inset(40% 0 20% 0); }
+      15% { clip-path: inset(80% 0 5% 0); }
+      20% { clip-path: inset(0 0 0 0); }
+    }
+
+    .welcome-container {
+      width: 100%;
+      max-width: 600px;
+      padding: 20px;
+      z-index: 2;
+      animation: fadeIn 0.8s ease-out;
+    }
+
+    .welcome-card {
+      background: linear-gradient(135deg, rgba(20, 20, 20, 0.95) 0%, rgba(5, 5, 5, 0.98) 100%);
+      border: 1px solid #222;
+      padding: 50px 40px;
+      position: relative;
+      /* Sci-Fi Angled Cut */
+      clip-path: polygon(
+        0 0, 
+        100% 0, 
+        100% calc(100% - 30px), 
+        calc(100% - 30px) 100%, 
+        0 100%
+      );
+      box-shadow: 0 0 50px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Decorative Top Line */
+    .welcome-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: linear-gradient(90deg, var(--primary-red), transparent);
+    }
+
+    /* Decorative Corner Accents */
+    .welcome-card::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 30px;
+      height: 30px;
+      border-bottom: 2px solid var(--primary-red);
+      border-right: 2px solid var(--primary-red);
+    }
+
+    .logo-section {
+      text-align: center;
+      margin-bottom: 40px;
+      position: relative;
+    }
+
+    .logo-icon {
+      font-size: 50px;
+      margin-bottom: 15px;
+      display: inline-block;
+      filter: drop-shadow(0 0 10px var(--primary-red));
+    }
+
+    .logo-text {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 48px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: #fff;
+      text-shadow: 0 0 10px var(--primary-red), 0 0 20px var(--primary-red);
+      margin-bottom: 5px;
+    }
+
+    .logo-subtitle {
+      font-family: 'Orbitron', sans-serif;
+      font-size: 12px;
+      color: #555;
+      letter-spacing: 5px;
+      text-transform: uppercase;
+    }
+
+    .welcome-message {
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .welcome-text {
+      font-size: 18px;
+      color: #aaa;
+      margin-bottom: 20px;
+      font-weight: 500;
+      letter-spacing: 1px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      background: rgba(0, 255, 65, 0.05);
+      border: 1px solid rgba(0, 255, 65, 0.3);
+      padding: 10px 20px;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      color: var(--accent-green);
+      text-transform: uppercase;
+      transition: all 0.3s ease;
+    }
+
+    .status-badge.disconnected {
+      background: rgba(255, 0, 51, 0.05);
+      border-color: rgba(255, 0, 51, 0.3);
+      color: var(--primary-red);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--accent-green);
+      box-shadow: 0 0 10px var(--accent-green);
+    }
+
+    .status-badge.disconnected .status-dot {
+      background: var(--primary-red);
+      box-shadow: 0 0 10px var(--primary-red);
+    }
+
+    .pc-name {
+      font-size: 12px;
+      color: #444;
+      margin-top: 15px;
+      font-family: 'Courier New', monospace;
+      letter-spacing: 1px;
+    }
+
+    .pc-name span {
+      color: var(--primary-red);
+    }
+
+    .button-group {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+
+    .btn {
+      padding: 16px 32px;
+      border: none;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      position: relative;
+      background: #111;
+      color: #fff;
+      border: 1px solid #333;
+      clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%); /* Slight slant */
+    }
+
+    /* Primary Button: Red */
+    .btn-primary {
+      background: linear-gradient(90deg, var(--primary-red), var(--dark-red));
+      border: none;
+      color: white;
+      box-shadow: 0 0 15px rgba(255, 0, 51, 0.3);
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px rgba(255, 0, 51, 0.6);
+    }
+
+    .btn-primary:active {
+      transform: translateY(0);
+      background: var(--primary-red);
+    }
+
+    /* Secondary Button: Ghost */
+    .btn-secondary {
+      background: transparent;
+      color: #ccc;
+      border: 1px solid #333;
+    }
+
+    .btn-secondary:hover {
+      color: #fff;
+      border-color: #666;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .features {
+      margin-top: 50px;
+      border-top: 1px solid #111;
+      padding-top: 30px;
+    }
+
+    .features-title {
+      text-align: center;
+      font-family: 'Orbitron', sans-serif;
+      font-size: 11px;
+      color: #333;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 25px;
+    }
+
+    .features-list {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .feature-item {
+      text-align: center;
+      flex: 1;
+      position: relative;
+    }
+
+    /* Vertical lines between features */
+    .feature-item:not(:last-child)::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 10%;
+      height: 80%;
+      width: 1px;
+      background: #1a1a1a;
+    }
+
+    .feature-icon {
+      font-size: 24px;
+      margin-bottom: 8px;
+      filter: grayscale(100%);
+      opacity: 0.7;
+      transition: all 0.3s ease;
+    }
+    
+    .feature-item:hover .feature-icon {
+        filter: grayscale(0%);
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    .feature-name {
+      font-size: 12px;
+      color: #555;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+  </style>
+</head>
+<body>
+  <div class="welcome-container">
+    <div class="welcome-card">
+      <div class="logo-section">
+        <div class="logo-icon">🔗</div>
+        <div class="logo-text">ConnectXP</div>
+        <div class="logo-subtitle">Gaming Hub Client</div>
+      </div>
+
+      <div class="welcome-message">
+        <div class="welcome-text">System Initialized</div>
+        <div class="status-badge" id="statusBadge">
+          <span class="status-dot" id="statusDot"></span>
+          <span id="statusText">PC Connected</span>
+        </div>
+        <div class="pc-name">
+          Node ID: <span id="clientName">Initializing...</span>
+        </div>
+      </div>
+
+      <div class="button-group">
+        <button class="btn btn-primary" id="loginBtn">Login to Account</button>
+        <button class="btn btn-secondary" id="registerBtn">Create New Account</button>
+      </div>
+
+      <div class="features">
+        <div class="features-title">System Stats</div>
+        <div class="features-list">
+          <div class="feature-item">
+            <div class="feature-icon">⚡</div>
+            <div class="feature-name">Low Latency</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">🛡️</div>
+            <div class="feature-name">Secure Link</div>
+          </div>
+          <div class="feature-item">
+            <div class="feature-icon">📡</div>
+            <div class="feature-name">Live Sync</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const statusBadge = document.getElementById('statusBadge');
+    const statusText = document.getElementById('statusText');
+    const statusDot = document.getElementById('statusDot');
+    const clientNameEl = document.getElementById('clientName');
+    
+     // Function to update status UI
+     function updateStatusUI(status) {
+       if (status === "CONNECTED") {
+         statusBadge.classList.remove('disconnected');
+         statusText.textContent = 'PC Connected';
+       } else if (status === "DISCONNECTED") {
+         statusBadge.classList.add('disconnected');
+         statusText.textContent = 'PC Disconnected';
+       }
+     }
+   
+     document.getElementById('loginBtn').addEventListener('click', () => {
+       window.api.navigateTo('login');
+     });
+
+    document.getElementById('registerBtn').addEventListener('click', () => {
+      window.api.navigateTo('register');
+    });
+
+    // Get PC name on page load
+    window.api.getPcName((name) => {
+      clientNameEl.textContent = name || 'Unknown';
+    });
+   // Initialize with current status on page load
+   window.api.getStatus((status) => {
+     updateStatusUI(status);
+   });
+   
+   // Listen for real-time status updates
+    window.api.onStatus((status) => {
+       updateStatusUI(status);
+    });
+  </script>
+</body>
+</html>
