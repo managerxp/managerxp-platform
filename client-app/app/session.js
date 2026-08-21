@@ -21,7 +21,8 @@
     // remains the one that reports expiry to the main process.
     play: null,          // { appName, totalSeconds, remaining, startedAt }
     launching: null,     // { appName } while a launch is in flight
-    endedAt: null        // set when a session finishes, for the ended screen
+    endedAt: null,       // set when a session finishes, for the ended screen
+    session: null        // café session pushed by the admin console
   };
 
   /* Thresholds the timer's visual states key off. */
@@ -29,6 +30,49 @@
   var CRITICAL_AT = 5 * 60;
 
   var ticker = null;
+  var sessionTicker = null;
+
+  /**
+   * The café session's own countdown. Derived from the elapsed figure the
+   * server sent plus the time since it arrived, so a late push corrects any
+   * drift instead of compounding it.
+   */
+  function startSessionTicker() {
+    if (sessionTicker) return;
+    sessionTicker = setInterval(function () {
+      var s = state.session;
+      if (!s) { clearInterval(sessionTicker); sessionTicker = null; return; }
+      if (s.status !== "active") return;
+
+      var drift = Math.floor((Date.now() - s.receivedAt) / 1000);
+      s.live_elapsed = s.elapsed_seconds + drift;
+      if (s.remaining_seconds !== null) {
+        s.live_remaining = Math.max(0, s.remaining_seconds - drift);
+      }
+      emit("session-tick", s);
+    }, 1000);
+  }
+
+  /** Seconds to show: remaining if the session is timed, else elapsed. */
+  function sessionClockSeconds() {
+    var s = state.session;
+    if (!s) return 0;
+    if (s.remaining_seconds === null) {
+      return s.live_elapsed != null ? s.live_elapsed : s.elapsed_seconds;
+    }
+    return s.live_remaining != null ? s.live_remaining : s.remaining_seconds;
+  }
+
+  function sessionState() {
+    var s = state.session;
+    if (!s) return "idle";
+    if (s.status === "paused") return "paused";
+    if (s.remaining_seconds === null) return "normal";
+    var left = sessionClockSeconds();
+    if (left <= CRITICAL_AT) return "critical";
+    if (left <= WARN_AT) return "warning";
+    return "normal";
+  }
 
   var listeners = {};
   function on(evt, fn) {
@@ -70,7 +114,28 @@
         if (changed) emit("connection", status);
       });
     }
-    /* ---------- play session ---------- */
+    /* ---------- café session, pushed by the admin console ---------- */
+    function adoptSession(session) {
+      var had = !!state.session;
+      state.session = session || null;
+
+      if (state.session) {
+        // The countdown runs locally between pushes; the café server stays
+        // authoritative and corrects us on the next push.
+        state.session.receivedAt = Date.now();
+        startSessionTicker();
+        emit("session", state.session);
+      } else {
+        if (sessionTicker) { clearInterval(sessionTicker); sessionTicker = null; }
+        emit("session", null);
+        if (had) emit("session-ended", null);
+      }
+    }
+
+    if (api.onSessionState) api.onSessionState(adoptSession);
+    if (api.getSessionState) api.getSessionState(adoptSession);
+
+    /* ---------- launch timer ---------- */
     if (api.onStartTimer) {
       api.onStartTimer(function (data) {
         if (!data) return;
@@ -195,6 +260,8 @@
     firstName: firstName,
     signOut: signOut,
     timerState: timerState,
+    sessionState: sessionState,
+    sessionClockSeconds: sessionClockSeconds,
     progress: progress,
     clock: clock,
     WARN_AT: WARN_AT,

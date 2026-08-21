@@ -702,6 +702,23 @@ table.tbl .td-actions { text-align: right; white-space: nowrap; }
 .dl dt { font-size: var(--t-sm); color: var(--text-3); white-space: nowrap; }
 .dl dd { margin: 0; font-size: var(--t-body); text-align: right; word-break: break-all; }
 
+/* ==========================================================================
+   XP COIN
+   ========================================================================== */
+.xp-coin {
+  display: block;
+  flex: none;
+  filter: drop-shadow(0 4px 14px rgba(255, 23, 68, 0.24));
+}
+.xp-coin-spin {
+  animation: coin-tilt 7s var(--ease-in-out) infinite;
+}
+@keyframes coin-tilt {
+  0%, 100% { transform: perspective(600px) rotateY(-10deg) rotateX(3deg); }
+  50%      { transform: perspective(600px) rotateY(10deg) rotateX(-3deg); }
+}
+.xpc-ring { font-family: var(--font); }
+
 /* Key/value stat row */
 .kv {
   display: flex;

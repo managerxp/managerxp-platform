@@ -42,6 +42,84 @@
     return head;
   }
 
+  /** The café session the staff started for this customer. */
+  function cafeSessionCard(session, online, pc) {
+    var st = Session.sessionState();
+    var paused = session.status === "paused";
+    var timed = session.remaining_seconds !== null;
+
+    var card = UI.el("div", {
+      class: "session-card",
+      dataset: {
+        status: paused ? "warning" : st === "critical" ? "expired" : st === "warning" ? "warning" : "gaming",
+        timer: st === "paused" ? "normal" : st
+      }
+    });
+
+    var caption = paused ? "Paused"
+      : !timed ? "Time played"
+      : st === "critical" ? "Session ending soon"
+      : st === "warning" ? "15 minutes left"
+      : "Time remaining";
+
+    // An open-ended session has no total to fill a ring against.
+    var pct = timed && session.planned_minutes
+      ? Math.max(0, Math.min(100, (Session.sessionClockSeconds() / (session.planned_minutes * 60)) * 100))
+      : 100;
+
+    card.innerHTML =
+      '<div class="row-between" style="align-items:flex-start">' +
+        "<div>" +
+          '<div class="session-label">Your station</div>' +
+          '<div style="font-family:var(--font-mono);font-size:26px;font-weight:750;letter-spacing:-.02em;margin-top:6px">' +
+            UI.esc(pc || "—") + "</div>" +
+        "</div>" +
+        '<span class="badge badge-lg" data-status="' + (online ? "online" : "offline") + '">' +
+          '<span class="dot' + (online ? " dot-live" : "") + '"></span>' +
+          (online ? "Online" : "Offline") + "</span>" +
+      "</div>" +
+      '<div style="margin-top:var(--s-6);padding-top:var(--s-6);border-top:1px solid var(--line);display:flex;gap:var(--s-6);align-items:center">' +
+        '<div class="timer-ring" data-ring style="--pct:' + pct + '">' +
+          '<div class="timer-ring-inner">' +
+            '<div class="timer-digits timer-digits-lg" data-session-digits>' +
+              Session.clock(Session.sessionClockSeconds()) + "</div>" +
+            '<div class="timer-caption" data-session-caption>' + UI.esc(caption) + "</div>" +
+          "</div>" +
+        "</div>" +
+        '<div class="grow" style="min-width:0">' +
+          '<div class="session-label">Playing as</div>' +
+          '<div style="font-size:var(--t-h2);font-weight:720;letter-spacing:-.02em;margin-top:6px" class="truncate">' +
+            UI.esc(session.customer_name || "Guest") + "</div>" +
+          '<div class="muted" style="font-size:var(--t-sm);margin-top:var(--s-3);line-height:1.55">' +
+            (paused
+              ? "Your session is on hold. Ask a staff member when you're ready to carry on."
+              : timed
+                ? "Ask a staff member if you'd like more time."
+                : "Open-ended — play as long as you like.") +
+          "</div>" +
+        "</div>" +
+      "</div>";
+
+    var digits = card.querySelector("[data-session-digits]");
+    var captionEl = card.querySelector("[data-session-caption]");
+    var ring = card.querySelector("[data-ring]");
+    var off = Session.on("session-tick", function () {
+      if (!card.isConnected) { off(); return; }
+      var s2 = Session.sessionState();
+      digits.textContent = Session.clock(Session.sessionClockSeconds());
+      card.setAttribute("data-timer", s2 === "paused" ? "normal" : s2);
+      if (timed && session.planned_minutes) {
+        ring.style.setProperty("--pct",
+          Math.max(0, Math.min(100, (Session.sessionClockSeconds() / (session.planned_minutes * 60)) * 100)));
+      }
+      captionEl.textContent = s2 === "critical" ? "Session ending soon"
+        : s2 === "warning" ? "15 minutes left"
+        : timed ? "Time remaining" : "Time played";
+    });
+
+    return card;
+  }
+
   /**
    * The station / session card. When a game is running it becomes the primary
    * timer surface, driven by the same countdown as the floating timer card.
@@ -49,6 +127,11 @@
   function stationCard() {
     var online = Session.isOnline();
     var pc = Session.state.pcName;
+    var cafeSession = Session.state.session;
+
+    // A café session is the real thing; the launch timer is a fallback.
+    if (cafeSession) return cafeSessionCard(cafeSession, online, pc);
+
     var play = Session.state.play;
     var timerState = Session.timerState();
 
@@ -194,6 +277,8 @@
       quick.innerHTML = '<div class="session-label" style="margin-bottom:var(--s-2)">Quick actions</div>';
       [
         ["billing", "My wallet", "wallet"],
+        ["packages", "My packages", "packages"],
+        ["membership", "Membership", "membership"],
         ["fnb", "Order food", "food"],
         ["packages", "Visit the shop", "shop"],
         ["plan", "Rewards", "rewards"],
@@ -265,13 +350,31 @@
   };
 
   /* ==========================================================================
-     FOOD
+     FOOD  (live menu from /api/products/menu)
      ========================================================================== */
+  var cart = {};          // product_id -> { product, quantity }  (survives view swaps)
+
+  function cartLines() {
+    return Object.keys(cart).map(function (k) { return cart[k]; })
+      .filter(function (l) { return l.quantity > 0; });
+  }
+  function cartTotal() {
+    return cartLines().reduce(function (sum, l) {
+      return sum + Number(l.product.price) * l.quantity;
+    }, 0);
+  }
+  function cartCount() {
+    return cartLines().reduce(function (n, l) { return n + l.quantity; }, 0);
+  }
+
   global.CXViews.food = {
     label: "Food",
     icon: "fnb",
     title: "Food & drink",
-    mount: function (root) {
+    mount: function (root, ctx) {
+      var Wallet = global.CXWallet;
+      var activeCategory = "All";
+
       var view = UI.el("div", { class: "view" });
       view.innerHTML =
         '<div class="view-head">' +
@@ -279,22 +382,338 @@
             '<div class="view-title">Food &amp; drink</div>' +
             '<div class="view-sub">Order to your station without leaving your seat.</div>' +
           "</div>" +
+          '<button class="btn btn-primary btn-lg" id="foodCartBtn">' + Icon("fnb", 17) +
+            '<span class="btn-label">Your order</span>' +
+            '<span class="chip-count" id="foodCartCount" style="background:rgba(0,0,0,.25)">0</span>' +
+          "</button>" +
         "</div>" +
-        '<div class="row gap-2 wrap" style="margin-bottom:var(--s-6);opacity:.5;pointer-events:none">' +
-          ["All", "Burgers", "Pizza", "Snacks", "Drinks", "Desserts", "Combos"].map(function (c, i) {
-            return '<button class="chip"' + (i === 0 ? ' aria-pressed="true" data-status="accent"' : "") + ">" + c + "</button>";
-          }).join("") +
-        "</div>";
-
-      view.appendChild(awaiting({
-        icon: "fnb",
-        title: "Ordering isn't switched on yet",
-        text: "When your café sets up its menu, you'll be able to browse food and drinks here, add them to an order and have it brought to your station.",
-        note: "Needs a products catalogue and an orders endpoint on the café server. Neither exists yet, so there is nothing to show — " +
-              "rather than display a menu nobody can cook."
-      }));
-
+        '<div class="row gap-2 wrap" id="foodCats" style="margin-bottom:var(--s-6)"></div>' +
+        '<div id="foodHost"></div>' +
+        '<div id="foodOrders" style="margin-top:var(--s-12)"></div>';
       root.appendChild(view);
+
+      var host = view.querySelector("#foodHost");
+      var catsRow = view.querySelector("#foodCats");
+      var ordersHost = view.querySelector("#foodOrders");
+      host.appendChild(UI.skeletonCards(6, "260px"));
+
+      function syncCartButton() {
+        var count = cartCount();
+        view.querySelector("#foodCartCount").textContent = count;
+        view.querySelector("#foodCartBtn").disabled = count === 0;
+      }
+
+      /* ---- menu ---- */
+      function paintMenu(s) {
+        UI.clear(catsRow);
+        UI.clear(host);
+
+        if (s.menuError) {
+          host.appendChild(UI.emptyState({
+            icon: "alert", status: "error",
+            title: "Couldn't load the menu",
+            text: "The café server didn't respond. Please try again.",
+            actions: [{ label: "Try again", icon: "refresh", onClick: function () { Wallet.loadMenu(); } }]
+          }));
+          return;
+        }
+        if (!s.menu) { host.appendChild(UI.skeletonCards(6, "260px")); return; }
+
+        var all = s.menu.data || [];
+        if (!all.length) {
+          host.appendChild(UI.emptyState({
+            icon: "fnb",
+            title: "Nothing on the menu right now",
+            text: "The kitchen hasn't put anything up for order. Ask a staff member what's available."
+          }));
+          return;
+        }
+
+        // Category chips, driven by whatever the café actually has.
+        var categories = ["All"].concat(s.menu.categories || []);
+        categories.forEach(function (name) {
+          var chip = UI.el("button", {
+            class: "chip",
+            text: name,
+            "aria-pressed": String(name === activeCategory)
+          });
+          if (name === activeCategory) chip.setAttribute("data-status", "accent");
+          chip.addEventListener("click", function () {
+            activeCategory = name;
+            paintMenu(s);
+          });
+          catsRow.appendChild(chip);
+        });
+
+        var shown = activeCategory === "All"
+          ? all
+          : (s.menu.grouped[activeCategory] || []);
+
+        var grid = UI.el("div", { class: "grid-products" });
+        shown.forEach(function (product) {
+          var line = cart[product.product_id];
+          var qty = line ? line.quantity : 0;
+
+          var card = UI.el("div", { class: "product" });
+          card.innerHTML =
+            '<div class="product-art"' +
+              (product.image_url ? ' style="background-image:url(' + UI.esc(product.image_url) + ')"' : "") + ">" +
+              (product.stock_state === "low"
+                ? '<span class="badge" data-status="warning" style="position:absolute;top:10px;left:10px">Only ' +
+                  product.stock_quantity + " left</span>"
+                : "") +
+            "</div>" +
+            '<div class="product-body">' +
+              '<div class="product-name">' + UI.esc(product.product_name) + "</div>" +
+              (product.description
+                ? '<div class="product-desc">' + UI.esc(product.description) + "</div>" : "") +
+              '<div class="product-price">' + UI.esc(Wallet.money(product.price)) + "</div>" +
+            "</div>";
+
+          var foot = UI.el("div", { class: "product-foot" });
+          var stepper = UI.el("div", { class: "stepper" });
+          stepper.innerHTML =
+            '<button data-minus aria-label="One fewer">' + Icon("close", 12) + "</button>" +
+            '<span class="stepper-value" data-qty>' + qty + "</span>" +
+            '<button data-plus aria-label="One more">' + Icon("plus", 12) + "</button>";
+
+          var qtyEl = stepper.querySelector("[data-qty]");
+          var minus = stepper.querySelector("[data-minus]");
+          var plus = stepper.querySelector("[data-plus]");
+
+          function setQty(next) {
+            // Never let the customer add more than the shelf holds.
+            var cap = product.track_stock ? Number(product.stock_quantity) : Infinity;
+            next = Math.max(0, Math.min(next, cap));
+            if (next === 0) delete cart[product.product_id];
+            else cart[product.product_id] = { product: product, quantity: next };
+            qtyEl.textContent = next;
+            minus.disabled = next === 0;
+            plus.disabled = next >= cap;
+            addBtn.classList.toggle("btn-primary", next > 0);
+            addBtn.classList.toggle("btn-outline", next === 0);
+            syncCartButton();
+            Motion.animate(qtyEl, { transform: ["scale(.7)", "scale(1)"] },
+              { duration: 0.22, easing: Motion.EASE.out });
+          }
+
+          var addBtn = UI.el("button", {
+            class: "btn " + (qty > 0 ? "btn-primary" : "btn-outline") + " grow",
+            html: '<span class="btn-label">Add to order</span>'
+          });
+          addBtn.addEventListener("click", function () {
+            var current = cart[product.product_id];
+            setQty((current ? current.quantity : 0) + 1);
+          });
+
+          minus.addEventListener("click", function () {
+            var current = cart[product.product_id];
+            setQty((current ? current.quantity : 0) - 1);
+          });
+          plus.addEventListener("click", function () {
+            var current = cart[product.product_id];
+            setQty((current ? current.quantity : 0) + 1);
+          });
+          minus.disabled = qty === 0;
+
+          foot.appendChild(stepper);
+          foot.appendChild(addBtn);
+          card.appendChild(foot);
+          grid.appendChild(card);
+        });
+
+        host.appendChild(grid);
+        Motion.stagger(grid.children, { step: 0.025, y: 12 });
+      }
+
+      /* ---- my orders ---- */
+      var ORDER_TONE = {
+        PLACED: "warning", CONFIRMED: "gaming", PREPARING: "gaming",
+        READY: "online", DELIVERED: "idle", CANCELLED: "offline"
+      };
+      var ORDER_COPY = {
+        PLACED: "Sent to the kitchen", CONFIRMED: "Confirmed", PREPARING: "Being prepared",
+        READY: "Ready — on its way", DELIVERED: "Delivered", CANCELLED: "Cancelled"
+      };
+
+      /*
+       * A kitchen order moves through fixed stages, and "Preparing" on its own
+       * does not tell the customer how far along that is. The track shows the
+       * whole journey with the current stage marked, so the answer to "how
+       * much longer" is visible rather than inferred.
+       *
+       * Cancelled is not a stage on the path — it is a stop — so it renders as
+       * a single state rather than a part-filled track.
+       */
+      var ORDER_STEPS = ["PLACED", "CONFIRMED", "PREPARING", "READY", "DELIVERED"];
+      var STEP_LABEL = {
+        PLACED: "Sent", CONFIRMED: "Confirmed", PREPARING: "Cooking",
+        READY: "Ready", DELIVERED: "Delivered"
+      };
+
+      function orderTrack(status) {
+        var track = UI.el("div", { class: "order-track" });
+
+        if (status === "CANCELLED") {
+          track.dataset.status = "offline";
+          track.innerHTML = '<div class="order-track-cancelled">' +
+            Icon("close", 13) + "<span>This order was cancelled</span></div>";
+          return track;
+        }
+
+        var reached = ORDER_STEPS.indexOf(status);
+        if (reached === -1) reached = 0;
+
+        track.innerHTML = ORDER_STEPS.map(function (step, i) {
+          var state = i < reached ? "done" : (i === reached ? "current" : "todo");
+          return '<div class="order-step" data-state="' + state + '">' +
+            '<span class="order-step-dot"></span>' +
+            '<span class="order-step-label">' + STEP_LABEL[step] + "</span>" +
+          "</div>";
+        }).join("");
+
+        // The bar fills to the current stage, so progress reads at a glance.
+        track.style.setProperty(
+          "--reached",
+          (reached / (ORDER_STEPS.length - 1) * 100).toFixed(1) + "%"
+        );
+        return track;
+      }
+
+      function paintOrders(s) {
+        UI.clear(ordersHost);
+        if (!s.orders || !s.orders.length) return;
+
+        ordersHost.appendChild(sectionHead("Your orders", null, null));
+        var card = UI.el("div", { class: "card card-body-flush" });
+        s.orders.slice(0, 8).forEach(function (order) {
+          var row = UI.el("div", {
+            class: "kv",
+            style: { padding: "14px var(--s-5)", borderBottom: "1px solid var(--line-faint)" },
+            dataset: { status: ORDER_TONE[order.status] || "idle" }
+          });
+          row.innerHTML =
+            '<span style="min-width:0">' +
+              '<span class="mono" style="font-size:13px;font-weight:650;display:block">' +
+                UI.esc(order.order_number) + "</span>" +
+              '<span class="faint" style="font-size:11px">' +
+                UI.esc(order.items.map(function (i) { return i.quantity + "× " + i.product_name; }).join(", ")) +
+              "</span></span>" +
+            '<span style="text-align:right;white-space:nowrap">' +
+              '<span style="font-size:15px;font-weight:750">' + UI.esc(Wallet.money(order.total)) + "</span>" +
+              '<span style="display:block;margin-top:3px"><span class="badge" data-status="' +
+                (ORDER_TONE[order.status] || "idle") + '">' +
+                UI.esc(ORDER_COPY[order.status] || order.status) + "</span></span>" +
+            "</span>";
+
+          var wrap = UI.el("div", {
+            style: { borderBottom: "1px solid var(--line-faint)" },
+            dataset: { status: ORDER_TONE[order.status] || "idle" }
+          });
+          row.style.borderBottom = "0";
+          wrap.appendChild(row);
+          wrap.appendChild(orderTrack(order.status));
+          card.appendChild(wrap);
+        });
+        ordersHost.appendChild(card);
+      }
+
+      /* ---- cart drawer ---- */
+      function openCart() {
+        var lines = cartLines();
+        if (!lines.length) return;
+
+        var body = UI.el("div", { class: "col" });
+        function paintCart() {
+          UI.clear(body);
+          var current = cartLines();
+          if (!current.length) { drawer.close(); return; }
+
+          current.forEach(function (line) {
+            var row = UI.el("div", { class: "cart-line" });
+            row.innerHTML =
+              "<span><span class='cart-name'>" + UI.esc(line.product.product_name) + "</span>" +
+                "<span class='cart-qty'>" + line.quantity + " × " +
+                UI.esc(Wallet.money(line.product.price)) + "</span></span>" +
+              "<span class='cart-amount'>" +
+                UI.esc(Wallet.money(line.product.price * line.quantity)) + "</span>";
+            body.appendChild(row);
+          });
+
+          var totals = UI.el("div", { class: "cart-total" });
+          totals.innerHTML =
+            "<span class='cart-total-label'>Total</span>" +
+            "<span class='cart-total-value'>" + UI.esc(Wallet.money(cartTotal())) + "</span>";
+          body.appendChild(totals);
+
+          var balance = Wallet.state.balance;
+          var note = UI.el("div", { class: "notice", style: { marginTop: "var(--s-5)" } });
+          if (balance === null) {
+            note.setAttribute("data-status", "idle");
+            note.innerHTML = Icon("info", 16) + "<div>Your order will be added to your bill.</div>";
+          } else if (balance >= cartTotal()) {
+            note.setAttribute("data-status", "online");
+            note.innerHTML = Icon("check", 16) +
+              "<div>Paid from your wallet, leaving <strong>" +
+              UI.esc(Wallet.money(balance - cartTotal())) + "</strong>.</div>";
+          } else {
+            note.setAttribute("data-status", "warning");
+            note.innerHTML = Icon("alert", 16) +
+              "<div>Your wallet holds <strong>" + UI.esc(Wallet.money(balance)) +
+              "</strong>. The rest goes on your bill to settle at the counter.</div>";
+          }
+          body.appendChild(note);
+        }
+
+        var drawer = UI.drawer({
+          head: '<div class="row-between"><div class="page-title" style="font-size:21px">Your order</div></div>',
+          body: body,
+          foot: "",
+          onClose: function () { syncCartButton(); }
+        });
+
+        var placeBtn = UI.el("button", {
+          class: "btn btn-primary btn-lg btn-block",
+          html: Icon("check", 17) + '<span class="btn-label">Place order</span>'
+        });
+        placeBtn.addEventListener("click", function () {
+          UI.withBusy(placeBtn, function () {
+            return Wallet.placeOrder(
+              cartLines().map(function (l) {
+                return { product_id: l.product.product_id, quantity: l.quantity };
+              }),
+              { pc_name: Session.state.pcName || null }
+            )
+              .then(function (r) {
+                UI.toast.ok(r.message, r.data.order_number);
+                cart = {};
+                syncCartButton();
+                drawer.close();
+              })
+              .catch(function (err) {
+                UI.toast.error("Order failed", err.message);
+                // Stock may have moved under us, so refresh the menu.
+                Wallet.loadMenu();
+              });
+          });
+        });
+        drawer.foot.appendChild(placeBtn);
+
+        paintCart();
+      }
+
+      view.querySelector("#foodCartBtn").addEventListener("click", openCart);
+
+      var off = Wallet.on(function (s) {
+        if (!view.isConnected) { off(); return; }
+        paintMenu(s);
+        paintOrders(s);
+      });
+
+      if (Wallet.state.menu) { paintMenu(Wallet.state); paintOrders(Wallet.state); }
+      Wallet.loadMenu();
+      Wallet.loadOrders();
+      syncCartButton();
       Motion.enter(view, { y: 14 });
     }
   };
@@ -349,6 +768,174 @@
       }));
 
       root.appendChild(view);
+      Motion.enter(view, { y: 14 });
+    }
+  };
+
+  /* ==========================================================================
+     PACKAGES & MEMBERSHIP  (live, from the café server)
+     ========================================================================== */
+  function unitLabel(type, units) {
+    if (type === "HOURS") {
+      var m = Number(units);
+      if (m < 60) return Math.round(m) + " min";
+      var h = Math.floor(m / 60), rem = Math.round(m % 60);
+      return h + "h" + (rem ? " " + rem + "m" : "");
+    }
+    var W = global.CXWallet;
+    return type === "SESSIONS" ? W.amount(units) + " sessions" : W.money(units);
+  }
+
+  global.CXViews.packages = {
+    label: "Packages",
+    icon: "packages",
+    title: "My packages",
+    mount: function (root) {
+      var Wallet = global.CXWallet;
+      var view = UI.el("div", { class: "view" });
+      view.innerHTML =
+        '<div class="view-head"><div>' +
+          '<div class="view-title">My packages</div>' +
+          '<div class="view-sub">Prepaid time and coins you have bought.</div>' +
+        "</div></div>" +
+        '<div id="pkgHost"></div>';
+      root.appendChild(view);
+
+      var host = view.querySelector("#pkgHost");
+      host.appendChild(UI.skeletonCards(3, "150px"));
+
+      function paint(s) {
+        UI.clear(host);
+        var active = s.packages.filter(function (p) { return p.status === "ACTIVE"; });
+        var past = s.packages.filter(function (p) { return p.status !== "ACTIVE"; });
+
+        if (!s.packages.length) {
+          host.appendChild(UI.emptyState({
+            icon: "packages",
+            title: "No packages yet",
+            text: "Ask a staff member about prepaid bundles — they work out cheaper than paying per hour."
+          }));
+          return;
+        }
+
+        var grid = UI.el("div", { class: "grid-products" });
+        active.forEach(function (p) {
+          var pct = p.total_units > 0 ? (p.remaining_units / p.total_units) * 100 : 0;
+          var card = UI.el("div", { class: "card card-pad col gap-3", dataset: { status: "online" } });
+          card.innerHTML =
+            '<div class="row-between" style="align-items:flex-start">' +
+              "<div><div class='session-label'>" + UI.esc(p.package_type) + "</div>" +
+                '<div style="font-size:18px;font-weight:750;margin-top:2px">' + UI.esc(p.package_name) + "</div></div>" +
+              '<span class="badge" data-status="online">Active</span>' +
+            "</div>" +
+            '<div style="font-size:30px;font-weight:800;letter-spacing:-.02em">' +
+              UI.esc(unitLabel(p.package_type, p.remaining_units)) +
+              '<span style="font-size:13px;color:var(--text-3);font-weight:600"> left</span></div>' +
+            '<div class="meter meter-lg" data-status="online"><div class="meter-fill" style="width:' + pct + '%"></div></div>' +
+            '<div class="row-between" style="font-size:11px;color:var(--text-3)">' +
+              "<span>of " + UI.esc(unitLabel(p.package_type, p.total_units)) + "</span>" +
+              "<span>" + (p.expires_at ? "Expires " + UI.esc(UI.fmtDate(p.expires_at)) : "No expiry") + "</span>" +
+            "</div>";
+          grid.appendChild(card);
+        });
+        host.appendChild(grid);
+        Motion.stagger(grid.children, { step: 0.04, y: 12 });
+
+        if (past.length) {
+          var hist = UI.el("section", { style: { marginTop: "var(--s-10)" } });
+          hist.innerHTML = '<div class="shelf-title" style="margin-bottom:var(--s-4)">Past packages</div>';
+          var card = UI.el("div", { class: "card card-body-flush" });
+          past.forEach(function (p) {
+            var row = UI.el("div", { class: "kv", style: { padding: "12px var(--s-5)", borderBottom: "1px solid var(--line-faint)" } });
+            row.innerHTML =
+              "<span><span style='font-size:13px;font-weight:600;display:block'>" + UI.esc(p.package_name) + "</span>" +
+                "<span class='faint' style='font-size:11px'>" + UI.esc(UI.fmtDate(p.purchased_at)) + "</span></span>" +
+              '<span class="badge">' + UI.esc(p.status) + "</span>";
+            card.appendChild(row);
+          });
+          hist.appendChild(card);
+          host.appendChild(hist);
+        }
+      }
+
+      var off = Wallet.on(function (s) {
+        if (!view.isConnected) { off(); return; }
+        paint(s);
+      });
+      if (Wallet.state.entitlementsLoaded) paint(Wallet.state);
+      Wallet.loadEntitlements();
+      Motion.enter(view, { y: 14 });
+    }
+  };
+
+  global.CXViews.membership = {
+    label: "Membership",
+    icon: "membership",
+    title: "Membership",
+    mount: function (root) {
+      var Wallet = global.CXWallet;
+      var view = UI.el("div", { class: "view" });
+      view.innerHTML =
+        '<div class="view-head"><div>' +
+          '<div class="view-title">Membership</div>' +
+          '<div class="view-sub">Your tier and what it gets you.</div>' +
+        "</div></div>" +
+        '<div id="memHost"></div>';
+      root.appendChild(view);
+
+      var host = view.querySelector("#memHost");
+      host.appendChild(UI.skeletonRows(4));
+
+      function paint(s) {
+        UI.clear(host);
+        var m = s.membership;
+
+        if (!m) {
+          host.appendChild(UI.emptyState({
+            icon: "membership",
+            title: "You're not a member yet",
+            text: "Ask a staff member about membership — tiers come with a standing discount on gaming and a joining bonus."
+          }));
+          return;
+        }
+
+        var card = UI.el("div", { class: "wallet-card" });
+        card.innerHTML =
+          '<div class="row-between" style="align-items:flex-start">' +
+            "<div><div class='wallet-label'>" + UI.esc(m.tier) + " member</div>" +
+              '<div style="font-size:38px;font-weight:820;letter-spacing:-.03em;margin-top:6px">' +
+                UI.esc(m.plan_name) + "</div></div>" +
+            '<span class="badge badge-lg" data-status="' + (m.days_remaining <= 7 ? "warning" : "online") + '">' +
+              m.days_remaining + " days left</span>" +
+          "</div>" +
+          '<div class="row gap-6 wrap" style="margin-top:var(--s-6)">' +
+            (m.discount_percent ? "<div><div class='session-label'>Discount</div>" +
+              '<div style="font-size:22px;font-weight:750">' + m.discount_percent + "%</div></div>" : "") +
+            "<div><div class='session-label'>Valid until</div>" +
+              '<div style="font-size:22px;font-weight:750">' + UI.esc(UI.fmtDate(m.expires_at)) + "</div></div>" +
+          "</div>";
+        host.appendChild(card);
+
+        if (m.perks && m.perks.length) {
+          var perks = UI.el("div", { class: "card card-pad", style: { marginTop: "var(--s-5)" } });
+          perks.innerHTML = "<div class='session-label' style='margin-bottom:var(--s-4)'>What you get</div>" +
+            '<ul style="display:flex;flex-direction:column;gap:10px">' +
+            m.perks.map(function (p) {
+              return '<li style="display:flex;gap:10px;align-items:center;font-size:var(--t-body)">' +
+                '<span class="tx-icon" data-status="online" style="width:28px;height:28px">' + Icon("check", 14) + "</span>" +
+                "<span>" + UI.esc(p) + "</span></li>";
+            }).join("") + "</ul>";
+          host.appendChild(perks);
+          Motion.stagger(perks.querySelectorAll("li"), { step: 0.04, y: 8 });
+        }
+      }
+
+      var off = Wallet.on(function (s) {
+        if (!view.isConnected) { off(); return; }
+        paint(s);
+      });
+      if (Wallet.state.entitlementsLoaded) paint(Wallet.state);
+      Wallet.loadEntitlements();
       Motion.enter(view, { y: 14 });
     }
   };
@@ -444,8 +1031,28 @@
             "</div>" +
             global.CXCoin(112, { detail: "full", spin: true }).replace('class="xp-coin', 'class="xp-coin xp-coin-hero') +
           "</div>" +
-          '<div class="wallet-sub">Earn · Redeem · Grow — ask a member of staff to add coins at the counter.</div>';
+          '<div class="wallet-sub">Earn · Redeem · Grow</div>' +
+          '<div class="wallet-actions">' +
+            '<button class="btn btn-primary btn-lg grow" id="walletTopup">' + Icon("plus", 17) +
+              '<span class="btn-label">Add coins</span></button>' +
+          "</div>" +
+          '<div class="wallet-foot faint">Or ask a member of staff to add coins at the counter.</div>';
         balanceHost.appendChild(card);
+
+        /* Only offered when the café has a gateway switched on — a button that
+           opens a dialog saying "not available" is worse than no button. The
+           check is cheap and cached, so it runs on every paint. */
+        var topupBtn = card.querySelector("#walletTopup");
+        topupBtn.addEventListener("click", function () { global.CXTopup.open(); });
+
+        global.CXWallet.topupOptions()
+          .then(function (opts) {
+            if (!opts || !opts.enabled) topupBtn.closest(".wallet-actions").remove();
+          })
+          .catch(function () {
+            var host = topupBtn.closest(".wallet-actions");
+            if (host) host.remove();
+          });
 
         // Count the balance up on first paint and on any change.
         var amountEl = card.querySelector("#walletAmount");
@@ -533,6 +1140,46 @@
   /* ==========================================================================
      ACCOUNT  (real customer data)
      ========================================================================== */
+  /* Shared by the account order history — the food view has its own copies
+     inside its mount closure, and lifting both here keeps the two in step. */
+  var ORDER_TONE_ACCT = {
+    PLACED: "warning", CONFIRMED: "gaming", PREPARING: "gaming",
+    READY: "online", DELIVERED: "idle", CANCELLED: "offline"
+  };
+  var ACCT_STEPS = ["PLACED", "CONFIRMED", "PREPARING", "READY", "DELIVERED"];
+  var ACCT_STEP_LABEL = {
+    PLACED: "Sent", CONFIRMED: "Confirmed", PREPARING: "Cooking",
+    READY: "Ready", DELIVERED: "Delivered"
+  };
+
+  function accountOrderTrack(status) {
+    var track = UI.el("div", { class: "order-track" });
+
+    if (status === "CANCELLED") {
+      track.dataset.status = "offline";
+      track.innerHTML = '<div class="order-track-cancelled">' +
+        Icon("close", 13) + "<span>This order was cancelled</span></div>";
+      return track;
+    }
+
+    var reached = ACCT_STEPS.indexOf(status);
+    if (reached === -1) reached = 0;
+
+    track.innerHTML = ACCT_STEPS.map(function (step, i) {
+      var state = i < reached ? "done" : (i === reached ? "current" : "todo");
+      return '<div class="order-step" data-state="' + state + '">' +
+        '<span class="order-step-dot"></span>' +
+        '<span class="order-step-label">' + ACCT_STEP_LABEL[step] + "</span>" +
+      "</div>";
+    }).join("");
+
+    track.style.setProperty(
+      "--reached",
+      (reached / (ACCT_STEPS.length - 1) * 100).toFixed(1) + "%"
+    );
+    return track;
+  }
+
   global.CXViews.account = {
     label: "Account",
     icon: "customers",
@@ -591,17 +1238,136 @@
             '<span class="btn-label">Sign out</span></button>' +
         "</div>";
 
+      // Bills — real, from the café server. Read-only: staff take payment.
+      var Wallet = global.CXWallet;
       var history = UI.el("div", { class: "card" });
-      history.innerHTML = '<div class="card-head"><h2>History</h2></div>';
-      var histBody = UI.el("div", { class: "card-body" });
-      histBody.appendChild(awaiting({
-        icon: "sessions",
-        title: "Nothing recorded yet",
-        text: "Your past sessions, orders and payments will be listed here.",
-        note: "Sessions and orders aren't stored by the café server yet, so there is no history to read."
-      }));
-      histBody.querySelector(".awaiting").style.margin = "0";
+      history.innerHTML =
+        '<div class="card-head"><h2>Your history</h2>' +
+          '<div class="tabs tabs-sm" id="acctTabs">' +
+            '<button data-tab="bills" aria-selected="true">Bills</button>' +
+            '<button data-tab="orders" aria-selected="false">Orders</button>' +
+          "</div>" +
+        "</div>";
+      var histBody = UI.el("div", { class: "card-body-flush" });
+      histBody.appendChild(UI.skeletonRows(3));
       history.appendChild(histBody);
+
+      // Which pane the card is showing. Both panes read data the account
+      // already loads, so switching costs nothing extra.
+      var acctTab = "bills";
+
+      var STATUS_TONE = { OPEN: "warning", PARTIAL: "gaming", PAID: "online", VOID: "idle" };
+
+      function paintOrderHistory(s) {
+        UI.clear(histBody);
+
+        if (!s.orders || !s.orders.length) {
+          histBody.appendChild(UI.emptyState({
+            icon: "fnb",
+            title: "No orders yet",
+            text: "Anything you order from the Food menu shows up here, with its progress."
+          }));
+          return;
+        }
+
+        var made = [];
+        s.orders.forEach(function (order) {
+          var block = UI.el("div", {
+            style: { padding: "14px var(--s-5)", borderBottom: "1px solid var(--line-faint)" },
+            dataset: { status: ORDER_TONE_ACCT[order.status] || "idle" }
+          });
+          block.innerHTML =
+            '<div class="row-between">' +
+              '<span style="min-width:0">' +
+                '<span class="mono" style="font-size:13px;font-weight:650;display:block">' +
+                  UI.esc(order.order_number) + "</span>" +
+                '<span class="faint" style="font-size:11px">' +
+                  UI.esc(order.items.map(function (i) { return i.quantity + "× " + i.product_name; }).join(", ")) +
+                "</span></span>" +
+              '<span style="font-size:15px;font-weight:750;white-space:nowrap">' +
+                UI.esc(Wallet.money(order.total)) + "</span>" +
+            "</div>";
+          block.appendChild(accountOrderTrack(order.status));
+          histBody.appendChild(block);
+          made.push(block);
+        });
+        Motion.stagger(made, { step: 0.02, y: 6 });
+      }
+
+      function paintHistory(s) {
+        if (acctTab === "orders") paintOrderHistory(s);
+        else paintBills(s);
+      }
+
+      function paintBills(s) {
+        UI.clear(histBody);
+
+        if (s.billsError) {
+          histBody.appendChild(UI.emptyState({
+            icon: "alert", status: "error",
+            title: "Couldn't load your bills",
+            text: "The café server didn't respond. Please try again.",
+            actions: [{ label: "Try again", icon: "refresh", onClick: function () { Wallet.loadBills(); } }]
+          }));
+          return;
+        }
+        if (!s.bills.length) {
+          histBody.appendChild(UI.emptyState({
+            icon: "billing",
+            title: "No bills yet",
+            text: "Your gaming time and anything you order will be itemised here."
+          }));
+          return;
+        }
+
+        var made = [];
+        s.bills.forEach(function (bill) {
+          var row = UI.el("div", {
+            class: "kv",
+            style: { padding: "14px var(--s-5)", borderBottom: "1px solid var(--line-faint)" },
+            dataset: { status: STATUS_TONE[bill.status] || "idle" }
+          });
+          row.innerHTML =
+            '<span style="min-width:0">' +
+              '<span class="mono" style="font-size:13px;font-weight:650;display:block">' +
+                UI.esc(bill.bill_number) + "</span>" +
+              '<span class="faint" style="font-size:11px">' +
+                UI.esc(new Date(bill.created_at).toLocaleString([], {
+                  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit"
+                })) + (bill.pc_name ? " · " + UI.esc(bill.pc_name) : "") + "</span>" +
+            "</span>" +
+            '<span style="text-align:right;white-space:nowrap">' +
+              '<span style="font-size:15px;font-weight:750;font-variant-numeric:tabular-nums">' +
+                UI.esc(Wallet.money(bill.total)) + "</span>" +
+              '<span style="display:block;margin-top:3px"><span class="badge" data-status="' +
+                (STATUS_TONE[bill.status] || "idle") + '">' +
+                (bill.status === "PAID" ? "Paid"
+                  : bill.status === "PARTIAL" ? "Part paid — " + Wallet.money(bill.balance_due) + " due"
+                  : bill.status === "OPEN" ? Wallet.money(bill.balance_due) + " due"
+                  : "Void") + "</span></span>" +
+            "</span>";
+          histBody.appendChild(row);
+          made.push(row);
+        });
+        Motion.stagger(made, { step: 0.02, y: 6 });
+      }
+
+      var offBills = Wallet.on(function (s) {
+        if (!history.isConnected) { offBills(); return; }
+        paintHistory(s);
+      });
+      if (Wallet.state.bills.length) paintHistory(Wallet.state);
+      Wallet.loadBills();
+
+      UI.$$("#acctTabs button", history).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          acctTab = btn.dataset.tab;
+          UI.$$("#acctTabs button", history).forEach(function (b) {
+            b.setAttribute("aria-selected", String(b === btn));
+          });
+          paintHistory(Wallet.state);
+        });
+      });
 
       var col = UI.el("div", { class: "col", style: { gap: "var(--s-6)" } });
       col.appendChild(profile);

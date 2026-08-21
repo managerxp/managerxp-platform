@@ -36,11 +36,31 @@ contextBridge.exposeInMainWorld("api", {
   
   // PC data
   getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),
+
+  // Session state push to a station
+  pushSessionState: (pcName, session) => ipcRenderer.invoke("session:push-state", { pcName, session }),
+
+  // Telemetry — live readings live in the main process, history in the backend
+  getLatestTelemetry: () => ipcRenderer.invoke("telemetry:get-latest"),
+  requestTelemetry: (pcName) => ipcRenderer.invoke("telemetry:request", { pcName }),
+  setTelemetryInterval: (seconds) => ipcRenderer.invoke("telemetry:set-interval", { seconds }),
+  onTelemetry: (cb) => ipcRenderer.on("telemetry-updated", (_, payload) => cb(payload)),
+
+  // Remote power — authorise with the backend first, then deliver
+  stationPower: (pcName, action, delaySeconds) =>
+    ipcRenderer.invoke("station:power", { pcName, action, delaySeconds }),
+
+  /* Powering ON is the one action that cannot go through the client, because
+     the machine is off. It goes out as a Wake-on-LAN broadcast instead. */
+  stationWake: (pcName, macAddress) =>
+    ipcRenderer.invoke("station:wake", { pcName, macAddress }),
   
   // PC connection management (NEW)
   connectToPC: (ip, port, pcName) => ipcRenderer.invoke("pc:connect-to-pc", { ip, port, pcName }),
   reconnectAllPCs: () => ipcRenderer.invoke("pc:reconnect-all"),
   getConnectionStatus: () => ipcRenderer.invoke("pc:get-connection-status"),
+  // Pull the live connected list, for when the pushed event was missed
+  getConnectedPCs: () => ipcRenderer.invoke("pc:get-connected"),
   clearPCFailures: (pcName) => ipcRenderer.invoke("pc:clear-failures", { pcName }),
   refreshPCList: () => ipcRenderer.invoke("pc:refresh-list"),
   

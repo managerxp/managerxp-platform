@@ -4,6 +4,7 @@ const path = require("path");
 const http = require("http");
 const fs = require("fs");
 const os = require("os");
+const dgram = require("dgram");   // Wake-on-LAN magic packets
 const authContext = require("./authContext");
 
 let win;
@@ -50,6 +51,15 @@ function createLoginWindow() {
       console.error('[Navigation] Error loading login page:', err);
     });
     
+    // Keep the login window's maximise icon in step with the real state.
+    const pushLoginMaximizeState = () => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('window:maximized-changed', win.isMaximized());
+      }
+    };
+    win.on('maximize', pushLoginMaximizeState);
+    win.on('unmaximize', pushLoginMaximizeState);
+
     // Show window when content is ready
     win.webContents.once('did-finish-load', () => {
       console.log('[Navigation] Login window content loaded, showing window');
@@ -354,7 +364,16 @@ function startTokenServer() {
                     
                     if (checkResult.exists) {
                       console.log(`[PC Auto-Update] ✅ PC found in database with MAC ${mac_address}`);
-                      const pcName = checkResult.pc_name || checkResult.name || `PC-${mac_address.substring(mac_address.length - 5)}`;
+                      // /api/pcs/check-exists returns the station under `data`.
+                      // Reading the name off the top level always missed, so
+                      // every discovered station was renamed to an invented
+                      // PC-xx:xx and no longer matched its own record — which
+                      // is why its telemetry and sessions never attached.
+                      const pcName =
+                        (checkResult.data && (checkResult.data.name || checkResult.data.pc_name)) ||
+                        checkResult.pc_name ||
+                        checkResult.name ||
+                        `PC-${mac_address.substring(mac_address.length - 5)}`;
                       
                       if (checkResult.ip_updated) {
                         console.log(`[PC Auto-Update] 🔄 IP auto-updated for MAC ${mac_address}`);
@@ -622,10 +641,224 @@ app.whenReady().then(() => {
   }
 });
 
+/* ==========================================================================
+   TELEMETRY RELAY
+   Stations sample their own hardware and push it here. This process keeps the
+   newest reading per station for the live view, and flushes the accumulated
+   samples to the backend in batches so a brief outage costs a gap in the
+   history rather than a station's worth of metrics.
+   ========================================================================== */
+const latestTelemetry = new Map();   // pcName -> sample
+const telemetryQueue = [];           // samples waiting to be persisted
+const heartbeatSentAt = new Map();   // pcName -> ms, for round-trip latency
+const pingLatency = new Map();       // pcName -> ms
+let telemetryFlushInterval = null;
+
+const TELEMETRY_FLUSH_MS = 20000;
+const TELEMETRY_QUEUE_MAX = 500;
+
+function recordTelemetry(pcName, sample) {
+  if (!pcName || !sample) return;
+
+  // Latency is measured here, not on the station: only this side knows when
+  // the ping left and when the pong came back.
+  const enriched = {
+    ...sample,
+    pc_name: pcName,
+    latency_ms: pingLatency.has(pcName) ? pingLatency.get(pcName) : null
+  };
+
+  latestTelemetry.set(pcName, enriched);
+  telemetryQueue.push(enriched);
+
+  // Drop the oldest rather than grow without bound if the backend is down.
+  while (telemetryQueue.length > TELEMETRY_QUEUE_MAX) telemetryQueue.shift();
+
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("telemetry-updated", { pcName, sample: enriched });
+  }
+}
+
+async function flushTelemetry() {
+  if (!telemetryQueue.length) return;
+
+  const token = authContext.getToken();
+  if (!token) return;   // Not signed in yet; keep the samples for later.
+
+  const batch = telemetryQueue.splice(0, TELEMETRY_QUEUE_MAX);
+  try {
+    const response = await fetch("http://localhost:5000/api/telemetry", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ samples: batch })
+    });
+
+    if (!response.ok) {
+      // Put them back — a 500 or a restart should not lose the history.
+      telemetryQueue.unshift(...batch);
+      log(`[Telemetry] Flush failed: HTTP ${response.status}`);
+      return;
+    }
+
+    const result = await response.json();
+    if (result.unregistered_stations && result.unregistered_stations.length) {
+      log(`[Telemetry] Samples from unregistered station(s): ${result.unregistered_stations.join(", ")}`);
+    }
+  } catch (error) {
+    telemetryQueue.unshift(...batch);
+    log(`[Telemetry] Flush error: ${error.message}`);
+  }
+}
+
+function startTelemetryFlush() {
+  if (telemetryFlushInterval) return;
+  telemetryFlushInterval = setInterval(flushTelemetry, TELEMETRY_FLUSH_MS);
+  log(`[Telemetry] Persisting samples every ${TELEMETRY_FLUSH_MS / 1000}s`);
+}
+
+/**
+ * Round-trip time for the last heartbeat. Measured here because only this
+ * side knows when the ping left; the station has no clock we can trust
+ * against ours.
+ */
+function noteHeartbeatPong(pcName) {
+  const sentAt = heartbeatSentAt.get(pcName);
+  if (!sentAt) return;
+  heartbeatSentAt.delete(pcName);
+  const rtt = Date.now() - sentAt;
+  // A pong that arrives after several heartbeats is a stale match, not a
+  // measurement — discard it rather than report a wild number.
+  if (rtt >= 0 && rtt < HEARTBEAT_INTERVAL) pingLatency.set(pcName, rtt);
+}
+
+/** Ask a station for a sample now, rather than waiting for its next tick. */
+function requestTelemetry(pcName) {
+  const client = clients.get(pcName);
+  if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) return false;
+  client.ws.send(JSON.stringify({ type: "GET_TELEMETRY" }));
+  return true;
+}
+
 // Register all IPC handlers (call only once)
 function registerIPCHandlers() {
   if (handlersRegistered) return;
-  
+
+  /** The live wall reads from this process; history comes from the backend. */
+  ipcMain.handle("telemetry:get-latest", async () => ({
+    success: true,
+    data: Array.from(latestTelemetry.entries()).map(([pcName, sample]) => ({ pcName, sample }))
+  }));
+
+  ipcMain.handle("telemetry:request", async (_, { pcName }) => ({
+    success: requestTelemetry(pcName)
+  }));
+
+  /*
+   * Send a power action to a station.
+   *
+   * The renderer authorises with the backend first — that is where the
+   * permission check and the audit entry happen — and only calls this once it
+   * has a yes. This handler is purely the delivery mechanism.
+   */
+  ipcMain.handle("station:power", async (_, { pcName, action, delaySeconds }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({
+      type: "POWER",
+      action: action,
+      delaySeconds: delaySeconds === undefined ? 10 : delaySeconds
+    }));
+    log(`[Power] Sent ${action} to ${pcName}`);
+    return { success: true };
+  });
+
+  /*
+   * Wake-on-LAN.
+   *
+   * Every other power action is a message to the running client. Powering a
+   * station ON cannot be — the machine is off, so there is nothing listening.
+   * The only thing that reaches it is a magic packet on the local network,
+   * which is why this lives in the console and not in the cloud backend: the
+   * console is the one component sitting on the café's own LAN.
+   *
+   * The packet is six 0xFF bytes followed by the target MAC repeated sixteen
+   * times. It is broadcast, so it needs no IP for a machine that has none yet.
+   */
+  ipcMain.handle("station:wake", async (_, { pcName, macAddress }) => {
+    const mac = String(macAddress || "").replace(/[^a-fA-F0-9]/g, "");
+    if (mac.length !== 12) {
+      return { success: false, error: "This station has no usable MAC address on record" };
+    }
+
+    const macBytes = Buffer.from(mac, "hex");
+    const packet = Buffer.alloc(102);
+    packet.fill(0xff, 0, 6);
+    for (let i = 0; i < 16; i += 1) macBytes.copy(packet, 6 + i * 6);
+
+    return new Promise((resolve) => {
+      const socket = dgram.createSocket("udp4");
+
+      socket.once("error", (err) => {
+        socket.close();
+        resolve({ success: false, error: err.message });
+      });
+
+      socket.bind(() => {
+        socket.setBroadcast(true);
+        /*
+         * Ports 9 and 7 are both used by WoL implementations and NICs differ
+         * on which they listen to, so both are sent — an unheard packet costs
+         * nothing, a station that fails to wake costs a seat.
+         */
+        let pending = 2;
+        const done = () => { if (--pending === 0) { socket.close(); resolve({ success: true }); } };
+
+        socket.send(packet, 0, packet.length, 9, "255.255.255.255", done);
+        socket.send(packet, 0, packet.length, 7, "255.255.255.255", done);
+      });
+
+      // A broadcast is fire-and-forget: nothing acknowledges it, so a station
+      // that never wakes must not leave the console waiting.
+      setTimeout(() => { try { socket.close(); } catch (e) { /* already closed */ } resolve({ success: true }); }, 2500);
+    }).then((result) => {
+      log(`[Power] Wake packet ${result.success ? "sent to" : "failed for"} ${pcName}`);
+      return result;
+    });
+  });
+
+  /** Push a new sample rate to every connected station. */
+  ipcMain.handle("telemetry:set-interval", async (_, { seconds }) => {
+    let sent = 0;
+    clients.forEach((client, key) => {
+      if (client && client.ws && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({ type: "TELEMETRY_CONFIG", sample_seconds: seconds }));
+        sent += 1;
+      }
+    });
+    log(`[Telemetry] Sample interval set to ${seconds}s on ${sent} connection(s)`);
+    return { success: true, stations: sent };
+  });
+
+  /**
+   * Push the current session state to a station so its portal can show the
+   * customer's name and countdown. Display only — the backend remains the
+   * source of truth and the station never talks back about sessions.
+   */
+  ipcMain.handle("session:push-state", async (_, { pcName, session }) => {
+    const client = clients.get(pcName);
+    if (!client || client.ws.readyState !== WebSocket.OPEN) {
+      console.log(`[Session] Push skipped, ${pcName} not connected`);
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "SESSION_STATE", session: session || null }));
+    const summary = session ? `${session.status} for ${session.customer_name}` : "cleared";
+    log(`Sent session state to ${pcName}: ${summary}`);
+    console.log(`[Session] Pushed to ${pcName}: ${summary}`);
+    return { success: true };
+  });
+
   // Handle launch request from UI
   ipcMain.handle("launch-app", async (_, data) => {
     const { simId, appName, appPath, timerMinutes } = data;
@@ -1087,6 +1320,20 @@ function registerIPCHandlers() {
   });
 
   // New IPC handler: Get connection status for all PCs
+  /*
+   * Which stations are connected right now.
+   *
+   * The "clients" event is only pushed when a station registers or drops. The
+   * main process connects to stations during startup — before the window has
+   * finished loading — so a renderer that starts up afterwards misses that
+   * event entirely and shows every station as offline while the sockets are
+   * perfectly alive. This lets it ask instead of waiting.
+   */
+  ipcMain.handle("pc:get-connected", async () => ({
+    success: true,
+    data: getConnectedPCNames()
+  }));
+
   ipcMain.handle("pc:get-connection-status", async (event) => {
     try {
       const status = getConnectionStatus();
@@ -1275,6 +1522,7 @@ async function heartbeat() {
     clients.forEach((client, simId) => {
       if (client && client.ws && client.ws.readyState === WebSocket.OPEN) {
         try {
+          heartbeatSentAt.set(simId, Date.now());
           client.ws.send(JSON.stringify({
             type: "HEARTBEAT_PING"
           }));
@@ -1337,6 +1585,11 @@ async function heartbeat() {
                 if (msg.type === "HEARTBEAT_PONG") {
                   // Client is alive
                   log(`Heartbeat response from ${msg.simId}`);
+                  noteHeartbeatPong(msg.simId || pcName);
+                }
+
+                if (msg.type === "TELEMETRY") {
+                  recordTelemetry(msg.simId || pcName, msg.sample);
                 }
 
                 if (msg.type === "APPS_LIST") {
@@ -1449,6 +1702,11 @@ function connectToSpecificPC(ip, port, pcName) {
 
         if (msg.type === "HEARTBEAT_PONG") {
           log(`[Dynamic Connect] Heartbeat response from ${msg.simId}`);
+          noteHeartbeatPong(msg.simId || pcName);
+        }
+
+        if (msg.type === "TELEMETRY") {
+          recordTelemetry(msg.simId || pcName, msg.sample);
         }
 
         if (msg.type === "APPS_LIST") {
@@ -1592,6 +1850,11 @@ async function connectToClients() {
           if (msg.type === "HEARTBEAT_PONG") {
             // Client responded to heartbeat - it's alive
             log(`Heartbeat response from ${msg.simId}`);
+            noteHeartbeatPong(msg.simId || simId);
+          }
+
+          if (msg.type === "TELEMETRY") {
+            recordTelemetry(msg.simId || simId, msg.sample);
           }
 
           if (msg.type === "APPS_LIST") {
@@ -1658,9 +1921,12 @@ async function connectToClients() {
 
   // Start heartbeat after initial connection attempt
   startHeartbeat();
-  
+
   // Start periodic PC list refresh to detect newly added PCs
   startPCListRefresh();
+
+  // Persist whatever the stations have reported since the last flush
+  startTelemetryFlush();
 }
 
 app.on('window-all-closed', () => {
@@ -1677,7 +1943,14 @@ app.on('window-all-closed', () => {
     clearInterval(pcRefreshInterval);
     pcRefreshInterval = null;
   }
-  
+
+  // One last flush, so the closing minutes of the shift are not lost
+  if (telemetryFlushInterval) {
+    clearInterval(telemetryFlushInterval);
+    telemetryFlushInterval = null;
+  }
+  flushTelemetry().catch(() => {});
+
   if (process.platform !== 'darwin') app.quit();
 });
 

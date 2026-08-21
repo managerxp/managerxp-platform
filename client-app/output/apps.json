@@ -106,8 +106,8 @@
     },
     {
         "name":  "Copilot",
-        "version":  "150.0.4078.96",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\150.0.4078.96\\mscopilot.exe"
+        "version":  "152.0.4191.34",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\152.0.4191.34\\mscopilot.exe"
     },
     {
         "name":  "Cursor",
@@ -401,12 +401,12 @@
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "151.0.4129.78",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.78\\msedge.exe"
+        "version":  "151.0.4129.93",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.93\\msedge.exe"
     },
     {
         "name":  "Microsoft Integration Runtime",
-        "version":  "5.58.9395.1",
+        "version":  "5.62.9520.4",
         "launch":  ""
     },
     {

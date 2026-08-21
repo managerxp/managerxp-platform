@@ -343,6 +343,56 @@
 @media (min-width: 1900px) { .grid-stations { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); } }
 @media (min-width: 2560px) { .page { padding: var(--s-8); } }
 
+/* ==========================================================================
+   FLOOR LAYOUTS
+   The same station card under different track rules, so a café can arrange
+   the wall the way its room is actually laid out. `data-size` on the host
+   scales the track width; the card itself never knows which layout is on.
+   ========================================================================== */
+[data-size="compact"].grid-stations,
+[data-size="compact"] .grid-stations { grid-template-columns: repeat(auto-fill, minmax(212px, 1fr)); }
+[data-size="large"].grid-stations,
+[data-size="large"] .grid-stations { grid-template-columns: repeat(auto-fill, minmax(336px, 1fr)); }
+
+/* Rows — aisles of machines, wider cards in fewer columns */
+.floor-rows {
+  display: grid;
+  gap: var(--s-4);
+  grid-template-columns: repeat(auto-fill, minmax(420px, 1fr));
+}
+[data-size="compact"].floor-rows { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); }
+[data-size="large"].floor-rows { grid-template-columns: minmax(0, 1fr); }
+
+/* Compact — the most stations that fit on one screen */
+.floor-compact {
+  display: grid;
+  gap: var(--s-2);
+  grid-template-columns: repeat(auto-fill, minmax(176px, 1fr));
+}
+[data-size="compact"].floor-compact { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
+[data-size="large"].floor-compact { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+/* Zones — grouped by part of the room */
+.floor-zones { display: flex; flex-direction: column; gap: var(--s-6); }
+
+.floor-zone {
+  border-left: 2px solid var(--st-line, var(--line));
+  padding-left: var(--s-4);
+}
+.floor-zone-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+.floor-zone-name {
+  font-size: var(--t-h3);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--st, var(--text));
+}
+.floor-zone .grid-stations { gap: var(--s-4); }
+
 .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 @media (max-width: 1100px) { .grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }

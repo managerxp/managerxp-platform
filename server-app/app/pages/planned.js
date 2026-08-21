@@ -141,48 +141,6 @@
       needs: "staff/users tables with roles, and a permissions model",
       today: "Authentication today is a single cafe-owner login (/api/auth). There are no staff accounts, roles or permissions to manage."
     },
-    reports: {
-      title: "Reports",
-      subtitle: "Revenue, usage and customer analytics",
-      icon: "reports",
-      lede: "Daily, weekly and monthly performance across revenue, station utilisation, customers and product sales.",
-      features: [
-        ["Revenue", "Daily / weekly / monthly totals and trend"],
-        ["Gaming", "Session counts, play time, peak hours, revenue per station"],
-        ["Customers", "New vs returning, top customers"],
-        ["F&B", "Product and category sales"]
-      ],
-      needs: "sessions, bills and product sales to report on — every input is missing",
-      today: "Reporting is downstream of sessions and billing. Charts drawn now would be fiction."
-    },
-    telemetry: {
-      title: "Telemetry",
-      subtitle: "Hardware health per station",
-      icon: "telemetry",
-      lede: "Live CPU, GPU, memory, disk, temperature and network for every station, with history and alerting.",
-      features: [
-        ["Live metrics", "CPU, GPU, RAM, disk, temperature"],
-        ["Network", "Latency and packet loss to each client"],
-        ["In-game", "Running title and frame rate"],
-        ["Alerts", "Thresholds for overheating or saturated machines"]
-      ],
-      needs: "the client agent to sample hardware counters and push them over the existing WebSocket, plus a metrics message type the server records",
-      today: "The client currently sends REGISTER, HEARTBEAT, APPS_LIST, SOFTWARE_LIST and MAC_ADDRESS. No hardware counters are sampled or transmitted, so there is nothing to chart. What the server does know per station — reachability, heartbeat, connection failures and the running application — is on the Devices page."
-    },
-    audit: {
-      title: "Audit Log",
-      subtitle: "Who did what, and when",
-      icon: "audit",
-      lede: "An immutable record of staff actions: refunds, discounts, session changes, station controls and configuration edits.",
-      features: [
-        ["Action trail", "Actor, action, target, timestamp"],
-        ["Sensitive actions", "Refunds, discounts and overrides highlighted"],
-        ["Filters", "By staff member, station, customer or bill"],
-        ["Immutability", "Append-only, never edited"]
-      ],
-      needs: "an audit_log table written to by every mutating route",
-      today: "The Server Log page shows live runtime output from this session — connection attempts, launches, errors. It is not persisted and is not an audit trail."
-    }
   };
 
   function buildPage(key) {

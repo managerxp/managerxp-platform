@@ -5,12 +5,15 @@ const path = require("path");
 const { exec } = require("child_process");
 const fs = require("fs");
 const http = require("http");
+const telemetry = require("./telemetry");
 
 let SIM_ID = "SIM-01"; // Will be updated by server
 const CLIENT_PORT = 9090; // Port this client listens on
 const SERVER_APP_PORT = 3334; // Server app HTTP port for discovery
 let LOCAL_IP = null; // Will be set on startup
 let BROADCAST_INTERVAL = null; // For periodic IP/MAC broadcasts
+let TELEMETRY_INTERVAL = null; // Hardware sampling loop, started once registered
+let telemetryIntervalSeconds = 15; // Overridden by the console's TELEMETRY_CONFIG
 
 let win;
 let statusBarWin;
@@ -25,6 +28,7 @@ let userToken = null; // Store user authentication token
 let userInfo = null; // Store authenticated user profile
 let currentPage = 'welcome'; // Track current page
 let currentStatus = 'DISCONNECTED'; // Track current connection status
+let currentSession = null; // Session pushed by the admin console, for display
 
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -105,11 +109,122 @@ function createWindow() {
   ipcMain.handle('get-status', async (event) => {
     return currentStatus;
   });
-  
+
+  // The portal reloads on navigation, so it needs to be able to ask for the
+  // session rather than only receiving the push.
+  ipcMain.handle('get-session-state', async (event) => {
+    return currentSession;
+  });
+
+  // ---- Window controls ----
+  // The client runs full screen, so staff need a visible way out that does not
+  // depend on knowing the F11 shortcut. This is presentation only and adds no
+  // kiosk lockdown of its own.
+  ipcMain.on('window:toggle-fullscreen', () => {
+    if (!alive(win)) return;
+    win.setFullScreen(!win.isFullScreen());
+  });
+
+  ipcMain.on('window:minimize', () => {
+    if (alive(win)) win.minimize();
+  });
+
+  ipcMain.handle('window:is-fullscreen', async () => {
+    return alive(win) ? win.isFullScreen() : false;
+  });
+
+  // With the OS frame gone, maximise/restore and close have to come from here.
+  ipcMain.on('window:toggle-maximize', () => {
+    if (!alive(win)) return;
+    // Leaving full screen first, otherwise maximise is a no-op and the button
+    // looks broken to whoever pressed it.
+    if (win.isFullScreen()) { win.setFullScreen(false); return; }
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+
+  ipcMain.on('window:close', () => {
+    if (alive(win)) win.close();
+  });
+
+  ipcMain.handle('window:is-maximized', async () => {
+    return alive(win) ? win.isMaximized() : false;
+  });
+
+  /*
+   * Payment checkout.
+   *
+   * A gateway's checkout SDK cannot run in the portal renderer — it loads over
+   * file:// with node integration off — and giving that renderer the
+   * privileges to host third-party payment script would undo the reason it is
+   * locked down. So the payment happens in its own window, on the backend's
+   * http origin, isolated from the portal and from the station's session.
+   *
+   * The renderer passes a path, never a full URL: the origin is fixed here, so
+   * a compromised page cannot point the payment window at a site it chose.
+   */
+  let checkoutWin = null;
+
+  ipcMain.handle('payment:open-checkout', async (event, checkoutPath) => {
+    if (typeof checkoutPath !== 'string' || !/^\/api\/payments\/checkout\/[A-Za-z0-9_-]{20,64}$/.test(checkoutPath)) {
+      return { ok: false, message: 'Invalid checkout link' };
+    }
+
+    if (alive(checkoutWin)) { checkoutWin.focus(); return { ok: true, reused: true }; }
+
+    checkoutWin = new BrowserWindow({
+      width: 520,
+      height: 720,
+      parent: alive(win) ? win : undefined,
+      modal: false,
+      title: 'Add XP Coins',
+      autoHideMenuBar: true,
+      backgroundColor: '#0b0b0f',
+      webPreferences: {
+        // The payment page is third-party script by definition. It gets no
+        // preload, no node, and its own session partition so it cannot read
+        // the station's cookies or storage.
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+        partition: 'temp:cafexp-checkout'
+      }
+    });
+
+    // The page reports the outcome on the console; the portal needs to know so
+    // it can refresh the balance without the customer hunting for a button.
+    checkoutWin.webContents.on('console-message', (e, level, message) => {
+      if (typeof message !== 'string' || message.indexOf('CAFEXP_TOPUP:') !== 0) return;
+      try {
+        const detail = JSON.parse(message.slice('CAFEXP_TOPUP:'.length));
+        if (alive(win)) win.webContents.send('payment:topup-result', detail);
+      } catch (err) { /* a malformed line is not worth crashing over */ }
+    });
+
+    // A payment page must never become a general-purpose browser.
+    checkoutWin.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+
+    checkoutWin.on('closed', () => {
+      checkoutWin = null;
+      // The customer may have paid and closed the window before it confirmed;
+      // the portal re-checks rather than assuming nothing happened.
+      if (alive(win)) win.webContents.send('payment:checkout-closed');
+    });
+
+    await checkoutWin.loadURL(`http://localhost:5000${checkoutPath}`);
+    return { ok: true };
+  });
+
+
   // Create main client application window.
   // The customer portal is a full-screen experience — no title bar, no chrome.
   win = new BrowserWindow({
     fullscreen: true,
+    // Frameless: the window was full screen but still framed, so the moment
+    // anyone left full screen Windows put its own white title bar and white
+    // min/max/close buttons on top of a black-and-red portal. The controls in
+    // ui/portal.css replace them.
+    frame: false,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#050509', // matches the portal background, avoids a white flash
@@ -120,14 +235,31 @@ function createWindow() {
     }
   });
 
-  // F11 toggles full screen so staff and testers are never trapped.
-  // This is presentation only — it adds no kiosk lockdown of its own.
+  // F11 and Escape both leave full screen, alongside the on-screen control.
   win.webContents.on('before-input-event', (event, input) => {
-    if (input.type === 'keyDown' && input.key === 'F11') {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'F11') {
       win.setFullScreen(!win.isFullScreen());
+      event.preventDefault();
+    } else if (input.key === 'Escape' && win.isFullScreen()) {
+      win.setFullScreen(false);
       event.preventDefault();
     }
   });
+
+  // Keep the on-screen control's icon in step with the real window state.
+  const pushFullscreenState = () => {
+    sendToWindow(win, 'window:fullscreen-changed', win && !win.isDestroyed() && win.isFullScreen());
+  };
+  win.on('enter-full-screen', pushFullscreenState);
+  win.on('leave-full-screen', pushFullscreenState);
+
+  // Same for maximise, so the button's glyph always matches the real state.
+  const pushMaximizedState = () => {
+    sendToWindow(win, 'window:maximized-changed', alive(win) && win.isMaximized());
+  };
+  win.on('maximize', pushMaximizedState);
+  win.on('unmaximize', pushMaximizedState);
 
   // Remove the application menu
   Menu.setApplicationMenu(null);
@@ -434,6 +566,128 @@ function getInstalledApps() {
   });
 }
 
+/* ==========================================================================
+   POWER ACTIONS
+   Restart, shut down, lock or sign out, driven from the admin console.
+
+   Windows is given a short delay rather than an immediate order, so the
+   person at the machine sees the on-screen warning and the console gets its
+   acknowledgement back before the socket goes away.
+   ========================================================================== */
+const POWER_ACTIONS = {
+  restart: {
+    label: "Restart",
+    // /f closes applications that would otherwise hold the shutdown open —
+    // a game sitting on a "save before quitting?" prompt would block forever.
+    command: (seconds) => `shutdown /r /f /t ${seconds} /c "CafeXP: this station is restarting"`
+  },
+  shutdown: {
+    label: "Shut down",
+    command: (seconds) => `shutdown /s /f /t ${seconds} /c "CafeXP: this station is shutting down"`
+  },
+  lock: {
+    label: "Lock",
+    command: () => "rundll32.exe user32.dll,LockWorkStation"
+  },
+  signout: {
+    label: "Sign out",
+    // /l takes no timeout, so the warning below is the only notice given.
+    command: () => "shutdown /l /f"
+  }
+};
+
+function runPowerAction(ws, action, delaySeconds) {
+  const reply = (ok, message) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({
+        type: "POWER_RESULT", simId: SIM_ID, action, success: ok, message
+      }));
+    }
+    log(`Power ${action}: ${message}`);
+  };
+
+  if (action === "restart-client") {
+    reply(true, "Restarting the CafeXP client");
+    // Relaunch, then quit — Electron starts the new instance as this one goes.
+    app.relaunch();
+    setTimeout(() => app.exit(0), 400);
+    return;
+  }
+
+  const spec = POWER_ACTIONS[action];
+  if (!spec) { reply(false, `Unknown power action: ${action}`); return; }
+
+  if (process.platform !== "win32") {
+    reply(false, `Power actions are implemented for Windows only (this is ${process.platform})`);
+    return;
+  }
+
+  const seconds = Number.isFinite(Number(delaySeconds))
+    ? Math.min(Math.max(Math.round(Number(delaySeconds)), 0), 600)
+    : 10;
+
+  // Tell the person at the machine before the countdown starts, rather than
+  // letting the desktop simply disappear on them.
+  sendToWindow(win, "power-warning", { action, label: spec.label, seconds });
+
+  exec(spec.command(seconds), { windowsHide: true }, (err) => {
+    if (err) reply(false, err.message);
+    else reply(true, `${spec.label} accepted (${seconds}s)`);
+  });
+}
+
+/* ==========================================================================
+   TELEMETRY
+   This machine samples its own counters and pushes them to the console. It
+   runs while someone is gaming, so the sampler is deliberately cheap: CPU and
+   memory are arithmetic over `os`, and the two counters that need a shell out
+   are cached inside telemetry.js rather than read every tick.
+   ========================================================================== */
+function currentRunningApp() {
+  const running = Array.from(runningProcesses.keys());
+  return running.length ? running[0] : null;
+}
+
+async function pushTelemetry(ws) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  try {
+    const reading = await telemetry.sample({
+      pc_name: SIM_ID,
+      running_app: currentRunningApp()
+    });
+    ws.send(JSON.stringify({ type: "TELEMETRY", simId: SIM_ID, sample: reading }));
+  } catch (err) {
+    // A failed sample is not worth interrupting anything for — the console
+    // will show the station as not reporting, which is the truth.
+    log(`Telemetry sample failed: ${err.message}`);
+  }
+}
+
+function startTelemetry(ws, sampleSeconds) {
+  stopTelemetry();
+
+  const seconds = Number(sampleSeconds);
+  telemetryIntervalSeconds = Number.isFinite(seconds) && seconds >= 5 && seconds <= 600
+    ? Math.round(seconds)
+    : telemetryIntervalSeconds;
+
+  telemetry.prime();
+  log(`Telemetry sampling every ${telemetryIntervalSeconds}s`);
+
+  // One sample shortly after priming, so the console has something to show
+  // without waiting a full interval for the first CPU delta.
+  setTimeout(() => { pushTelemetry(ws); }, 1500);
+
+  TELEMETRY_INTERVAL = setInterval(() => { pushTelemetry(ws); }, telemetryIntervalSeconds * 1000);
+}
+
+function stopTelemetry() {
+  if (TELEMETRY_INTERVAL) {
+    clearInterval(TELEMETRY_INTERVAL);
+    TELEMETRY_INTERVAL = null;
+  }
+}
+
 function listen() {
   log("Starting WebSocket server on port " + CLIENT_PORT + "...");
   
@@ -480,7 +734,10 @@ function listen() {
         } catch (err) {
           log(`Error fetching apps: ${err.message}`);
         }
-        
+
+        // The station has a name now, so its samples can be attributed.
+        startTelemetry(ws, telemetryIntervalSeconds);
+
         return; // Don't process this as a command message
       }
 
@@ -488,6 +745,25 @@ function listen() {
       
       if (msg.type === "COMMAND") {
         log(`Command received: ${msg.command}`);
+      }
+
+      // Power actions issued from the admin console. The console has already
+      // checked the operator's permission and written the audit entry, so by
+      // the time this arrives the decision is made.
+      if (msg.type === "POWER") {
+        runPowerAction(ws, msg.action, msg.delaySeconds);
+      }
+
+      // Session state pushed by the admin console. The client only displays
+      // it — the café server owns the session and its billing.
+      if (msg.type === "SESSION_STATE") {
+        currentSession = msg.session || null;
+        const summary = currentSession
+          ? `${currentSession.status} for ${currentSession.customer_name || "guest"}`
+          : "cleared";
+        log(`Session ${summary}`);
+        console.log(`[Session] Received: ${summary}`);
+        sendToWindow(win, "session-state", currentSession);
       }
       
       
@@ -548,6 +824,25 @@ function listen() {
         closeApplication(msg.appName);
       }
       
+      // The console has always sent HEARTBEAT_PING and this client has always
+      // ignored it. Answering closes the round trip, which is the only honest
+      // way to measure network latency to this station.
+      if (msg.type === "HEARTBEAT_PING") {
+        ws.send(JSON.stringify({ type: "HEARTBEAT_PONG", simId: SIM_ID }));
+      }
+
+      // The console can ask for a sample out of band — on opening a station
+      // panel, say — without waiting for the next scheduled push.
+      if (msg.type === "GET_TELEMETRY") {
+        await pushTelemetry(ws);
+      }
+
+      // The console sets the cadence, so the sample rate can be tuned from
+      // Settings without touching the client.
+      if (msg.type === "TELEMETRY_CONFIG") {
+        startTelemetry(ws, msg.sample_seconds);
+      }
+
       if (msg.type === "GET_MAC_ADDRESS") {
         const macAddress = getSystemMacAddress();
         log(`Sending MAC address: ${macAddress}`);
@@ -598,6 +893,8 @@ function listen() {
       log("Disconnected from server. Waiting for reconnection...");
       updateStatus("DISCONNECTED");
       serverConnection = null;
+      // Nothing to push to, so stop spending cycles sampling.
+      stopTelemetry();
     });
 
     ws.on("error", (err) => {
@@ -709,6 +1006,7 @@ app.on('before-quit', () => {
     clearInterval(BROADCAST_INTERVAL);
     BROADCAST_INTERVAL = null;
   }
+  stopTelemetry();
 });
 
 app.on('window-all-closed', () => {

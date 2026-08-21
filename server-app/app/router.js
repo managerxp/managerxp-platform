@@ -10,44 +10,62 @@
 
   /* Navigation model.
      `planned: true` marks a section with no backend behind it yet — the page
-     explains exactly what is missing rather than showing invented data. */
+     explains exactly what is missing rather than showing invented data.
+
+     `feature` names the entitlement that grants the section. ManagerXP decides
+     what a café's package includes; this file only knows which nav entry maps
+     to which feature key. There is deliberately no `if (plan === 'basic')`
+     anywhere in this application, and there must never be one — a new module
+     should become visible by being switched on in ManagerXP, with no build.
+
+     An entry with no `feature` is structural and always shown. Discovery,
+     Server Log and Settings are how a café is set up and how it is repaired
+     when something is wrong; hiding them behind a subscription state would
+     mean the only screens that could explain a problem disappear exactly when
+     the problem starts. */
   var NAV = [
     {
       group: "Operations",
       items: [
-        { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-        { id: "floor",     label: "Floor",     icon: "floor" },
-        { id: "sessions",  label: "Sessions",  icon: "sessions", planned: true },
-        { id: "customers", label: "Customers", icon: "customers", planned: true },
-        { id: "billing",   label: "Billing",   icon: "billing", planned: true }
+        { id: "dashboard", label: "Dashboard", icon: "dashboard", feature: "DASHBOARD" },
+        { id: "floor",     label: "Floor",     icon: "floor",     feature: "FLOOR" },
+        { id: "sessions",  label: "Sessions",  icon: "sessions",  feature: "SESSION_MANAGEMENT" },
+        { id: "customers", label: "Customers", icon: "customers", feature: "CUSTOMERS" },
+        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING" },
+        { id: "receipt-template", label: "Receipt Template", icon: "edit", feature: "BILLING" }
       ]
     },
     {
       group: "Catalogue",
       items: [
-        { id: "games",       label: "Games",       icon: "games" },
-        { id: "fnb",         label: "F&B",         icon: "fnb", planned: true },
-        { id: "inventory",   label: "Inventory",   icon: "inventory", planned: true },
-        { id: "packages",    label: "Packages",    icon: "packages", planned: true },
-        { id: "memberships", label: "Memberships", icon: "membership", planned: true },
+        { id: "games",       label: "Games",       icon: "games",     feature: "SESSION_MANAGEMENT" },
+        { id: "fnb",         label: "F&B",         icon: "fnb",       feature: "FNB" },
+        { id: "inventory",   label: "Inventory",   icon: "inventory", feature: "INVENTORY" },
+        { id: "session-master", label: "Session Master", icon: "clock",   feature: "SESSION_MANAGEMENT" },
+        { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT" },
+        { id: "packages",    label: "Packages",    icon: "packages",   feature: "PRODUCTS" },
+        { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP" },
+        { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING" },
         { id: "reservations",label: "Reservations",icon: "reservations", planned: true }
       ]
     },
     {
       group: "Infrastructure",
       items: [
-        { id: "devices",   label: "Devices",   icon: "devices" },
+        { id: "devices",   label: "Devices",   icon: "devices",   feature: "PC_CONTROL" },
         { id: "discovery", label: "Discovery", icon: "radar" },
-        { id: "telemetry", label: "Telemetry", icon: "telemetry", planned: true },
+        { id: "telemetry", label: "Telemetry", icon: "telemetry", feature: "PC_CONTROL" },
         { id: "logs",      label: "Server Log", icon: "logs" }
       ]
     },
     {
       group: "Business",
       items: [
-        { id: "reports",  label: "Reports",  icon: "reports", planned: true },
-        { id: "staff",    label: "Staff",    icon: "staff", planned: true },
-        { id: "audit",    label: "Audit Log", icon: "audit", planned: true },
+        { id: "ai",       label: "CafeXP AI", icon: "sparkle",  feature: "AI" },
+        { id: "reports",  label: "Reports",  icon: "reports",   feature: "REPORTS" },
+        { id: "payments", label: "Payments", icon: "billing",   feature: "BILLING" },
+        { id: "staff",    label: "Staff",    icon: "staff",     feature: "STAFF" },
+        { id: "audit",    label: "Audit Log", icon: "audit" },
         { id: "plan",     label: "Subscription", icon: "plan" },
         { id: "settings", label: "Settings", icon: "settings" }
       ]
@@ -57,6 +75,28 @@
   var flat = {};
   NAV.forEach(function (g) { g.items.forEach(function (it) { flat[it.id] = it; }); });
 
+  /* Effective entitlements, as last fetched.
+     `null` means "not yet known", which is deliberately different from "known
+     to grant nothing": until the backend answers, everything is shown. A café
+     whose network hiccups at start-up must not open to an empty sidebar. */
+  var entitlements = null;
+
+  function featureAllowed(item) {
+    if (!item.feature) return true;            // structural, always present
+    if (!entitlements) return true;            // not known yet — show it
+    var f = entitlements[item.feature];
+    return !f || f.enabled !== false;
+  }
+
+  function visibleNav() {
+    return NAV.map(function (group) {
+      return {
+        group: group.group,
+        items: group.items.filter(featureAllowed)
+      };
+    }).filter(function (group) { return group.items.length > 0; });
+  }
+
   var current = null;
   var host = null;
   var navButtons = {};
@@ -65,10 +105,17 @@
   /* ==========================================================================
      SIDEBAR
      ========================================================================== */
+  var sidebarHost = null;
+
   function renderSidebar(mountEl) {
+    sidebarHost = mountEl || sidebarHost;
+    if (!sidebarHost) return;
+    UI.clear(sidebarHost);
+    navButtons = {};
+
     var nav = UI.el("nav", { class: "nav" });
 
-    NAV.forEach(function (group) {
+    visibleNav().forEach(function (group) {
       var g = UI.el("div", { class: "nav-group" }, [
         UI.el("div", { class: "nav-group-label", text: group.group })
       ]);
@@ -90,7 +137,66 @@
       nav.appendChild(g);
     });
 
-    mountEl.appendChild(nav);
+    sidebarHost.appendChild(nav);
+
+    // Re-mark the open page after a rebuild, or the highlight is lost.
+    if (current && navButtons[current]) {
+      navButtons[current].setAttribute("aria-current", "page");
+    }
+  }
+
+  /* ==========================================================================
+     ENTITLEMENTS
+
+     Applied here rather than baked into the build. ManagerXP switches a
+     feature on or off for a café; the next refresh moves the sidebar. There
+     is one CafeXP application, not one per package.
+     ========================================================================== */
+
+  /**
+   * Take a fresh entitlement set and rebuild the sidebar around it.
+   *
+   * If the café the console is signed into cannot be resolved to an
+   * organization — an install predating the tenancy migration — the backend
+   * says so rather than guessing, and nothing is hidden. Removing half a
+   * working café's navigation on the strength of an answer nobody gave would
+   * be the worst possible failure mode.
+   */
+  function applyEntitlements(payload) {
+    if (!payload || payload.resolved === false || !payload.features) {
+      entitlements = null;
+      renderSidebar();
+      return;
+    }
+
+    entitlements = payload.features;
+    renderSidebar();
+
+    /* If the open page has just been switched off, move rather than leaving
+       staff looking at a screen they are no longer entitled to. */
+    if (current && flat[current] && !featureAllowed(flat[current])) {
+      var fallback = visibleNav()[0] && visibleNav()[0].items[0];
+      if (fallback) {
+        UI.toast.warn(
+          flat[current].label + " is not included in this subscription any more"
+        );
+        current = null;                 // force the swap; go() ignores a repeat
+        go(fallback.id);
+      }
+    }
+  }
+
+  /** Ask the backend what this café is entitled to, and apply the answer. */
+  function refreshEntitlements() {
+    if (!Store || !Store.getEntitlements) return Promise.resolve(null);
+    return Store.getEntitlements()
+      .then(function (payload) { applyEntitlements(payload); return payload; })
+      .catch(function (err) {
+        /* A failed check must never lock a café out of its own console. The
+           last known answer stands; if there was none, everything shows. */
+        console.warn("[entitlements] check failed, keeping current navigation:", err && err.message);
+        return null;
+      });
   }
 
   /** Show a count pill on a nav entry (e.g. discovered PCs waiting). */
@@ -200,6 +306,17 @@
     renderSidebar(opts.sidebarNav);
     restoreSidebar();
 
+    /* Fetch entitlements after the first paint, not before it. The sidebar
+       renders immediately from the full list and narrows a moment later if
+       the subscription says so — the alternative is a console that shows
+       nothing until the network answers, which is worse on every connection
+       and unusable on a bad one.
+
+       Re-checked periodically so a change made in ManagerXP reaches the café
+       without anyone restarting the application. */
+    refreshEntitlements();
+    setInterval(refreshEntitlements, 15 * 60 * 1000);
+
     // Keyboard: Ctrl+B collapse, Ctrl+1..4 jump to the main operational pages.
     var quick = ["dashboard", "floor", "games", "devices"];
     document.addEventListener("keydown", function (e) {
@@ -218,6 +335,10 @@
     go: go,
     current: currentPage,
     setBadge: setBadge,
-    toggleSidebar: toggleSidebar
+    toggleSidebar: toggleSidebar,
+    // Exposed so the Subscription page can show what is entitled, and force a
+    // re-check after an admin change without waiting for the next interval.
+    refreshEntitlements: refreshEntitlements,
+    entitlements: function () { return entitlements; }
   };
 })(window);

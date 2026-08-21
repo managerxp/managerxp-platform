@@ -91,7 +91,18 @@
   backdrop-filter: blur(18px);
   border-bottom: 1px solid var(--line);
   z-index: 30;
+  /* The window is frameless, so the nav is the title bar: it has to be the
+     thing you grab to move the window. Every control inside it opts back out
+     via .nav :is(button, a, input, select). */
+  -webkit-app-region: drag;
+  user-select: none;
 }
+.nav button,
+.nav a,
+.nav input,
+.nav select,
+.nav .chip-stat,
+.nav .nav-avatar { -webkit-app-region: no-drag; }
 
 .nav-brand { display: flex; align-items: center; gap: var(--s-3); flex: none; }
 .nav-mark {
@@ -113,8 +124,11 @@
 .nav-links { display: flex; align-items: center; gap: var(--s-1); }
 .nav-link {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
   height: 40px;
-  padding: 0 var(--s-5);
+  padding: 0 var(--s-4);
   border: 0;
   border-radius: var(--r-sm);
   background: transparent;
@@ -122,8 +136,11 @@
   font-size: var(--t-body);
   font-weight: 600;
   letter-spacing: -0.01em;
+  white-space: nowrap;
   transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
+.nav-link svg { width: 17px; height: 17px; flex: none; opacity: 0.75; }
+.nav-link[aria-current="page"] svg { opacity: 1; color: var(--accent); }
 .nav-link:hover { color: var(--text); background: rgba(255,255,255,.05); }
 .nav-link[aria-current="page"] { color: var(--text); }
 .nav-link[aria-current="page"]::after {
@@ -740,6 +757,142 @@
 }
 
 /* ==========================================================================
+   ON-SCREEN WINDOW CONTROLS
+   Present on every page. Deliberately quiet — visible to staff who look for
+   it, not an invitation for customers to leave the experience.
+   ========================================================================== */
+.cx-window-controls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  -webkit-app-region: no-drag;
+}
+
+/* Inside the nav: part of the app, separated from the account chip by a rule
+   rather than by floating over the page. */
+.cx-wc-inline {
+  margin-left: var(--s-3);
+  padding-left: var(--s-3);
+  border-left: 1px solid var(--line);
+}
+
+/* Fallback for pages with no nav (welcome, login, register): a discreet
+   cluster that surfaces on approach. */
+.cx-window-controls:not(.cx-wc-inline) {
+  position: fixed;
+  top: 10px; right: 12px;
+  z-index: 1200;
+  padding: 3px;
+  border-radius: var(--r-pill);
+  background: rgba(10, 10, 17, 0.5);
+  border: 1px solid transparent;
+  opacity: 0.3;
+  transition: opacity var(--dur-base) var(--ease-out),
+              background var(--dur-base) var(--ease-out),
+              border-color var(--dur-base) var(--ease-out);
+}
+.cx-window-controls:not(.cx-wc-inline):hover {
+  opacity: 1;
+  background: var(--glass-strong);
+  border-color: var(--line-strong);
+  backdrop-filter: blur(14px);
+}
+
+.cx-wc-btn {
+  display: grid;
+  place-items: center;
+  width: 30px; height: 30px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out),
+              transform var(--dur-instant) var(--ease-out);
+}
+.cx-wc-btn svg { width: 15px; height: 15px; }
+.cx-wc-btn:hover { background: rgba(255, 255, 255, 0.08); color: var(--text); }
+.cx-wc-btn:active { transform: scale(0.94); }
+.cx-wc-btn:disabled { opacity: 0.35; pointer-events: none; }
+.cx-wc-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Close is the one destructive control here, so it earns the accent on hover
+   the same way the admin's does. */
+.cx-wc-close:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* The overlays sit above the controls, so lift the floating cluster clear
+   when one is up. The in-nav cluster is never dimmed, so it needs nothing. */
+.disconnected ~ .cx-window-controls:not(.cx-wc-inline),
+.ended ~ .cx-window-controls:not(.cx-wc-inline) { opacity: 1; }
+
+/* ==========================================================================
+   DISCONNECT OVERLAY
+   Shown only after a grace period, so a momentary blip never flashes it.
+   ========================================================================== */
+.disconnected {
+  position: fixed;
+  inset: 0;
+  z-index: 980;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  background: var(--glass-strong);
+  backdrop-filter: blur(26px);
+}
+.disconnected-inner { max-width: 540px; padding: var(--s-8); }
+.disconnected-mark {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 88px; height: 88px;
+  margin: 0 auto var(--s-8);
+  border-radius: 50%;
+  background: var(--danger-soft);
+  border: 1px solid var(--danger-line);
+  color: var(--danger);
+}
+.disconnected-mark::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px solid var(--danger-line);
+  animation: conn-ring 2.4s var(--ease-out) infinite;
+}
+.disconnected-title { font-size: var(--t-display); font-weight: 800; letter-spacing: -0.03em; }
+.disconnected-text {
+  margin-top: var(--s-4);
+  font-size: var(--t-h3);
+  color: var(--text-2);
+  line-height: 1.6;
+}
+.disconnected-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-top: var(--s-8);
+  padding: var(--s-3) var(--s-5);
+  border-radius: var(--r-pill);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  font-size: var(--t-sm);
+  color: var(--text-2);
+}
+.disconnected-elapsed {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* ==========================================================================
    SESSION ENDED
    ========================================================================== */
 .ended {
@@ -1115,4 +1268,382 @@
   letter-spacing: var(--track-caps);
   text-transform: uppercase;
   color: var(--text-3);
+}
+
+/* ==========================================================================
+   NAV FITTING
+   Three regions share one row: brand, links, chips + window controls. Only the
+   links can shrink and their children cannot, so an over-subscribed row makes
+   the links paint outside their box and over the chips. On a frameless window
+   that can also push the close button off the edge, so this is a correctness
+   problem, not a cosmetic one.
+
+   The step is set by app/nav-fit.js from measured overflow, not by a media
+   query: the pressure is the sum of the three regions, and the station name,
+   the coin balance and the user's name all change that at runtime. Each step
+   is cumulative, and space is surrendered cheapest-first:
+     1. brand wordmark   (the mark still identifies the app)
+     2. avatar name      (the orb still identifies who is signed in)
+     3. wallet caption   (the number is the part that matters)
+     4. nav link labels  (icons carry them, with the title as the tooltip)
+   Losing the link labels costs the most, so it is last. The session timer and
+   the window controls are never reduced.
+   ========================================================================== */
+.nav { min-width: 0; }
+.nav-links { min-width: 0; flex-wrap: nowrap; }
+.nav-right { min-width: 0; flex: none; }
+
+/* A station name is free text and arrives from the console; it gets a ceiling
+   so one long name cannot alone over-subscribe the row. */
+.chip-value {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- step 1 ---- */
+.nav[data-fit="1"], .nav[data-fit="2"], .nav[data-fit="3"], .nav[data-fit="4"] {
+  gap: var(--s-5);
+  padding: 0 var(--s-5);
+}
+.nav[data-fit="1"] .nav-wordmark,
+.nav[data-fit="2"] .nav-wordmark,
+.nav[data-fit="3"] .nav-wordmark,
+.nav[data-fit="4"] .nav-wordmark { display: none; }
+
+/* ---- step 2 ---- */
+.nav[data-fit="2"] .nav-avatar-name,
+.nav[data-fit="3"] .nav-avatar-name,
+.nav[data-fit="4"] .nav-avatar-name { display: none; }
+
+/* ---- step 3 ---- */
+.nav[data-fit="3"], .nav[data-fit="4"] { gap: var(--s-3); }
+.nav[data-fit="3"] #walletChip .chip-label,
+.nav[data-fit="4"] #walletChip .chip-label { display: none; }
+.nav[data-fit="3"] .chip-stat,
+.nav[data-fit="4"] .chip-stat { padding: 0 var(--s-3); }
+
+/* ---- step 4: labels go, icons stay. The accessible name is on the button. ---- */
+.nav[data-fit="4"] .nav-link .nav-link-label { display: none; }
+.nav[data-fit="4"] .nav-link { padding: 0 var(--s-3); }
+
+/* Past the last step the nav scrolls rather than clipping, so a station on an
+   odd resolution is never left with an unreachable close button. */
+@media (max-width: 900px) {
+  .nav { overflow-x: auto; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  #cxWindowControls { position: sticky; right: 0; }
+}
+
+/* ==========================================================================
+   ORDER TRACK
+   A kitchen order moves through fixed stages. "Preparing" alone does not say
+   how far along that is, so the whole journey is shown with the current stage
+   marked — the answer to "how much longer" becomes visible rather than
+   guessed at.
+   ========================================================================== */
+.order-track {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+  padding: 0 2px;
+}
+
+/* The rail sits behind the dots; the fill runs to the stage reached. */
+.order-track::before,
+.order-track::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  height: 2px;
+  border-radius: 2px;
+}
+.order-track::before {
+  left: 6px;
+  right: 6px;
+  background: var(--line);
+}
+.order-track::after {
+  left: 6px;
+  width: calc((100% - 12px) * (var(--reached, 0%) / 100%));
+  background: var(--st, var(--accent));
+  box-shadow: 0 0 8px var(--st-glow, transparent);
+  transition: width var(--dur-slow, 420ms) var(--ease-out, cubic-bezier(0.16, 1, 0.3, 1));
+}
+
+.order-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+}
+.order-step-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--bg-inset);
+  border: 2px solid var(--line);
+  transition: background var(--dur-base, 240ms) var(--ease-out, ease),
+              border-color var(--dur-base, 240ms) var(--ease-out, ease);
+}
+.order-step-label {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+
+.order-step[data-state="done"] .order-step-dot {
+  background: var(--st, var(--accent));
+  border-color: var(--st, var(--accent));
+}
+.order-step[data-state="current"] .order-step-dot {
+  background: var(--st, var(--accent));
+  border-color: var(--st, var(--accent));
+  box-shadow: 0 0 0 4px var(--st-soft, rgba(255, 23, 68, 0.18));
+}
+.order-step[data-state="current"] .order-step-label {
+  color: var(--st, var(--text));
+  font-weight: 750;
+}
+.order-step[data-state="done"] .order-step-label { color: var(--text-2); }
+
+/* One gentle pulse on the live stage — enough to read as "in progress"
+   without becoming another thing blinking on a gaming screen. */
+@media (prefers-reduced-motion: no-preference) {
+  .order-step[data-state="current"] .order-step-dot {
+    animation: order-step-pulse 2.4s ease-in-out infinite;
+  }
+}
+@keyframes order-step-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--st-soft, rgba(255, 23, 68, 0.18)); }
+  50%      { box-shadow: 0 0 0 7px transparent; }
+}
+
+.order-track-cancelled {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  font-size: 11px;
+  color: var(--st, var(--text-3));
+}
+
+/* Compact tabs, for a card head rather than a page head. */
+.tabs-sm button { height: 28px; padding: 0 var(--s-3); font-size: var(--t-xs); }
+
+/* ==========================================================================
+   ADD COINS
+   The customer is about to hand over money, so the dialog answers the two
+   questions that matter — what leaves the account and what arrives in the
+   wallet — before it offers a button. The exchange line is always present,
+   even at 1:1, so the number is never a surprise at the provider's screen.
+   ========================================================================== */
+.topup { display: flex; flex-direction: column; gap: var(--s-5); min-width: 300px; }
+.topup-loading { align-items: center; color: var(--text-2); padding: var(--s-6) 0; }
+
+.topup-block { display: flex; flex-direction: column; gap: var(--s-3); }
+.topup-label {
+  font-size: var(--t-xs);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+
+.topup-presets { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.topup-preset {
+  flex: 1 1 0;
+  min-width: 72px;
+  padding: 10px var(--s-3);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  font-weight: 700;
+  font-size: var(--t-body);
+  color: var(--text-2);
+  transition: border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out),
+              color var(--dur-fast) var(--ease-out);
+}
+.topup-preset:hover { border-color: var(--line-strong); color: var(--text); }
+.topup-preset.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--text);
+}
+
+.topup-custom { position: relative; display: flex; align-items: center; }
+.topup-currency {
+  position: absolute;
+  left: var(--s-4);
+  font-weight: 700;
+  color: var(--text-3);
+  pointer-events: none;
+}
+.topup-input {
+  width: 100%;
+  padding-left: 30px;
+  font-size: var(--t-lg, 17px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+/* The spinners invite a click that changes the amount by one rupee; the
+   presets already cover coarse adjustment. */
+.topup-input::-webkit-outer-spin-button,
+.topup-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.topup-input { -moz-appearance: textfield; }
+
+.topup-receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+  padding: var(--s-4);
+  border-radius: var(--r-md);
+  background: var(--bg-sunken, var(--bg-raised));
+  border: 1px solid var(--line);
+}
+.topup-receipt-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  font-size: var(--t-sm);
+  color: var(--text-2);
+}
+.topup-receipt-row.is-total {
+  padding-top: var(--s-2);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-body);
+  color: var(--text);
+}
+.topup-receipt-row.is-total strong { font-size: 20px; letter-spacing: -0.02em; }
+.topup-rate { font-size: var(--t-xs); }
+
+.topup-methods { display: flex; gap: var(--s-2); flex-wrap: wrap; }
+.topup-method {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 10px var(--s-4);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  background: var(--bg-raised);
+  font-weight: 650;
+  font-size: var(--t-sm);
+  color: var(--text-2);
+}
+.topup-method.is-active { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+
+.topup-single { display: flex; align-items: center; gap: var(--s-2); font-size: var(--t-sm); }
+.topup-test {
+  padding: 1px 7px;
+  border-radius: 99px;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-line);
+  color: var(--warn, var(--text));
+}
+
+.topup-pay { width: 100%; justify-content: center; }
+.topup-note { font-size: var(--t-xs); text-align: center; }
+
+/* ---- wallet card ---- */
+.wallet-actions { display: flex; gap: var(--s-3); margin-top: var(--s-5); }
+.wallet-foot { font-size: var(--t-xs); margin-top: var(--s-3); }
+
+/* ---- method rows: cash and card do different things, so they look different ---- */
+.topup-method {
+  flex: 1 1 100%;
+  justify-content: flex-start;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-4);
+  text-align: left;
+}
+.topup-method-mark {
+  display: grid;
+  place-items: center;
+  width: 30px; height: 30px;
+  border-radius: var(--r-sm);
+  background: rgba(255,255,255,.05);
+  color: var(--text-3);
+  flex: none;
+}
+.topup-method.is-active .topup-method-mark { background: var(--accent-soft); color: var(--accent); }
+.topup-method[data-kind="cash"].is-active .topup-method-mark {
+  background: rgba(34,197,94,.14);
+  color: #22c55e;
+}
+.topup-method[data-kind="cash"].is-active { border-color: rgba(34,197,94,.5); background: rgba(34,197,94,.08); }
+
+.topup-method-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.topup-method-name { font-weight: 700; font-size: var(--t-body); }
+.topup-method-sub { font-size: var(--t-xs); color: var(--text-3); font-weight: 500; }
+
+.topup-method-note {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-2);
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+  color: var(--text-2);
+  background: var(--bg-sunken, var(--bg-raised));
+  border: 1px solid var(--line);
+}
+.topup-method-note svg { flex: none; margin-top: 2px; }
+.topup-method-note[data-kind="cash"] {
+  background: rgba(34,197,94,.08);
+  border-color: rgba(34,197,94,.28);
+}
+
+/* ---- waiting on staff approval ---- */
+.topup-pending { text-align: center; padding: var(--s-5) var(--s-3); }
+.topup-pending-mark {
+  width: 56px; height: 56px;
+  margin: 0 auto var(--s-4);
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--warn-soft);
+  border: 1px solid var(--warn-line);
+  color: var(--warn, var(--text));
+}
+.topup-pending-mark.is-done {
+  background: rgba(34,197,94,.14);
+  border-color: rgba(34,197,94,.4);
+  color: #22c55e;
+}
+.topup-pending-title {
+  font-size: var(--t-xs);
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+.topup-pending-amount {
+  font-size: 40px;
+  font-weight: 820;
+  letter-spacing: -0.03em;
+  margin: var(--s-2) 0 2px;
+}
+.topup-pending-coins { font-size: var(--t-body); color: var(--text-2); font-weight: 650; }
+.topup-pending-copy {
+  margin-top: var(--s-4);
+  font-size: var(--t-sm);
+  color: var(--text-3);
+  line-height: 1.6;
+  max-width: 40ch;
+  margin-left: auto;
+  margin-right: auto;
 }

@@ -211,6 +211,8 @@
         Store.emit("user", user);
         Store.loadPCs().catch(function () {});
         Store.loadSubscription().catch(function () {});
+        Store.loadSessions().catch(function () {});
+        Store.loadPermissions();
       }).catch(function () {});
     }
   }

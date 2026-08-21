@@ -143,6 +143,9 @@
     <button class="win-btn" id="winMin" aria-label="Minimise" title="Minimise">
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6h8"/></svg>
     </button>
+    <button class="win-btn" id="winMax" aria-label="Maximise" title="Maximise">
+      <svg viewBox="0 0 12 12" aria-hidden="true"><rect x="2.5" y="2.5" width="7" height="7" rx="1"/></svg>
+    </button>
     <button class="win-btn win-btn-close" id="winClose" aria-label="Close" title="Close">
       <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>
     </button>
@@ -205,14 +208,41 @@
   <script>
     // Window controls for this frameless window.
     (function () {
-      var min = document.getElementById("winMin");
-      var close = document.getElementById("winClose");
       if (!window.api || !window.api.windowMinimize) {
         document.querySelector(".titlebar").style.display = "none";
         return;
       }
-      min.addEventListener("click", function () { window.api.windowMinimize(); });
-      close.addEventListener("click", function () { window.api.windowClose(); });
+
+      var MAXIMISE = '<rect x="2.5" y="2.5" width="7" height="7" rx="1"/>';
+      var RESTORE =
+        '<rect x="2" y="4" width="6" height="6" rx="1"/>' +
+        '<path d="M4.4 4V2.6A.6.6 0 0 1 5 2h4.4a.6.6 0 0 1 .6.6V7a.6.6 0 0 1-.6.6H8.6"/>';
+
+      var maxBtn = document.getElementById("winMax");
+
+      function paint(isMaximized) {
+        maxBtn.querySelector("svg").innerHTML = isMaximized ? RESTORE : MAXIMISE;
+        var label = isMaximized ? "Restore" : "Maximise";
+        maxBtn.setAttribute("title", label);
+        maxBtn.setAttribute("aria-label", label);
+      }
+
+      document.getElementById("winMin")
+        .addEventListener("click", function () { window.api.windowMinimize(); });
+      maxBtn.addEventListener("click", function () { window.api.windowToggleMaximize(); });
+      document.getElementById("winClose")
+        .addEventListener("click", function () { window.api.windowClose(); });
+
+      // Double-clicking the bar toggles, as a native title bar does.
+      document.querySelector(".titlebar").addEventListener("dblclick", function (e) {
+        if (e.target.closest("button")) return;
+        window.api.windowToggleMaximize();
+      });
+
+      if (window.api.onWindowMaximizedChanged) window.api.onWindowMaximizedChanged(paint);
+      if (window.api.windowIsMaximized) {
+        window.api.windowIsMaximized().then(paint).catch(function () {});
+      }
     })();
   </script>
   <script src="auth.js"></script>

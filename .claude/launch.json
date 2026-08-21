@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "website",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "D:/ManagerXp/Manager-XP-Website/frontend"],
+      "port": 5173
+    }
+  ]
+}

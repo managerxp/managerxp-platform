@@ -88,6 +88,175 @@
   }
 
   /* ==========================================================================
+     REMOTE POWER
+     The command runs on the station. The backend authorises it and writes the
+     audit entry first, so an action can never happen without a record.
+     ========================================================================== */
+  var POWER_ACTIONS = [
+    {
+      /* The only action that reaches a station which is OFF. It cannot go
+         through the client — there isn't one running — so it leaves as a
+         Wake-on-LAN broadcast from this console. Needs the station's MAC,
+         which is why it is disabled when we don't have one. */
+      action: "wake", label: "Power on", icon: "power", variant: "btn-outline",
+      tip: "Sends a wake signal over the network",
+      confirm: "A wake signal is sent. The station needs Wake-on-LAN enabled in its BIOS.",
+      offlineOnly: true
+    },
+    {
+      action: "restart", label: "Restart", icon: "refresh", variant: "btn-warn",
+      tip: "Reboots the station's Windows",
+      confirm: "The station reboots. Anything unsaved on it is lost."
+    },
+    {
+      action: "shutdown", label: "Shut down", icon: "power", variant: "btn-danger",
+      tip: "Powers the station off",
+      confirm: "The station powers off. Someone has to switch it back on by hand."
+    },
+    {
+      action: "lock", label: "Lock", icon: "unlink", variant: "btn-outline",
+      tip: "Locks the Windows session — nothing is closed",
+      confirm: "The screen locks. Nothing is closed and no time is lost."
+    },
+    {
+      action: "signout", label: "Sign out", icon: "logout", variant: "btn-warn",
+      tip: "Signs the Windows user out, closing their applications",
+      confirm: "The Windows user is signed out and their applications close."
+    },
+    {
+      action: "restart-client", label: "Restart client", icon: "play", variant: "btn-outline",
+      tip: "Restarts the CafeXP client app only — Windows keeps running",
+      confirm: "Only the CafeXP client restarts. Windows and any game keep running."
+    }
+  ];
+
+  var DELAYS = [0, 10, 30, 60];
+
+  function powerDialog(pc, spec, onDone) {
+    // Restarting our own app takes effect at once; a Windows action gets a
+    // grace period so the person at the station sees the warning first.
+    var instant = spec.action === "restart-client" || spec.action === "lock";
+    var delay = instant ? 0 : 10;
+
+    var session = Store.state.sessions[pc.name];
+
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="notice" data-status="' +
+        (spec.action === "shutdown" ? "offline" : "warning") + '">' + Icon("alert", 16) +
+        "<div>" + UI.esc(spec.confirm) + "</div></div>" +
+
+      (session
+        ? '<div class="notice" data-status="warning">' + Icon("sessions", 16) +
+          "<div><strong>" + UI.esc(session.customer_name || "A guest") + "</strong> is on this " +
+          "station right now. The session keeps running on the café's side — " +
+          "only the machine is affected.</div></div>"
+        : "") +
+
+      (instant
+        ? ""
+        : '<div class="field"><label class="field-label">Warn the station for</label>' +
+          '<div class="row gap-2 wrap" id="powerDelay">' +
+            DELAYS.map(function (d) {
+              return '<button type="button" class="chip" data-delay="' + d + '"' +
+                (d === delay ? ' aria-pressed="true"' : "") + ">" +
+                (d === 0 ? "No warning" : d + "s") + "</button>";
+            }).join("") +
+          "</div>" +
+          '<div class="field-hint">An on-screen notice appears on the station and counts down.</div></div>') +
+
+      '<div class="field"><label class="field-label" for="powerReason">Reason</label>' +
+        '<input class="input" id="powerReason" placeholder="Why this is being done" data-autofocus>' +
+        '<div class="field-hint">Recorded in the audit trail against your name.</div></div>';
+
+    if (!instant) {
+      UI.$$("#powerDelay .chip", body).forEach(function (chip) {
+        chip.addEventListener("click", function () {
+          delay = parseInt(chip.dataset.delay, 10);
+          UI.$$("#powerDelay .chip", body).forEach(function (c) {
+            c.setAttribute("aria-pressed", String(c === chip));
+          });
+        });
+      });
+    }
+
+    return UI.modal({
+      title: spec.label + " " + pc.name + "?",
+      description: "This runs on the station itself.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: spec.label, variant: "danger", icon: spec.icon,
+          onClick: function (ctx) {
+            var reason = ctx.body.querySelector("#powerReason").value.trim();
+            return Store.stationPower(pc.name, spec.action, reason, delay)
+              .then(function (result) {
+                UI.toast.ok(spec.label + " sent to " + pc.name,
+                  delay ? "The station is warned for " + delay + "s first." : null);
+                if (result.data && result.data.active_session) {
+                  UI.toast.warn("A session was running",
+                    result.data.active_session.playing + " is still billed — the session did not end.");
+                }
+                if (onDone) onDone();
+                return true;
+              })
+              .catch(function (err) {
+                UI.toast.error("Could not " + spec.label.toLowerCase(), err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+  }
+
+  /* ==========================================================================
+     CUSTOM LAUNCH — anything on the station's disk, without adding it first
+     ========================================================================== */
+  function customLaunchDialog(pcName) {
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="field"><label class="field-label field-req" for="clPath">Path on the station</label>' +
+        '<input class="input mono" id="clPath" spellcheck="false" data-autofocus ' +
+          'placeholder="C:\\Program Files\\Game\\game.exe"></div>' +
+      '<div class="field"><label class="field-label" for="clName">Show it as</label>' +
+        '<input class="input" id="clName" placeholder="Taken from the file name">' +
+        '<div class="field-hint">Only affects what staff and the customer see on screen.</div></div>' +
+      '<div class="notice" data-status="warning">' + Icon("alert", 16) +
+        "<div>The path is resolved on <strong>" + UI.esc(pcName) + "</strong>, not here. " +
+        "A one-off launch is not saved to the station's software list — add it under " +
+        "<strong>Games</strong> if you will use it again.</div></div>";
+
+    return UI.modal({
+      title: "Custom launch",
+      description: "Run something that is not in this station's list.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: "Continue", variant: "primary", icon: "chevronR",
+          onClick: function (ctx) {
+            var path = ctx.body.querySelector("#clPath").value.trim();
+            if (!path) {
+              Motion.shake(ctx.body.querySelector("#clPath"));
+              UI.toast.warn("Give the full path to the executable");
+              return false;
+            }
+            var typed = ctx.body.querySelector("#clName").value.trim();
+            // "…\\Steam\\steam.exe" -> "steam"
+            var fallback = path.split(/[\\/]/).pop().replace(/\.[^.]+$/, "") || "Application";
+            // Hand straight to the normal launch flow so duration, the
+            // countdown and auto-close all behave identically.
+            launchDialog(pcName, { name: typed || fallback, launch: path, custom: true });
+            return true;
+          }
+        }
+      ]
+    });
+  }
+
+  /* ==========================================================================
      PANEL
      ========================================================================== */
   function open(pcName) {
@@ -129,6 +298,97 @@
 
       UI.clear(panel.body);
       var wrap = UI.el("div", { class: "col gap-5" });
+
+      /* --- play session --- */
+      var session = Store.sessionFor(pc.name);
+      var SessionUI = global.CXSessionUI;
+
+      if (session) {
+        var paused = session.status === "paused";
+        var card = UI.el("div", {
+          class: "card card-pad",
+          dataset: { status: paused ? "maintenance" : "gaming" },
+          style: { background: "linear-gradient(180deg, var(--st-soft), var(--bg-raised))" }
+        });
+        card.innerHTML =
+          '<div class="row-between" style="align-items:flex-start">' +
+            "<div>" +
+              '<div class="eyebrow">' + (paused ? "Paused session" : "In session") + "</div>" +
+              '<div style="font-size:19px;font-weight:700;margin-top:4px">' +
+                UI.esc(session.customer_name) +
+                (session.is_guest ? ' <span class="badge badge-plain">Guest</span>' : "") + "</div>" +
+            "</div>" +
+            '<span class="badge badge-lg" data-status="' + (paused ? "maintenance" : "gaming") + '">' +
+              UI.esc(session.status) + "</span>" +
+          "</div>" +
+          '<div class="timer-big" id="sessionTimer" style="margin:18px 0 4px">' +
+            SessionUI.displayTime(session) + "</div>" +
+          '<div class="muted" style="text-align:center;font-size:12px">' +
+            SessionUI.timeLabel(session) + " · " +
+            '<span id="sessionAmount">' + SessionUI.coins(session.running_amount) + "</span> XP so far" +
+            " · " + SessionUI.coins(session.rate_per_hour) + " XP/hr" +
+          "</div>" +
+          '<div class="row gap-2 wrap" style="margin-top:18px">' +
+            '<button class="btn ' + (paused ? "btn-ok" : "btn-outline") + ' grow" id="btnSessPause">' +
+              Icon(paused ? "play" : "pause", 15) +
+              '<span class="btn-label">' + (paused ? "Resume" : "Pause") + "</span></button>" +
+            '<button class="btn btn-outline grow" id="btnSessExtend">' + Icon("plus", 15) +
+              '<span class="btn-label">Extend</span></button>' +
+            '<button class="btn btn-outline grow" id="btnSessTransfer">' + Icon("link", 15) +
+              '<span class="btn-label">Transfer</span></button>' +
+            '<button class="btn btn-danger grow" id="btnSessEnd">' + Icon("stop", 15) +
+              '<span class="btn-label">End</span></button>' +
+          "</div>";
+        wrap.appendChild(card);
+
+        card.querySelector("#btnSessPause").addEventListener("click", function () {
+          var call = paused ? Store.resumeSession(session) : Store.pauseSession(session);
+          call.then(function () { renderAll(); })
+            .catch(function (e) { UI.toast.error("Could not update the session", e.message); });
+        });
+        card.querySelector("#btnSessExtend").addEventListener("click", function () {
+          SessionUI.extendDialog(session, renderAll);
+        });
+        card.querySelector("#btnSessTransfer").addEventListener("click", function () {
+          SessionUI.transferDialog(session, function () { panel.close(); });
+        });
+        card.querySelector("#btnSessEnd").addEventListener("click", function () {
+          SessionUI.endSessionDialog(session, renderAll);
+        });
+      } else {
+        // A session can only start on a station that is connected, active and
+        // free — otherwise the customer sits at a machine that never hears
+        // about their session.
+        var eligible = SessionUI.canStartSession(pc);
+
+        var startCard = UI.el("div", { class: "card card-pad col gap-3" });
+        startCard.innerHTML =
+          '<div class="eyebrow">No session</div>' +
+          '<div class="muted" style="font-size:13px;line-height:1.55">' +
+            (eligible.ok
+              ? "Put a customer or a guest on this station and start their clock."
+              : UI.esc(eligible.reason) + ", so a session can't be started here yet.") +
+          "</div>";
+
+        var startBtn = UI.el("button", {
+          class: "btn btn-primary btn-block",
+          html: Icon("sessions", 16) + '<span class="btn-label">Start a session</span>',
+          disabled: !eligible.ok
+        });
+        if (!eligible.ok) startBtn.setAttribute("data-tip", eligible.reason);
+        startBtn.addEventListener("click", function () {
+          SessionUI.startSessionDialog(pc.name, renderAll);
+        });
+        startCard.appendChild(startBtn);
+
+        if (!eligible.ok && !connected) {
+          var hint = UI.el("div", { class: "notice", dataset: { status: "warning" } });
+          hint.innerHTML = Icon("alert", 16) +
+            "<div>Connect the station first — use <strong>Connect</strong> below.</div>";
+          startCard.appendChild(hint);
+        }
+        wrap.appendChild(startCard);
+      }
 
       /* --- running application --- */
       if (run) {
@@ -221,11 +481,19 @@
       /* --- software / launch --- */
       var lib = UI.el("div", { class: "card" });
       lib.innerHTML =
-        '<div class="card-head"><h3>Software</h3>' +
+        '<div class="card-head"><h3>Software</h3><div class="row gap-2">' +
+          '<button class="btn btn-outline btn-sm" id="btnCustomLaunch">' + Icon("play", 14) +
+          '<span class="btn-label">Custom launch</span></button>' +
           '<button class="btn btn-ghost btn-sm" id="btnManageSw">' + Icon("settings", 14) +
-          '<span class="btn-label">Manage</span></button></div>' +
+          '<span class="btn-label">Manage</span></button></div></div>' +
         '<div class="card-body col gap-2" id="swList"></div>';
       wrap.appendChild(lib);
+
+      var customBtn = lib.querySelector("#btnCustomLaunch");
+      customBtn.disabled = !connected || !!run;
+      if (!connected) customBtn.setAttribute("data-tip", "Station is not connected");
+      else if (run) customBtn.setAttribute("data-tip", "Another application is already running");
+      customBtn.addEventListener("click", function () { customLaunchDialog(pc.name); });
 
       lib.querySelector("#btnManageSw").addEventListener("click", function () {
         panel.close();
@@ -242,15 +510,18 @@
           swList.appendChild(UI.emptyState({
             icon: "games",
             title: "No software configured",
-            text: "Add the applications this station can launch.",
-            actions: [{
-              label: "Configure software", icon: "plus", variant: "outline",
-              onClick: function () {
-                panel.close();
-                global.CXRouter.go("games");
-                if (global.CXPages.games.focusPC) global.CXPages.games.focusPC(pc.name);
-              }
-            }]
+            text: "Add the applications this station can launch, or run one directly by path.",
+            actions: [
+              {
+                label: "Configure software", icon: "plus", variant: "outline",
+                onClick: function () {
+                  panel.close();
+                  global.CXRouter.go("games");
+                  if (global.CXPages.games.focusPC) global.CXPages.games.focusPC(pc.name);
+                }
+              },
+              { label: "Custom launch", icon: "play", onClick: function () { customLaunchDialog(pc.name); } }
+            ]
           }));
           return;
         }
@@ -293,6 +564,51 @@
         swList.appendChild(UI.errorState(e.message));
       });
 
+      /* --- remote power --- */
+      var power = UI.el("div", { class: "card" });
+      power.innerHTML =
+        '<div class="card-head"><h3>Power</h3>' +
+          '<span class="faint" style="font-size:11px">Runs on the station, not here</span></div>';
+      var powerBody = UI.el("div", { class: "card-body col gap-3" });
+
+      if (!connected) {
+        powerBody.appendChild(UI.el("div", {
+          class: "notice", dataset: { status: "idle" },
+          html: Icon("info", 16) +
+            "<div>These need a live connection to " + UI.esc(pc.name) + ". It is not connected.</div>"
+        }));
+      }
+
+      var powerRow = UI.el("div", { class: "row gap-2 wrap" });
+      POWER_ACTIONS.forEach(function (spec) {
+        /*
+         * Power on inverts every other action's requirement. The rest need a
+         * live client to receive the command; this one is FOR a station that
+         * has none, so gating it on `connected` would grey it out at exactly
+         * the moment it is wanted. It needs a MAC instead, since a wake packet
+         * is addressed to the network card rather than to an IP.
+         */
+        var isWake = spec.action === "wake";
+        var hasMac = !!(pc && pc.mac_address);
+
+        var disabled = isWake ? (connected || !hasMac) : !connected;
+        var tip = spec.tip;
+        if (isWake && connected) tip = "This station is already on";
+        else if (isWake && !hasMac) tip = "No MAC address on record — re-register this station to capture one";
+
+        var btn = UI.el("button", {
+          class: "btn btn-sm " + (spec.variant || "btn-outline"),
+          html: Icon(spec.icon, 14) + '<span class="btn-label">' + spec.label + "</span>",
+          disabled: disabled,
+          "data-tip": tip
+        });
+        btn.addEventListener("click", function () { powerDialog(pc, spec, renderAll); });
+        powerRow.appendChild(btn);
+      });
+      powerBody.appendChild(powerRow);
+      power.appendChild(powerBody);
+      wrap.appendChild(power);
+
       /* --- station record --- */
       var admin = UI.el("div", { class: "card" });
       admin.innerHTML = '<div class="card-head"><h3>Station record</h3></div>';
@@ -304,29 +620,95 @@
       });
       editBtn.addEventListener("click", function () { editStation(pc, renderAll); });
 
-      var deactivateBtn = UI.el("button", {
-        class: "btn btn-danger btn-sm",
-        html: Icon("power", 14) + '<span class="btn-label">Deactivate</span>',
-        "data-tip": "Marks the station inactive in the database. It can be restored later."
-      });
-      deactivateBtn.addEventListener("click", function () {
-        UI.confirm({
-          title: "Deactivate " + pc.name + "?",
-          message: "The station is marked inactive and stops appearing on the floor. Its record and history are kept.",
-          confirmLabel: "Deactivate",
-          variant: "danger"
-        }).then(function (ok) {
-          if (!ok) return;
-          Store.deactivatePC(pc.pc_id).then(function () {
-            UI.toast.ok(pc.name + " deactivated");
-            panel.close();
-            Store.loadPCs();
-          }).catch(function (e) { UI.toast.error("Could not deactivate", e.message); });
-        });
-      });
-
       adminBody.appendChild(editBtn);
-      adminBody.appendChild(deactivateBtn);
+
+      /*
+       * Delete used to live only inside the deactivated branch, so removing a
+       * station meant deactivating it first and coming back — and most people
+       * never found it. It is offered directly now. The safety is not the
+       * hiding: the backend refuses to delete a station that has ever run a
+       * session, so trading history cannot be erased by a click here.
+       */
+      function makeDeleteButton() {
+        var btn = UI.el("button", {
+          class: "btn btn-danger btn-sm",
+          html: Icon("trash", 14) + '<span class="btn-label">Delete permanently</span>',
+          "data-tip": "Removes the record. Refused if the station has any sessions."
+        });
+        btn.addEventListener("click", function () {
+          UI.confirm({
+            title: "Delete " + pc.name + " for good?",
+            message: "The station record is removed and its telemetry history is cleared. " +
+              "This cannot be undone. If it has ever run a session, the delete is refused " +
+              "so the trading history stays intact — deactivate it instead.",
+            confirmLabel: "Delete permanently",
+            variant: "danger"
+          }).then(function (ok) {
+            if (!ok) return;
+            Store.deletePC(pc.pc_id)
+              .then(function () {
+                UI.toast.ok(pc.name + " deleted");
+                panel.close();
+                return Store.loadPCs();
+              })
+              .catch(function (e) { UI.toast.error("Could not delete", e.message); });
+          });
+        });
+        return btn;
+      }
+
+      // Deactivating used to be a one-way trip — there was no control to undo
+      // it, so a station taken out of service could never be put back.
+      if (pc.is_active === false) {
+        var restoreBtn = UI.el("button", {
+          class: "btn btn-ok btn-sm",
+          html: Icon("check", 14) + '<span class="btn-label">Reactivate</span>',
+          "data-tip": "Puts the station back into service"
+        });
+        restoreBtn.addEventListener("click", function () {
+          UI.withBusy(restoreBtn, function () {
+            return Store.restorePC(pc.pc_id)
+              .then(function () {
+                UI.toast.ok(pc.name + " is back in service");
+                return Promise.all([Store.loadPCs(), Store.refreshPCList()]);
+              })
+              .then(function () { renderAll(); })
+              .catch(function (e) { UI.toast.error("Could not reactivate", e.message); });
+          });
+        });
+        adminBody.appendChild(restoreBtn);
+
+        adminBody.appendChild(makeDeleteButton());
+      } else {
+        var deactivateBtn = UI.el("button", {
+          class: "btn btn-danger btn-sm",
+          html: Icon("power", 14) + '<span class="btn-label">Deactivate</span>',
+          "data-tip": "Marks the station inactive. Reactivate from this panel later."
+        });
+        deactivateBtn.addEventListener("click", function () {
+          UI.confirm({
+            title: "Deactivate " + pc.name + "?",
+            message: "The station is marked inactive and no new sessions can start on it. " +
+              "Its record and history are kept, and you can reactivate it from this panel.",
+            confirmLabel: "Deactivate",
+            variant: "danger"
+          }).then(function (ok) {
+            if (!ok) return;
+            Store.deactivatePC(pc.pc_id).then(function () {
+              UI.toast.ok(pc.name + " deactivated", "Reactivate it from this panel when needed.");
+              return Store.loadPCs();
+            }).then(function () { renderAll(); })
+              .catch(function (e) { UI.toast.error("Could not deactivate", e.message); });
+          });
+        });
+        adminBody.appendChild(deactivateBtn);
+
+        /* Also offered on a live station. Deactivate is the reversible choice
+           and is listed first; delete is here so it does not require finding
+           it in another state. */
+        adminBody.appendChild(makeDeleteButton());
+      }
+
       admin.appendChild(adminBody);
       wrap.appendChild(admin);
 
@@ -353,6 +735,17 @@
       t.classList.toggle("is-danger", run.remaining <= 60);
     }));
     offs.push(Store.on("running", renderAll));
+    offs.push(Store.on("sessions", renderAll));
+    offs.push(Store.on("session-tick", function () {
+      var s = Store.sessionFor(pcName);
+      var t = document.getElementById("sessionTimer");
+      var a = document.getElementById("sessionAmount");
+      if (!s || !t) return;
+      t.textContent = global.CXSessionUI.displayTime(s);
+      t.classList.toggle("is-warn", s.remaining_seconds !== null && s.remaining_seconds <= 300 && s.remaining_seconds > 60);
+      t.classList.toggle("is-danger", s.remaining_seconds !== null && s.remaining_seconds <= 60);
+      if (a) a.textContent = global.CXSessionUI.coins(s.running_amount);
+    }));
 
     renderAll();
     return panel;
@@ -403,5 +796,10 @@
     });
   }
 
-  global.CXStationPanel = { open: open, launchDialog: launchDialog, editStation: editStation };
+  global.CXStationPanel = {
+    open: open,
+    launchDialog: launchDialog,
+    customLaunchDialog: customLaunchDialog,
+    editStation: editStation
+  };
 })(window);

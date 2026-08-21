@@ -17,7 +17,16 @@
     total: 0,
     loading: false,
     error: null,
-    loadedAt: null
+    loadedAt: null,
+    bills: [],
+    billsError: null,
+    packages: [],
+    membership: null,
+    membershipHistory: [],
+    entitlementsLoaded: false,
+    menu: null,
+    menuError: null,
+    orders: []
   };
 
   var listeners = [];
@@ -141,10 +150,182 @@
     return CATEGORY_LABEL[category] || (category ? String(category) : "Adjustment");
   }
 
+  /**
+   * The customer's own bills. Read-only — payment is taken by staff, and the
+   * server rejects any payment attempt on a customer token.
+   */
+  function loadBills(limit) {
+    var id = customerId();
+    if (id == null || !token()) return Promise.resolve([]);
+    return request("/api/bills/customer/" + id + "?limit=" + (limit || 20))
+      .then(function (body) {
+        state.bills = body.data || [];
+        emit();
+        return state.bills;
+      })
+      .catch(function (err) {
+        console.error("[wallet] bill load failed", err);
+        state.billsError = err.status === 401 || err.status === 403 ? "denied" : "unreachable";
+        emit();
+        return [];
+      });
+  }
+
+  /** The customer's packages and membership. Read-only; staff sell them. */
+  function loadEntitlements() {
+    var id = customerId();
+    if (id == null || !token()) return Promise.resolve();
+    return Promise.all([
+      request("/api/packages/customer/" + id).then(function (b) { return b.data || []; }).catch(function () { return null; }),
+      request("/api/memberships/customer/" + id).then(function (b) { return b.data; }).catch(function () { return null; })
+    ]).then(function (res) {
+      state.packages = res[0] || [];
+      state.membership = res[1] ? res[1].current : null;
+      state.membershipHistory = res[1] ? res[1].history : [];
+      state.entitlementsLoaded = true;
+      emit();
+    });
+  }
+
+  /** The menu the customer can order from right now. */
+  function loadMenu(kind) {
+    if (!token()) return Promise.resolve(null);
+    return request("/api/products/menu?kind=" + (kind || "FNB"))
+      .then(function (body) {
+        state.menu = body;
+        state.menuError = null;
+        emit();
+        return body;
+      })
+      .catch(function (err) {
+        console.error("[menu] load failed", err);
+        state.menuError = err.status === 401 || err.status === 403 ? "denied" : "unreachable";
+        emit();
+        return null;
+      });
+  }
+
+  function loadOrders() {
+    var id = customerId();
+    if (id == null || !token()) return Promise.resolve([]);
+    return request("/api/orders/customer/" + id)
+      .then(function (body) { state.orders = body.data || []; emit(); return state.orders; })
+      .catch(function () { return []; });
+  }
+
+  /** Place an order. The server takes stock and settles from the wallet. */
+  function placeOrder(items, extra) {
+    var payload = Object.assign({ items: items }, extra || {});
+    return fetch(API_BASE + "/api/orders", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + (token() || "")
+      },
+      body: JSON.stringify(payload)
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) {
+          var err = new Error(body.message || "HTTP " + res.status);
+          err.status = res.status;
+          throw err;
+        }
+        // The order moves money and stock, so refresh both.
+        load();
+        loadOrders();
+        loadMenu();
+        return body;
+      });
+    });
+  }
+
+  /* ==========================================================================
+     TOP-UP
+
+     The one place the client is not read-only — and even here it does not move
+     money. It asks the server to start a payment, sends the customer to the
+     provider, and asks the server to confirm what came back. The coins are
+     credited by the server against a signature it verified itself; nothing
+     this file does could make coins appear.
+     ========================================================================== */
+  function post(path, payload) {
+    return fetch(API_BASE + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + (token() || "")
+      },
+      body: JSON.stringify(payload || {})
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) {
+          var err = new Error(body.message || "HTTP " + res.status);
+          err.status = res.status;
+          throw err;
+        }
+        return body;
+      });
+    });
+  }
+
+  /** What the café accepts, and the limits it sets. */
+  function topupOptions() {
+    return request("/api/payments/topup/options").then(function (body) { return body.data; });
+  }
+
+  /** Ask the server to open a payment. Returns what checkout needs, no secrets. */
+  function startTopup(provider, amountValue) {
+    return post("/api/payments/topup/order", { provider: provider, amount: amountValue })
+      .then(function (body) { return body.data; });
+  }
+
+  /**
+   * Hand the provider's response back for verification.
+   *
+   * Sending the raw payload rather than a "it worked" flag is the point: the
+   * server re-derives the signature from it and decides for itself.
+   */
+  function confirmTopup(topupId, payload) {
+    return post("/api/payments/topup/verify", { topup_id: topupId, payload: payload })
+      .then(function (body) {
+        // The balance has changed on the server; pull the authoritative number
+        // rather than adding the coins locally and hoping they match.
+        load();
+        return body.data;
+      });
+  }
+
+  /**
+   * Ask the counter for coins against cash.
+   *
+   * Nothing is credited here. This records the request; a member of staff
+   * confirms the notes arrived and their approval is what moves the balance.
+   */
+  function requestCashTopup(amountValue) {
+    return post("/api/payments/topup/cash", { amount: amountValue })
+      .then(function (body) { return body.data; });
+  }
+
+  function topupHistory() {
+    return request("/api/payments/topup/mine")
+      .then(function (body) { return body.data || []; })
+      .catch(function () { return []; });
+  }
+
   global.CXWallet = {
     state: state,
     on: on,
     load: load,
+    topupOptions: topupOptions,
+    startTopup: startTopup,
+    confirmTopup: confirmTopup,
+    requestCashTopup: requestCashTopup,
+    topupHistory: topupHistory,
+    loadBills: loadBills,
+    loadEntitlements: loadEntitlements,
+    loadMenu: loadMenu,
+    loadOrders: loadOrders,
+    placeOrder: placeOrder,
     amount: amount,
     money: money,
     categoryLabel: categoryLabel

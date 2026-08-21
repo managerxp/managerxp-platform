@@ -122,7 +122,7 @@
     function dismiss() {
       if (done) return;
       done = true;
-      Promise.resolve(Motion.toastOut(node)).then(function () {
+      settle([Motion.toastOut(node)], 260).then(function () {
         if (node.parentNode) node.parentNode.removeChild(node);
       });
     }
@@ -149,6 +149,19 @@
      OVERLAY BASE (modal + drawer share the scrim & escape handling)
      ========================================================================== */
   var openLayers = [];
+
+  /**
+   * Resolve once the exit animations finish OR a deadline passes, whichever
+   * comes first. Without this, an animation that never settles — a hidden
+   * window, a dropped frame budget — would leave a dialog on screen with no
+   * way to dismiss it.
+   */
+  function settle(work, ms) {
+    return Promise.race([
+      Promise.all(work.map(function (p) { return Promise.resolve(p); })).catch(function () {}),
+      new Promise(function (resolve) { setTimeout(resolve, ms || 320); })
+    ]);
+  }
 
   function pushLayer(layer) {
     openLayers.push(layer);
@@ -243,8 +256,10 @@
     pushLayer(layer);
 
     layer.close = function () {
+      if (layer.closed) return;
+      layer.closed = true;
       popLayer(layer);
-      Promise.all([Motion.modalOut(node), Motion.scrimOut(scrim)]).then(function () {
+      settle([Motion.modalOut(node), Motion.scrimOut(scrim)]).then(function () {
         if (node.parentNode) node.parentNode.removeChild(node);
         if (scrim.parentNode) scrim.parentNode.removeChild(scrim);
         if (opts.onClose) opts.onClose();
@@ -316,8 +331,10 @@
     pushLayer(layer);
 
     layer.close = function () {
+      if (layer.closed) return;
+      layer.closed = true;
       popLayer(layer);
-      Promise.all([Motion.drawerOut(node), Motion.scrimOut(scrim)]).then(function () {
+      settle([Motion.drawerOut(node), Motion.scrimOut(scrim)]).then(function () {
         if (node.parentNode) node.parentNode.removeChild(node);
         if (scrim.parentNode) scrim.parentNode.removeChild(scrim);
         if (opts.onClose) opts.onClose();
