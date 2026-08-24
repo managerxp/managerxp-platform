@@ -1198,9 +1198,17 @@ function registerIPCHandlers() {
       const cafeId = authContext.getCafeId();
       const token = authContext.getToken();
       
-      if (!cafeId || !token) {
-        console.log("Missing cafeId or token for PC fetch");
+      /* These are two different failures and were reported as one. Without a
+         token the console is signed out; with a token but no café it is signed
+         in as somebody who belongs to no café — and the fix for that is to
+         choose one, not to sign in again. */
+      if (!token) {
+        console.log("No token for PC fetch — signed out");
         return { success: false, data: [], error: "Not authenticated" };
+      }
+      if (!cafeId) {
+        console.log("No cafe id for PC fetch — principal has no cafe and none chosen");
+        return { success: false, data: [], error: "NO_CAFE" };
       }
 
       const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {

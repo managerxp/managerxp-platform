@@ -112,6 +112,13 @@
         '<div class="toast-title">' + esc(opts.title || "") + "</div>" +
         (opts.message ? '<div class="toast-msg">' + esc(opts.message) + "</div>" : "") +
       "</div>" +
+      /* An optional single action — "Extend", "Undo". A notice that tells
+         somebody something needs doing and then makes them go and find the
+         screen to do it on has only done half the job. */
+      (opts.action && opts.action.label
+        ? '<button class="btn btn-outline btn-sm toast-action">' +
+          esc(opts.action.label) + "</button>"
+        : "") +
       '<button class="toast-close" aria-label="Dismiss">' + Icon("close", 13) + "</button>" +
       (duration ? '<div class="toast-timer"></div>' : "");
 
@@ -127,6 +134,14 @@
       });
     }
     node.querySelector(".toast-close").addEventListener("click", dismiss);
+
+    var actionBtn = node.querySelector(".toast-action");
+    if (actionBtn) {
+      actionBtn.addEventListener("click", function () {
+        dismiss();
+        try { opts.action.onClick(); } catch (e) { console.warn("[toast] action failed", e); }
+      });
+    }
 
     if (duration) {
       var bar = node.querySelector(".toast-timer");

@@ -45,6 +45,29 @@
   color: #fff;
 }
 .brand-mark svg { width: 17px; height: 17px; }
+
+/* The CafeXP logo. When it loads it is the whole brand: the placeholder mark
+   and the typed name step aside, because two logos in one corner is worse
+   than either alone. The wordmark already reads "CafeXP", so the sub-label
+   moves under it rather than beside a second copy of the name. */
+.brand-logo {
+  height: 34px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  object-position: left center;
+  display: block;
+}
+.brand:not(.brand-no-logo) .brand-mark,
+.brand:not(.brand-no-logo) .brand-copy { display: none; }
+
+/* No asset yet, or it failed to load — fall back to the mark and the name. */
+.brand.brand-no-logo .brand-logo { display: none; }
+
+/* Collapsed to an icon rail there is no room for a wordmark, so the compact
+   mark comes back regardless of which state we are in. */
+.app.sidebar-collapsed .brand-logo { display: none; }
+.app.sidebar-collapsed .brand .brand-mark { display: grid; }
 .brand-text {
   font-size: 16px;
   font-weight: 750;

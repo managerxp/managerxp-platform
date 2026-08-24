@@ -191,6 +191,35 @@
       UI.toast({ title: "Time expired on " + name, message: "The application was closed.", status: "warn" });
     });
 
+    /*
+     * Time nearly up.
+     *
+     * Raised here rather than on the Floor because staff are usually somewhere
+     * else — at the till, in the back — and a card turning amber on a screen
+     * nobody is looking at warns no one. The toast names the station and
+     * offers to extend it without navigating anywhere.
+     */
+    Store.on("session-expiring", function (info) {
+      var mins = Math.max(1, Math.round(info.remaining / 60));
+      UI.toast({
+        title: info.pc_name + " — " + mins + " min left",
+        message: (info.session.customer_name || "Guest") + "'s time is nearly up.",
+        status: "warn",
+        // Longer than a routine notice: this one is asking for a decision.
+        duration: 15000,
+        action: {
+          label: "Extend",
+          onClick: function () {
+            if (global.CXSessionUI && global.CXSessionUI.extendDialog) {
+              global.CXSessionUI.extendDialog(info.session);
+            } else {
+              global.CXRouter.go("sessions");
+            }
+          }
+        }
+      });
+    });
+
     renderUser();
     refreshPill();
 

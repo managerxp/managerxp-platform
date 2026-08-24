@@ -266,7 +266,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "151.0.7922.138",
+        "version":  "151.0.7922.172",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {
@@ -401,8 +401,8 @@
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "151.0.4129.93",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.93\\msedge.exe"
+        "version":  "151.0.4129.101",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.101\\msedge.exe"
     },
     {
         "name":  "Microsoft Integration Runtime",

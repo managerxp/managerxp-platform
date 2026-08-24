@@ -34,6 +34,10 @@
     { id: "grid",  label: "Grid",    icon: "grid",  hint: "Even wall of cards — good for one open room." },
     { id: "rows",  label: "Rows",    icon: "panel", hint: "Fixed-width rows, like aisles of machines." },
     { id: "zones", label: "Zones",   icon: "floor", hint: "Grouped by area — VIP, consoles, main hall." },
+    /* Zones are where a station stands; types are what it is. A café with
+       three PS5s, two pool tables and a VR rig wants them in their own rows
+       far more often than it wants them sorted by which wall they are on. */
+    { id: "types", label: "Types",   icon: "games", hint: "Grouped by what they are — PS5, Pool, VR." },
     { id: "list",  label: "Compact", icon: "list",  hint: "Dense list — the most stations on one screen." }
   ];
   var SIZES = [
@@ -282,8 +286,16 @@
         '<div class="station-timer" data-timer="' + UI.esc(pc.name) + '">' + UI.hms(run.remaining) + "</div>" +
         '<div class="station-subline">' + (run.paused ? "Paused" : "of " + UI.hms(run.totalSeconds)) + "</div>";
     } else if (status === "online") {
-      middle = '<div class="station-headline" style="color:var(--ok)">Ready</div>' +
-               '<div class="station-subline">Client connected · waiting</div>';
+      /* "Client connected" is only true of a networked station. A pool table
+         is ready because nothing about it can be otherwise. */
+      middle = '<div class="station-headline" style="color:var(--ok)">Available</div>' +
+               '<div class="station-subline">' +
+               (Store.isNetworked(pc)
+                 ? "Client connected · waiting"
+                 : (pc.category ? UI.esc(pc.category) + " · " : "") + "ready to start") +
+               "</div>";
+    } else if (status === "maintenance" && !session) {
+      middle = '<div class="station-idle">Under maintenance</div>';
     } else if (status === "inactive") {
       middle = '<div class="station-idle">Deactivated in the station registry</div>';
     } else {
@@ -296,7 +308,15 @@
       '<div class="station-top">' +
         "<div style='min-width:0'>" +
           '<div class="station-name">' + UI.esc(pc.name) + "</div>" +
-          '<div class="station-meta">' + UI.esc(pc.ip_address || "no address") + "</div>" +
+          /* An address is the useful second line for a machine on the network.
+             For a pool table it is noise — "no address" reads like a fault
+             when it is simply what a pool table is. Show what it is, or where
+             it is, instead. */
+          '<div class="station-meta">' +
+            UI.esc(Store.isNetworked(pc)
+              ? pc.ip_address
+              : (pc.description || pc.category || "station")) +
+          "</div>" +
         "</div>" +
         '<span class="dot' + (status === "online" || status === "gaming" ? " dot-live" : "") + '"></span>' +
       "</div>" +
@@ -326,6 +346,10 @@
             .catch(function (err) { UI.toast.error("Could not pause", err.message); });
         }));
       }
+      quick.appendChild(quickBtn("fnb", "Add food & drink to this session", function (e) {
+        e.stopPropagation();
+        global.CXOpenTillForSession(session);
+      }));
       quick.appendChild(quickBtn("stop", "End session", function (e) {
         e.stopPropagation();
         SessionUI.endSessionDialog(session);
@@ -366,7 +390,9 @@
             });
           });
         }));
-      } else if (status !== "online") {
+      } else if (status !== "online" && Store.isNetworked(pc)) {
+        /* Nothing to connect to on a station without an address, so the button
+           would only ever fail. */
         quick.appendChild(quickBtn("link", "Connect", function (e) {
           e.stopPropagation();
           Store.clearFailures(pc.name)
@@ -469,24 +495,61 @@
   function addStationDialog() {
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
-      '<div class="field">' +
-        '<label class="field-label field-req" for="addName">Station name</label>' +
-        '<input class="input" id="addName" placeholder="PC-01" data-autofocus>' +
-      "</div>" +
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
+        /* What this station is. It decides which prices the till and the start
+           dialog offer for it, which row it sits in on the floor, and — below
+           — whether it is asked for a network address at all. */
         '<div class="field">' +
-          '<label class="field-label field-req" for="addIp">IP address</label>' +
-          '<input class="input mono" id="addIp" placeholder="192.168.1.20">' +
+          '<label class="field-label field-req" for="addCategory">Type</label>' +
+          '<select class="select" id="addCategory"></select>' +
+          '<div class="field-hint" id="addCategoryHint">Decides its prices and where it sits on the floor.</div>' +
         "</div>" +
         '<div class="field">' +
-          '<label class="field-label field-req" for="addPort">Port</label>' +
-          '<input class="input mono" id="addPort" value="9090">' +
+          '<label class="field-label field-req" for="addName">Station name</label>' +
+          '<input class="input" id="addName" placeholder="PS5-01">' +
         "</div>" +
       "</div>" +
-      '<div class="row gap-3">' +
-        '<button class="btn btn-outline btn-sm" id="btnVerify">' + Icon("wifi", 14) +
-          '<span class="btn-label">Verify client</span></button>' +
-        '<span class="grow" id="verifyMsg" style="font-size:12px;color:var(--text-3)">Check the client responds before saving.</span>' +
+
+      /* Shown only when "Other" is chosen — a type the café has not used yet. */
+      '<div class="field hidden" id="addCustomWrap">' +
+        '<label class="field-label field-req" for="addCustomType">New type</label>' +
+        '<input class="input" id="addCustomType" maxlength="60" placeholder="Bowling">' +
+        '<div class="field-hint">Anything you sell time on. It becomes a row on the floor.</div>' +
+      "</div>" +
+
+      '<div class="field">' +
+        '<label class="field-label" for="addNote">Description</label>' +
+        '<input class="input" id="addNote" maxlength="120" placeholder="Corner table, near the window">' +
+        '<div class="field-hint">Optional — helps staff find it.</div>' +
+      "</div>" +
+
+      /*
+       * Everything below is for a station the console talks to over the
+       * network. A pool table has no IP address, and asking for one is how a
+       * café ends up inventing 192.168.1.99 for a table by the window.
+       */
+      '<div id="addNetwork" class="col gap-4">' +
+        '<label class="switch">' +
+          '<input type="checkbox" id="addNetworked"><span class="switch-track"></span>' +
+          '<span style="font-size:13px">Runs the CafeXP client on this network</span>' +
+        "</label>" +
+        '<div id="addNetworkFields" class="col gap-4 hidden">' +
+          '<div class="grid grid-2" style="gap:var(--s-3)">' +
+            '<div class="field">' +
+              '<label class="field-label field-req" for="addIp">IP address</label>' +
+              '<input class="input mono" id="addIp" placeholder="192.168.1.20">' +
+            "</div>" +
+            '<div class="field">' +
+              '<label class="field-label field-req" for="addPort">Port</label>' +
+              '<input class="input mono" id="addPort" value="9090">' +
+            "</div>" +
+          "</div>" +
+          '<div class="row gap-3">' +
+            '<button class="btn btn-outline btn-sm" id="btnVerify">' + Icon("wifi", 14) +
+              '<span class="btn-label">Verify client</span></button>' +
+            '<span class="grow" id="verifyMsg" style="font-size:12px;color:var(--text-3)">Check the client responds before saving.</span>' +
+          "</div>" +
+        "</div>" +
       "</div>";
 
     var verified = false;
@@ -501,35 +564,63 @@
           label: "Save station", variant: "primary", icon: "check",
           onClick: function (ctx) {
             var name = ctx.body.querySelector("#addName").value.trim();
+            var type = typeSelect.value === "__other"
+              ? customInput.value.trim()
+              : typeSelect.value;
+            var networked = networkedBox.checked;
             var ip = ctx.body.querySelector("#addIp").value.trim();
             var port = ctx.body.querySelector("#addPort").value.trim();
+            var note = ctx.body.querySelector("#addNote").value.trim();
 
-            if (!name || !ip || !port) {
-              Motion.shake(ctx.node);
-              UI.toast.warn("Missing details", "Name, IP address and port are all required.");
+            if (!type) {
+              Motion.shake(typeSelect.value === "__other" ? customInput : typeSelect);
+              UI.toast.warn("Choose a type", "PS5, Pool, PC — it decides the station's prices.");
               return false;
             }
-            if (!verified) {
-              Motion.shake(ctx.body.querySelector("#btnVerify"));
-              UI.toast.warn("Verify the client first", "Confirm the station responds before saving it.");
+            if (!name) {
+              Motion.shake(ctx.body.querySelector("#addName"));
+              UI.toast.warn("Name the station");
               return false;
             }
 
-            return resolveMac(ip, port, name)
-              .then(function (mac) {
-                return Store.createPC({
-                  simId: name,
-                  ip_address: ip,
-                  port: port,
-                  name: name,
-                  cafe_id: (Store.state.user && Store.state.user.cafe_id) || 1,
-                  branch_id: 1,
-                  mac_address: mac,
-                  is_active: true
-                });
-              })
+            /* Only a networked station needs an address, and only a networked
+               station can be verified. A pool table is saved on its name and
+               type alone. */
+            if (networked) {
+              if (!ip || !port) {
+                Motion.shake(ctx.body.querySelector("#addIp"));
+                UI.toast.warn("Missing address", "A networked station needs an IP address and port.");
+                return false;
+              }
+              if (!verified) {
+                Motion.shake(ctx.body.querySelector("#btnVerify"));
+                UI.toast.warn("Verify the client first", "Confirm the station responds before saving it.");
+                return false;
+              }
+            }
+
+            var base = {
+              simId: name,
+              name: name,
+              cafe_id: (Store.state.user && Store.state.user.cafe_id) || 1,
+              branch_id: 1,
+              is_active: true,
+              category: type,
+              description: note || null
+            };
+
+            var ready = networked
+              ? resolveMac(ip, port, name).then(function (mac) {
+                  return Object.assign({ ip_address: ip, port: port, mac_address: mac }, base);
+                })
+              /* No address at all, rather than a placeholder one. Anything
+                 that scans the network must be able to tell the difference. */
+              : Promise.resolve(base);
+
+            return ready
+              .then(function (payload) { return Store.createPC(payload); })
               .then(function () {
-                UI.toast.ok("Station saved", name);
+                UI.toast.ok("Station saved", name + " · " + type);
                 return Store.loadPCs();
               })
               .then(function () { return true; })
@@ -541,6 +632,86 @@
         }
       ]
     });
+
+    /*
+     * The type list.
+     *
+     * Built from what this café actually has — the types already on its floor
+     * and the types it has priced — rather than a list baked in here. A café
+     * that sells bowling gets Bowling; one that does not, does not. "Other"
+     * is always last so a type can be created the first time it is needed.
+     */
+    var typeSelect = body.querySelector("#addCategory");
+    var customWrap = body.querySelector("#addCustomWrap");
+    var customInput = body.querySelector("#addCustomType");
+    var networkedBox = body.querySelector("#addNetworked");
+    var networkFields = body.querySelector("#addNetworkFields");
+    var nameInput = body.querySelector("#addName");
+
+    var seenTypes = {};
+    Store.state.pcs.forEach(function (p) { if (p.category) seenTypes[p.category] = true; });
+
+    function paintTypes(extra) {
+      (extra || []).forEach(function (c) { if (c) seenTypes[c] = true; });
+      var list = Object.keys(seenTypes).sort();
+      typeSelect.innerHTML =
+        '<option value="">— Select type —</option>' +
+        list.map(function (c) {
+          return '<option value="' + UI.esc(c) + '">' + UI.esc(c) + "</option>";
+        }).join("") +
+        '<option value="__other">Other…</option>';
+    }
+    paintTypes();
+
+    /* The priced types too, so a station can be created for something the café
+       set a price for before it had any stations of that kind. */
+    global.CXRates.list()
+      .then(function (all) {
+        paintTypes(all.map(function (r) { return r.category; }));
+      })
+      .catch(function () { /* the floor's own types are enough to proceed */ });
+
+    /*
+     * Whether a type is networked is remembered from the stations that already
+     * exist, not guessed from its name. If this café's PS5s run the client,
+     * the next PS5 is assumed to as well; if their pool tables do not, the
+     * next pool table does not. The switch stays visible either way, because
+     * the guess is only a default.
+     */
+    function typeIsUsuallyNetworked(type) {
+      var of = Store.state.pcs.filter(function (p) { return p.category === type; });
+      if (!of.length) return null;                     // nothing to learn from
+      var withIp = of.filter(function (p) { return !!p.ip_address; }).length;
+      return withIp > of.length / 2;
+    }
+
+    function syncType() {
+      var other = typeSelect.value === "__other";
+      customWrap.classList.toggle("hidden", !other);
+      if (other) customInput.focus();
+
+      var type = other ? customInput.value.trim() : typeSelect.value;
+      var known = typeIsUsuallyNetworked(type);
+      if (known !== null) networkedBox.checked = known;
+      syncNetwork();
+
+      if (type && !nameInput.value.trim()) {
+        /* A gentle head start on naming: PS5 → "PS5-01". Only ever a
+           placeholder, never typed in for them. */
+        var count = Store.state.pcs.filter(function (p) { return p.category === type; }).length;
+        nameInput.placeholder = type.toUpperCase().replace(/\s+/g, "-") +
+          "-" + String(count + 1).padStart(2, "0");
+      }
+    }
+
+    function syncNetwork() {
+      networkFields.classList.toggle("hidden", !networkedBox.checked);
+    }
+
+    typeSelect.addEventListener("change", syncType);
+    customInput.addEventListener("input", syncType);
+    networkedBox.addEventListener("change", syncNetwork);
+    syncNetwork();
 
     var verifyBtn = body.querySelector("#btnVerify");
     var msg = body.querySelector("#verifyMsg");
@@ -888,6 +1059,53 @@
     return made;
   }
 
+  /*
+   * The same wall, grouped by what each station is rather than where it is.
+   *
+   * The groups come from the stations themselves, so a café that adds a
+   * dartboard tomorrow gets a Darts row without anyone editing this file.
+   * Stations with no type fall into one group at the end rather than being
+   * hidden — an untyped station is still a station somebody can sell.
+   */
+  function renderTyped(grid, list, showDiscovered) {
+    var made = [];
+    var byType = {};
+    list.forEach(function (pc) {
+      var key = pc.category || "";
+      (byType[key] = byType[key] || []).push(pc);
+    });
+
+    var keys = Object.keys(byType).sort(function (a, b) {
+      if (!a) return 1;               // untyped last
+      if (!b) return -1;
+      return a.localeCompare(b);
+    });
+
+    if (!keys.length) keys.push("");
+
+    keys.forEach(function (key) {
+      var pcs = byType[key] || [];
+      var section = UI.el("div", { class: "floor-zone", dataset: { status: key ? "accent" : "idle" } });
+      section.innerHTML =
+        '<div class="floor-zone-head">' +
+          '<span class="legend-swatch"></span>' +
+          '<span class="floor-zone-name">' + UI.esc(key || "Untyped") + "</span>" +
+          '<span class="badge">' + pcs.length + "</span>" +
+          (key
+            ? ""
+            : '<span class="faint" style="font-size:11px">' +
+              "Give these a type in Arrange so they group and price themselves.</span>") +
+        "</div>";
+
+      var inner = UI.el("div", { class: "grid grid-stations" });
+      made = made.concat(appendCards(inner, pcs, !key && showDiscovered));
+      section.appendChild(inner);
+      grid.appendChild(section);
+    });
+
+    return made;
+  }
+
   function renderZoned(grid, list, showDiscovered) {
     var made = [];
     var buckets = [];
@@ -952,6 +1170,63 @@
 
     if (!list.length && !showDiscovered) {
       grid.className = "";
+
+      /*
+       * "No stations registered" and "we could not ask" look identical on an
+       * empty wall, and they are not the same problem at all. A café whose
+       * console has lost its session would be told its stations do not exist,
+       * and would go and add them again.
+       */
+      var err = String(Store.state.error.pcs || "");
+
+      /* Signed in, but as somebody who belongs to no café — the platform
+         administrator, typically. Nothing is wrong with the account and
+         nothing is wrong with the stations; the console simply does not know
+         which café it is looking at. So it asks. */
+      /*
+       * Signed in with an account that runs the platform rather than a café.
+       *
+       * Not something to work around: which café a console serves follows from
+       * who signed in. Offering a list to pick from would show one café's staff
+       * the names of every other café on the platform, so the answer is to sign
+       * in with an account that belongs here.
+       */
+      if (err === "NO_CAFE") {
+        grid.appendChild(UI.emptyState({
+          icon: "alert",
+          status: "accent",
+          title: "This is not a café account",
+          text: "You are signed in with a ManagerXP platform account, which does not " +
+            "belong to any one café — so there are no stations for it to show. " +
+            "Sign in with your café owner or staff account and the floor will load.",
+          actions: [
+            { label: "Sign in as café", icon: "logout", variant: "primary",
+              onClick: function () { Store.logout(); } },
+            { label: "Try again", icon: "refresh", onClick: function () { Store.loadPCs(); } }
+          ]
+        }));
+        return;
+      }
+
+      if (err) {
+        grid.appendChild(UI.emptyState({
+          icon: "alert",
+          status: "offline",
+          title: "Could not load your stations",
+          text: /auth|token/i.test(err)
+            ? "This console is not signed in, so the server will not send the station list. " +
+              "Your stations are safe — sign in and they will reappear."
+            : err,
+          actions: [
+            { label: "Try again", icon: "refresh", variant: "primary", onClick: function () {
+              Store.loadPCs();
+            } },
+            { label: "Sign in", icon: "logout", onClick: function () { Store.logout(); } }
+          ]
+        }));
+        return;
+      }
+
       grid.appendChild(Store.state.pcs.length
         ? UI.emptyState({
             icon: "search",
@@ -978,6 +1253,11 @@
     if (layout === "zones" && zonesLoaded) {
       grid.className = "floor-zones";
       made = renderZoned(grid, list, showDiscovered);
+    } else if (layout === "types") {
+      /* No loading gate: the type lives on the station itself, so it is
+         already here whenever the wall is. */
+      grid.className = "floor-zones";
+      made = renderTyped(grid, list, showDiscovered);
     } else {
       // Grid, rows and compact are the same cards under different track rules,
       // so the card itself never has to know which layout is in force.

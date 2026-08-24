@@ -137,18 +137,37 @@
      DERIVED VIEWS
      ========================================================================== */
   /** Status of a registered PC, derived from live WS connection + failures. */
+  /*
+   * Whether the console talks to this station over the network.
+   *
+   * A gaming PC runs the CafeXP client and has an address. A pool table, a
+   * dartboard or a console without the client has none — and never will. The
+   * distinction matters because "not connected" means something has gone
+   * wrong for the first and nothing at all for the second.
+   */
+  function isNetworked(pc) { return !!(pc && pc.ip_address); }
+
   function pcStatus(pc) {
     var name = pc.name;
     // Deactivated is an administrative decision, so it outranks whatever the
     // network is doing. It used to be checked last, which meant a station
     // taken out of service still read "Available" while it happened to be
     // connected — even though no session could be started on it.
-    if (pc.is_active === false) return "inactive";
+    if (pc.is_active === false || pc.status === "INACTIVE") return "inactive";
+    if (pc.status === "MAINTENANCE") return "maintenance";
 
     var session = state.sessions[name];
     if (session) return session.status === "paused" ? "maintenance" : "gaming";
     if (state.running[name]) return "gaming";
     if (state.connected.indexOf(name) !== -1) return "online";
+
+    /* A station with no address is available, not offline.
+       Reporting a pool table as offline was not a cosmetic slip: it greyed the
+       card out, it counted against the offline tally, and canStartSession
+       refused to open on it — so a café could register its pool tables and
+       then find it could not sell a single game on them. */
+    if (!isNetworked(pc)) return "online";
+
     var cs = state.connectionStatus[name];
     if (cs && cs.status === "failed") return "offline";
     return "offline";
@@ -603,6 +622,33 @@
     reconcileTimer = setInterval(reconcileOnce, 15000);
   }
 
+  /*
+   * Time-is-nearly-up warnings.
+   *
+   * Staff are not watching the wall — they are at the counter, or in the back.
+   * A card quietly turning amber is no use to somebody looking the other way,
+   * so a session crossing its warning threshold raises a toast that names the
+   * station and offers to extend it there and then.
+   *
+   * Warned sessions are remembered so the alert fires once, not once a second.
+   * The record is keyed by session id rather than station, so the next
+   * customer on the same machine gets their own warning.
+   */
+  var warned = {};
+  var sessionSettings = {};
+
+  function forgetWarning(sessionId) { delete warned[sessionId]; }
+
+  function checkExpiryWarning(s, pcName) {
+    if (s.remaining_seconds === null || s.remaining_seconds === undefined) return;
+    var at = Number(sessionSettings.warn_minutes) || 5;
+    var threshold = at * 60;
+    if (s.remaining_seconds > threshold || s.remaining_seconds <= 0) return;
+    if (warned[s.session_id]) return;
+    warned[s.session_id] = true;
+    emit("session-expiring", { session: s, pc_name: pcName, remaining: s.remaining_seconds });
+  }
+
   /** Local countdown between refreshes; the server stays authoritative. */
   function startSessionTicker() {
     if (sessionTicker) return;
@@ -614,7 +660,13 @@
         if (s.status !== "active") return;
         s.elapsed_seconds += 1;
         if (s.remaining_seconds !== null) s.remaining_seconds = Math.max(0, s.remaining_seconds - 1);
-        s.running_amount = Number((s.rate_per_hour * (s.elapsed_seconds / 3600)).toFixed(2));
+        /* An unlimited session is a flat charge — ticking it up by the hour
+           would show a number climbing towards something nobody will be
+           asked to pay. */
+        s.running_amount = s.pricing_unit === "FLAT"
+          ? Number(s.flat_amount || 0)
+          : Number((s.rate_per_hour * (s.elapsed_seconds / 3600)).toFixed(2));
+        checkExpiryWarning(s, name);
       });
       emit("session-tick", state.sessions);
     }, 1000);
@@ -628,15 +680,24 @@
     });
   }
 
+  /* Ended and cancelled both free the station. Testing only for "ended" would
+     leave a cancelled session sitting on the floor holding a machine that is
+     actually free. */
+  function stillRunning(session) {
+    return !!session && session.status !== "ended" && session.status !== "cancelled";
+  }
+
   function afterSessionChange(session, pcNameOverride) {
     var pcName = pcNameOverride || (session && session.pc_name);
-    if (session && session.status !== "ended") state.sessions[pcName] = session;
+    if (stillRunning(session)) state.sessions[pcName] = session;
     else if (pcName) delete state.sessions[pcName];
+
+    if (session && !stillRunning(session)) forgetWarning(session.session_id);
 
     startSessionTicker();
     emit("sessions", state.sessions);
     emit("pcs", state.pcs);
-    return pushSessionToStation(pcName, session && session.status !== "ended" ? session : null)
+    return pushSessionToStation(pcName, stillRunning(session) ? session : null)
       .then(function () { return session; });
   }
 
@@ -682,6 +743,14 @@
     });
   }
 
+  /* Started by mistake: releases the station and charges nothing. The record
+     survives — cancelling is not the same as it never having happened. */
+  function cancelSession(session, opts) {
+    return sessionAction(session.session_id, "cancel", opts || {}).then(function (r) {
+      return afterSessionChange(r.data, session.pc_name).then(function () { return r; });
+    });
+  }
+
   function listSessions(query) {
     var parts = [];
     Object.keys(query || {}).forEach(function (k) {
@@ -692,8 +761,13 @@
     return request("/api/sessions?" + parts.join("&"));
   }
 
+  /* Cached on the way past so the ticker can read warn_minutes without a
+     request every second. The café's own setting, not a constant here. */
   function sessionDefaults() {
-    return request("/api/sessions/defaults").then(function (r) { return r.data; });
+    return request("/api/sessions/defaults").then(function (r) {
+      sessionSettings = r.data || {};
+      return r.data;
+    });
   }
 
   /* ==========================================================================
@@ -954,6 +1028,36 @@
   // Games come from the software catalogue.
   function listGames(params) {
     return request("/api/software-master" + qs(Object.assign({ limit: 200 }, params || {})));
+  }
+
+  /* The kinds of play the catalogue holds — "PC", "PS5", "Pool", "Darts".
+     Derived from the games themselves, so it is never out of step with them. */
+  function listSoftwareCategories() {
+    return request("/api/software-master/categories");
+  }
+
+  /* Activities the café sells time on that ManagerXP never published — a pool
+     table, a dartboard, a racing rig. The café owns these outright. */
+  function createHouseActivity(body) {
+    return request("/api/software-master/house", {
+      method: "POST", body: JSON.stringify(body)
+    });
+  }
+  function updateHouseActivity(id, body) {
+    return request("/api/software-master/house/" + id, {
+      method: "PUT", body: JSON.stringify(body)
+    });
+  }
+  function deleteHouseActivity(id) {
+    return request("/api/software-master/house/" + id, { method: "DELETE" });
+  }
+
+  /* Works on published titles too: which tab a game sits under on this café's
+     till is the café's business, not the catalogue's. */
+  function setSoftwareCategory(id, category) {
+    return request("/api/software-master/" + id + "/category", {
+      method: "PATCH", body: JSON.stringify({ category: category })
+    });
   }
 
   // Gaming Price Master
@@ -1245,6 +1349,7 @@
     counts: counts,
     getPC: getPC,
     isConnected: isConnected,
+    isNetworked: isNetworked,
 
     // staff & access control
     whoAmI: whoAmI,
@@ -1326,6 +1431,11 @@
     setSessionMasterStatus: setSessionMasterStatus,
     deleteSessionMaster: deleteSessionMaster,
     listGames: listGames,
+    listSoftwareCategories: listSoftwareCategories,
+    createHouseActivity: createHouseActivity,
+    updateHouseActivity: updateHouseActivity,
+    deleteHouseActivity: deleteHouseActivity,
+    setSoftwareCategory: setSoftwareCategory,
     listGamingPrices: listGamingPrices,
     createGamingPrice: createGamingPrice,
     updateGamingPrice: updateGamingPrice,
@@ -1344,6 +1454,7 @@
     extendSession: extendSession,
     transferSession: transferSession,
     endSession: endSession,
+    cancelSession: cancelSession,
     pushSessionToStation: pushSessionToStation,
 
     // CafeXP AI

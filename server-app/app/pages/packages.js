@@ -233,6 +233,14 @@
           '<input class="input" id="pkValidity" type="number" min="1" step="1" placeholder="Blank = no expiry" value="' +
             UI.esc(existing && existing.validity_days ? existing.validity_days : "") + '"></div>' +
       "</div>" +
+      /* The gaming rate card. A package is a discount on the standard rate,
+         and until now that rate was on another page entirely — so the price
+         here was set from memory. Picking a rate shows what the same play time
+         costs normally and what the customer is actually saving. */
+      '<div class="field hidden" id="pkRateField">' +
+        '<label class="field-label" for="pkRate">Compare with gaming price</label>' +
+        '<select class="select" id="pkRate"><option value="">Loading rates…</option></select>' +
+        '<div class="field-hint">Optional. Only used to show the saving — it is not stored.</div></div>' +
       '<div class="notice" data-status="accent" id="pkPreview"></div>' +
       '<label class="switch"><input type="checkbox" id="pkStatus"' +
         (!existing || existing.status === "ACTIVE" ? " checked" : "") + '>' +
@@ -272,25 +280,86 @@
       ]
     });
 
+    /* ---- gaming rates ---------------------------------------------------- */
+    var rateField = body.querySelector("#pkRateField");
+    var rateSel = body.querySelector("#pkRate");
+    var rates = [];
+
+    /* Only meaningful for a package measured in playing time. XP Coins and a
+       session count are not minutes, so a per-minute rate says nothing about
+       them and the field stays hidden rather than inviting a wrong comparison. */
+    function ratesApply() { return body.querySelector("#pkType").value === "HOURS"; }
+
+    global.CXRates.list()
+      .then(function (list) {
+        rates = list.filter(function (r) { return global.CXRates.perMinute(r) !== null; });
+        if (!rates.length) {
+          rateSel.innerHTML = '<option value="">No gaming prices set</option>';
+          rateSel.disabled = true;
+          return;
+        }
+        rateSel.disabled = false;
+        rateSel.innerHTML = '<option value="">Choose a rate…</option>' +
+          rates.map(function (r) {
+            return '<option value="' + r.price_id + '">' +
+              UI.esc(global.CXRates.label(r)) + " — " +
+              UI.esc(global.CXRates.money(r.price, r.currency)) + "</option>";
+          }).join("");
+      })
+      .catch(function () {
+        /* Pricing a package must not depend on the rate card loading. */
+        rateSel.innerHTML = '<option value="">Rates unavailable</option>';
+        rateSel.disabled = true;
+      });
+
+    function comparison(totalMinutes, price) {
+      var picked = rates.filter(function (r) {
+        return String(r.price_id) === rateSel.value;
+      })[0];
+      if (!picked) return "";
+      var perMin = global.CXRates.perMinute(picked);
+      var standard = perMin * totalMinutes;
+      var saving = standard - price;
+      var pct = standard > 0 ? Math.round((saving / standard) * 100) : 0;
+      var normally = " Normally <strong>" + coins(standard) + " XP</strong> at " +
+        UI.esc(global.CXRates.label(picked)) + ".";
+      if (saving > 0) {
+        return normally + " Customer saves <strong>" + coins(saving) + " XP</strong> (" + pct + "%).";
+      }
+      if (saving < 0) {
+        /* Said plainly rather than dressed up: a package that costs more than
+           the standard rate is nearly always a typo, and the operator should
+           see it here rather than hear it from a customer. */
+        return normally + " <strong>This package costs " + coins(-saving) +
+          " XP more than the standard rate.</strong>";
+      }
+      return normally + " Same as the standard rate.";
+    }
+
     function refresh() {
       var type = body.querySelector("#pkType").value;
       var units = Number(body.querySelector("#pkUnits").value) || 0;
       var bonus = Number(body.querySelector("#pkBonus").value) || 0;
       var price = Number(body.querySelector("#pkPrice").value) || 0;
       var preview = body.querySelector("#pkPreview");
+
+      rateField.classList.toggle("hidden", !ratesApply());
+
       if (!units) {
         preview.setAttribute("data-status", "idle");
         preview.innerHTML = Icon("info", 16) + "<div>Enter the units this package grants.</div>";
         return;
       }
       var total = units + bonus;
-      preview.setAttribute("data-status", "accent");
+      var compare = ratesApply() ? comparison(total, price) : "";
+      preview.setAttribute("data-status", compare.indexOf("more than") > -1 ? "warning" : "accent");
       preview.innerHTML = Icon("check", 16) +
         "<div>Customer receives <strong>" + unitLabel(type, total) + "</strong>" +
         (bonus ? " (" + unitLabel(type, units) + " + " + unitLabel(type, bonus) + " free)" : "") +
-        (price ? " for <strong>" + coins(price) + " XP</strong>" : " free") + ".</div>";
+        (price ? " for <strong>" + coins(price) + " XP</strong>" : " free") + "." +
+        compare + "</div>";
     }
-    ["#pkType", "#pkUnits", "#pkBonus", "#pkPrice"].forEach(function (sel) {
+    ["#pkType", "#pkUnits", "#pkBonus", "#pkPrice", "#pkRate"].forEach(function (sel) {
       body.querySelector(sel).addEventListener("input", refresh);
       body.querySelector(sel).addEventListener("change", refresh);
     });

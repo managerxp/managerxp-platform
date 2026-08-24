@@ -66,15 +66,80 @@
   }
 
   /* ==========================================================================
+     HOUSE ACTIVITIES
+
+     A pool table or a dartboard is something the café sells time on but that
+     ManagerXP never published, so it cannot come from the catalogue. Added
+     here, beside the prices, because "I want to charge for the pool table" and
+     "I want to set the pool table's price" are one errand.
+     ========================================================================== */
+  function knownCategories() {
+    var seen = {};
+    games.forEach(function (g) { if (g.category) seen[g.category] = true; });
+    return Object.keys(seen).sort();
+  }
+
+  function activityForm() {
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="field"><label class="field-label field-req" for="gaName">Name</label>' +
+        '<input class="input" id="gaName" placeholder="Pool Table" data-autofocus>' +
+        '<div class="field-hint">What staff and the bill will call it.</div></div>' +
+      '<div class="field"><label class="field-label" for="gaCategory">Category</label>' +
+        '<input class="input" id="gaCategory" list="gaCategoryList" maxlength="60" placeholder="Pool">' +
+        '<datalist id="gaCategoryList">' +
+          knownCategories().map(function (c) {
+            return '<option value="' + UI.esc(c) + '"></option>';
+          }).join("") +
+        "</datalist>" +
+        '<div class="field-hint">Groups it on the till. Type a new one to create it.</div></div>' +
+      '<div class="notice" data-status="idle">' + Icon("info", 16) +
+        "<div>Added to this café's own list. Give it a price next, and it appears " +
+        "on the till.</div></div>";
+
+    return UI.modal({
+      title: "Add activity",
+      description: "Something you charge for that is not in the catalogue — a pool table, a dartboard, a racing rig.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: "Add", variant: "primary", icon: "plus",
+          onClick: function (ctx) {
+            var name = ctx.body.querySelector("#gaName").value.trim();
+            if (!name) {
+              Motion.shake(ctx.body.querySelector("#gaName"));
+              UI.toast.warn("Give it a name");
+              return false;
+            }
+            return Store.createHouseActivity({
+              software_name: name,
+              category: ctx.body.querySelector("#gaCategory").value.trim()
+            })
+              .then(function (r) {
+                UI.toast.ok("Activity added", r.data.software_name);
+                return load();
+              })
+              .then(function () { return true; })
+              .catch(function (err) {
+                UI.toast.error("Could not add", err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+  }
+
+  /* ==========================================================================
      ADD / EDIT
      ========================================================================== */
   function priceForm(existing) {
     var isEdit = !!existing;
 
-    if (!games.length) {
-      UI.toast.warn("No games available", "Add a game to the catalogue first.");
-      return;
-    }
+    /* No games is no longer a dead end: the picker below can create one. Only
+       an empty Session Master still blocks, because a price is per duration
+       and there is nothing sensible to invent there. */
     if (!sessions.length) {
       UI.toast.warn("No active sessions", "Create a session in Session Master first.");
       return;
@@ -91,7 +156,32 @@
               (existing && existing.software_id === g.software_id ? " selected" : "") + ">" +
               UI.esc(g.software_name) + "</option>";
           }).join("") +
+          /* Anything the café charges for that is not in the list — a VR rig,
+             a pool table, a racing seat. Creating it here rather than sending
+             someone to another screen and back: "price the VR rig" is one
+             errand, not two.
+
+             Offered only when adding. Repointing an existing price at a
+             freshly invented activity is not an edit anyone means to make. */
+          (isEdit ? "" : '<option value="__new">＋ Something else — type a name…</option>') +
         "</select>" +
+      "</div>" +
+
+      /* Revealed only when "something else" is chosen. */
+      '<div class="field hidden" id="gpNewWrap">' +
+        '<label class="field-label field-req" for="gpNewName">New activity</label>' +
+        '<input class="input" id="gpNewName" maxlength="255" placeholder="VR Arena">' +
+        '<div class="row gap-2" style="margin-top:var(--s-2)">' +
+          '<input class="input" id="gpNewCategory" list="gpNewCatList" maxlength="60" ' +
+            'placeholder="Category — VR, Pool, Darts">' +
+          '<datalist id="gpNewCatList">' +
+            knownCategories().map(function (c) {
+              return '<option value="' + UI.esc(c) + '"></option>';
+            }).join("") +
+          "</datalist>" +
+        "</div>" +
+        '<div class="field-hint">Added to this café\'s own list and priced in one go. ' +
+          "The category is the tab it appears under on the till.</div>" +
       "</div>" +
 
       '<div class="field">' +
@@ -147,12 +237,20 @@
           variant: "primary",
           icon: "check",
           onClick: function (ctx) {
-            var softwareId = parseInt(ctx.body.querySelector("#gpGame").value, 10);
+            var gameSel = ctx.body.querySelector("#gpGame");
+            var creating = gameSel.value === "__new";
+            var softwareId = creating ? null : parseInt(gameSel.value, 10);
             var sessionId = parseInt(ctx.body.querySelector("#gpSession").value, 10);
             var priceRaw = ctx.body.querySelector("#gpPrice").value;
+            var newName = ctx.body.querySelector("#gpNewName").value.trim();
 
-            if (!softwareId) {
-              Motion.shake(ctx.body.querySelector("#gpGame"));
+            if (creating && !newName) {
+              Motion.shake(ctx.body.querySelector("#gpNewName"));
+              UI.toast.warn("Name the new activity");
+              return false;
+            }
+            if (!creating && !softwareId) {
+              Motion.shake(gameSel);
               UI.toast.warn("Choose a game");
               return false;
             }
@@ -167,19 +265,31 @@
               return false;
             }
 
-            var payload = {
-              software_id: softwareId,
+            var base = {
               session_master_id: sessionId,
               price: Number(priceRaw),
               currency: (ctx.body.querySelector("#gpCurrency").value || "INR").trim().toUpperCase(),
               status: ctx.body.querySelector("#gpStatus").checked ? "ACTIVE" : "INACTIVE"
             };
 
-            var call = isEdit
-              ? Store.updateGamingPrice(existing.id, payload)
-              : Store.createGamingPrice(payload);
+            /* Creating first, then pricing. If the price fails the activity is
+               left behind — deliberately, and said so below: it is a real thing
+               the café now has, and silently deleting it would lose the name
+               they just typed. They can price it from the list. */
+            var resolveGame = creating
+              ? Store.createHouseActivity({
+                  software_name: newName,
+                  category: ctx.body.querySelector("#gpNewCategory").value.trim()
+                }).then(function (r) { return r.data.software_id; })
+              : Promise.resolve(softwareId);
 
-            return call
+            return resolveGame
+              .then(function (id) {
+                var payload = Object.assign({ software_id: id }, base);
+                return isEdit
+                  ? Store.updateGamingPrice(existing.id, payload)
+                  : Store.createGamingPrice(payload);
+              })
               .then(function (r) {
                 UI.toast.ok(isEdit ? "Price updated" : "Price saved",
                   r.data.software_name + " · " + r.data.session_name + " · " + money(r.data.price, r.data.currency));
@@ -187,6 +297,12 @@
               })
               .then(function () { return true; })
               .catch(function (err) {
+                if (creating) {
+                  /* Reload regardless: if the activity was created and only the
+                     price failed, it must appear in the list rather than seem
+                     to have vanished. */
+                  load();
+                }
                 UI.toast.error("Could not save the price", err.message);
                 return false;
               });
@@ -208,11 +324,39 @@
       return sessions.filter(function (s) { return s.id === id; })[0] || null;
     }
 
+    var newWrap = body.querySelector("#gpNewWrap");
+    var newName = body.querySelector("#gpNewName");
+
     function refresh() {
       var session = selectedSession();
       durationInput.value = !session ? "—"
         : session.duration_minutes === null ? "Unlimited"
         : session.duration_minutes + " minutes";
+
+      var creating = gameSelect.value === "__new";
+      newWrap.classList.toggle("hidden", !creating);
+
+      /* A brand new activity cannot clash with an existing price, and its name
+         is the thing being previewed rather than a row in `games`. */
+      if (creating) {
+        var typed = newName.value.trim();
+        var newPrice = Number(priceInput.value);
+        if (!typed || !session) {
+          preview.setAttribute("data-status", "idle");
+          preview.innerHTML = Icon("info", 16) +
+            "<div>Name the activity and pick a session.</div>";
+          return;
+        }
+        preview.setAttribute("data-status", "accent");
+        preview.innerHTML = Icon("check", 16) +
+          "<div>Creates <strong>" + UI.esc(typed) + "</strong> and prices it at " +
+          UI.esc(session.session_name) + " → " +
+          (session.duration_minutes === null ? "unlimited" : session.duration_minutes + " min") +
+          (Number.isFinite(newPrice) && priceInput.value !== ""
+            ? " → <strong>" + money(newPrice) + "</strong>" : "") +
+          ".</div>";
+        return;
+      }
 
       var softwareId = parseInt(gameSelect.value, 10);
       if (!softwareId || !session) {
@@ -246,9 +390,13 @@
         "</div>";
     }
 
-    gameSelect.addEventListener("change", refresh);
+    gameSelect.addEventListener("change", function () {
+      refresh();
+      if (gameSelect.value === "__new") newName.focus();
+    });
     sessionSelect.addEventListener("change", refresh);
     priceInput.addEventListener("input", refresh);
+    newName.addEventListener("input", refresh);
     refresh();
 
     return dialog;
@@ -397,6 +545,8 @@
           '<div class="page-actions">' +
             '<button class="btn btn-outline" id="gpRefresh">' + Icon("refresh", 15) +
               '<span class="btn-label">Refresh</span></button>' +
+            '<button class="btn btn-outline" id="gpAddGame">' + Icon("plus", 15) +
+              '<span class="btn-label">Add activity</span></button>' +
             '<button class="btn btn-primary" id="gpAdd">' + Icon("plus", 15) +
               '<span class="btn-label">Add price</span></button>' +
           "</div>" +
@@ -418,6 +568,7 @@
       root.appendChild(page);
 
       page.querySelector("#gpAdd").addEventListener("click", function () { priceForm(null); });
+      page.querySelector("#gpAddGame").addEventListener("click", function () { activityForm(); });
 
       var refreshBtn = page.querySelector("#gpRefresh");
       refreshBtn.addEventListener("click", function () {

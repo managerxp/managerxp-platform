@@ -16,6 +16,28 @@
   var products = [];
   var categories = [];
   var activeCategory = "";
+
+  /* The till sells three different things and they are priced in three
+     different masters. Rather than three screens, one grid with a source
+     switch above it: the cashier's job is the same either way — tap the thing
+     the customer asked for. */
+  var SOURCES = [
+    { id: "products", label: "Products", icon: "fnb" },
+    { id: "gaming",   label: "Gaming",   icon: "sessions" },
+    { id: "packages", label: "Packages", icon: "packages" }
+  ];
+  var activeSource = "products";
+  var rates = [];              // Gaming Price Master
+  var rateCategories = [];     // PC / PS5 / Pool / Darts
+  var packages = [];           // Package Master
+  var extrasLoaded = false;    // rates and packages are fetched once, on demand
+
+  var UNCATEGORISED = "— uncategorised —";
+
+  /* Set by openForSession() just before the router switches to the till, and
+     consumed once on mount. A variable rather than a route parameter because
+     the till is a sub-view of the billing desk and has no URL of its own. */
+  var pendingAttach = null;
   var productQuery = "";
 
   /* The bill being built. Nothing is written to the backend until Start bill,
@@ -800,6 +822,114 @@
   /* ==========================================================================
      RENDER — CATALOGUE (left)
      ========================================================================== */
+  /** One tile, whatever it is selling. */
+  function tile(opts) {
+    var node = UI.el("button", {
+      type: "button",
+      class: "ct-tile",
+      disabled: !!opts.disabled,
+      dataset: { status: opts.disabled ? "offline" : "accent" }
+    });
+    node.innerHTML =
+      '<div class="ct-tile-name">' + UI.esc(opts.name) + "</div>" +
+      '<div class="ct-tile-price">' + opts.price + "</div>" +
+      (opts.flag ? '<div class="ct-tile-flag">' + opts.flag + "</div>" : "");
+    if (!opts.disabled) {
+      node.addEventListener("click", function () { opts.onPick(); Motion.pulse(node); });
+    }
+    return node;
+  }
+
+  function renderGaming(host, q) {
+    var visible = rates.filter(function (r) {
+      var cat = r.category || UNCATEGORISED;
+      if (activeCategory && cat !== activeCategory) return false;
+      if (!q) return true;
+      return (r.software_name + " " + r.session_name).toLowerCase().indexOf(q) !== -1;
+    });
+
+    if (!visible.length) {
+      host.className = "";
+      host.appendChild(UI.emptyState({
+        icon: "sessions",
+        title: rates.length ? "Nothing matches" : "No gaming prices yet",
+        text: rates.length
+          ? "No rate matches the current filter."
+          : "Set prices under Catalogue → Gaming Prices, then they appear here to tap.",
+        actions: [{ label: "Gaming time", icon: "plus", variant: "primary", onClick: gamingDialog }]
+      }));
+      return;
+    }
+
+    host.className = "grid ct-products";
+    visible.forEach(function (r) {
+      host.appendChild(tile({
+        name: r.software_name,
+        price: global.CXRates.money(r.price, r.currency),
+        flag: r.session_name + " · " + global.CXRates.durationText(r),
+        onPick: function () {
+          addLine({
+            item_type: "gaming",
+            reference_id: null,
+            description: global.CXRates.billDescription(r),
+            quantity: 1,
+            unit_price: Number(r.price)
+          });
+        }
+      }));
+    });
+  }
+
+  function renderPackages(host, q) {
+    var visible = packages.filter(function (p) {
+      if (!q) return true;
+      return (p.package_name || "").toLowerCase().indexOf(q) !== -1;
+    });
+
+    if (!visible.length) {
+      host.className = "";
+      host.appendChild(UI.emptyState({
+        icon: "packages",
+        title: packages.length ? "Nothing matches" : "No packages on sale",
+        text: packages.length
+          ? "No package matches the current filter."
+          : "Create packages under Catalogue → Packages and switch them on sale."
+      }));
+      return;
+    }
+
+    host.className = "grid ct-products";
+    visible.forEach(function (p) {
+      var total = Number(p.units || 0) + Number(p.bonus_units || 0);
+      host.appendChild(tile({
+        name: p.package_name,
+        price: money(p.price),
+        flag: unitFlag(p.package_type, total) +
+          (Number(p.bonus_units) > 0 ? " · incl. " + p.bonus_units + " free" : ""),
+        onPick: function () {
+          addLine({
+            item_type: "other",
+            reference_id: p.package_id,
+            description: p.package_name,
+            quantity: 1,
+            unit_price: Number(p.price)
+          });
+        }
+      }));
+    });
+  }
+
+  /* Package units are counted in whatever the package is measured in, and
+     saying "600 units" to a cashier means nothing. */
+  function unitFlag(type, units) {
+    if (type === "HOURS") {
+      if (units % 60 === 0) return (units / 60) + (units === 60 ? " hour" : " hours");
+      return units + " min";
+    }
+    if (type === "SESSIONS") return units + (units === 1 ? " session" : " sessions");
+    return units + " XP coins";
+  }
+
   function renderCatalogue() {
     if (!rootEl) return;
     var host = rootEl.querySelector("#ctProducts");
@@ -807,6 +937,10 @@
     UI.clear(host);
 
     var q = productQuery.trim().toLowerCase();
+
+    if (activeSource === "gaming") return renderGaming(host, q);
+    if (activeSource === "packages") return renderPackages(host, q);
+
     var visible = products.filter(function (p) {
       if (activeCategory && String(p.category_id) !== String(activeCategory)) return false;
       if (!q) return true;
@@ -865,25 +999,208 @@
     });
   }
 
+  function renderSources() {
+    var host = rootEl.querySelector("#ctSources");
+    if (!host) return;
+    UI.clear(host);
+
+    SOURCES.forEach(function (s) {
+      var btn = UI.el("button", {
+        class: "chip", type: "button",
+        html: Icon(s.icon, 14) + "<span>" + s.label + "</span>"
+      });
+      btn.setAttribute("aria-pressed", String(activeSource === s.id));
+      btn.addEventListener("click", function () {
+        if (activeSource === s.id) return;
+        activeSource = s.id;
+        /* A category from the previous source means nothing in this one —
+           "Drinks" is not a kind of gaming. */
+        activeCategory = "";
+        loadExtras().then(function () {
+          renderSources();
+          renderCategories();
+          renderCatalogue();
+        });
+      });
+      host.appendChild(btn);
+    });
+
+    var search = rootEl.querySelector("#ctSearch");
+    if (search) {
+      search.placeholder = activeSource === "gaming" ? "Search gaming rates…"
+        : activeSource === "packages" ? "Search packages…"
+        : "Search products…";
+    }
+  }
+
   function renderCategories() {
     var host = rootEl.querySelector("#ctCategories");
     if (!host) return;
     UI.clear(host);
 
-    var all = UI.el("button", { class: "chip", text: "All" });
-    all.setAttribute("aria-pressed", String(!activeCategory));
-    all.addEventListener("click", function () { activeCategory = ""; renderCategories(); renderCatalogue(); });
-    host.appendChild(all);
+    /* Packages are a short flat list; chips would be furniture. */
+    if (activeSource === "packages") {
+      host.classList.add("hidden");
+      return;
+    }
+    host.classList.remove("hidden");
 
-    categories.forEach(function (c) {
-      var chip = UI.el("button", { class: "chip", text: c.category_name });
-      chip.setAttribute("aria-pressed", String(String(activeCategory) === String(c.category_id)));
+    var chips = activeSource === "gaming"
+      ? rateCategories.map(function (c) { return { key: c, label: c }; })
+      : categories.map(function (c) {
+          return { key: String(c.category_id), label: c.category_name };
+        });
+
+    /* One category is no choice at all — everything is already in it. The
+       gaming row stays regardless, because it also carries "Edit tabs", and
+       one wrong tab is exactly when somebody needs to reach it. */
+    var showFilters = chips.length >= 2;
+    if (!showFilters && activeSource !== "gaming") { host.classList.add("hidden"); return; }
+
+    if (showFilters) {
+      var all = UI.el("button", { class: "chip", type: "button", text: "All" });
+      all.setAttribute("aria-pressed", String(!activeCategory));
+      all.addEventListener("click", function () {
+        activeCategory = ""; renderCategories(); renderCatalogue();
+      });
+      host.appendChild(all);
+    }
+
+    (showFilters ? chips : []).forEach(function (c) {
+      var chip = UI.el("button", { class: "chip", type: "button", text: c.label });
+      chip.setAttribute("aria-pressed", String(activeCategory === c.key));
       chip.addEventListener("click", function () {
-        activeCategory = c.category_id;
+        activeCategory = c.key;
         renderCategories();
         renderCatalogue();
       });
       host.appendChild(chip);
+    });
+
+    /* Gaming tabs are editable from here. Which tab a game sits under is how
+       this till is laid out, and the person who knows it is wrong is the one
+       standing at it — not somebody in another application. */
+    if (activeSource === "gaming") {
+      var edit = UI.el("button", {
+        class: "chip", type: "button",
+        html: Icon("edit", 13) + "<span>Edit tabs</span>"
+      });
+      edit.addEventListener("click", categoryDialog);
+      host.appendChild(edit);
+    }
+  }
+
+  /*
+   * Rename the tabs by refiling the games behind them.
+   *
+   * There is no category record to rename: a category exists exactly as long
+   * as a game says it belongs to one. So this edits the games, and the tabs
+   * follow. Typing the same new name on several rows merges them; clearing a
+   * row drops that game to the uncategorised tab.
+   */
+  function categoryDialog() {
+    /* One row per game, not per rate — a game has one category however many
+       durations are priced against it. */
+    var seen = {};
+    var items = [];
+    rates.forEach(function (r) {
+      if (seen[r.software_id]) return;
+      seen[r.software_id] = true;
+      items.push({ id: r.software_id, name: r.software_name, category: r.category || "" });
+    });
+    items.sort(function (a, b) { return a.name.localeCompare(b.name); });
+
+    var body = UI.el("div", { class: "col gap-3" });
+    body.innerHTML =
+      '<div class="notice" data-status="idle">' + Icon("info", 16) +
+        "<div>Give games the same category to put them on the same tab. " +
+        "Leave one blank and it moves to " + UI.esc(UNCATEGORISED) + ".</div></div>" +
+      '<datalist id="ctCatList">' +
+        rateCategories.filter(function (c) { return c !== UNCATEGORISED; })
+          .map(function (c) { return '<option value="' + UI.esc(c) + '"></option>'; })
+          .join("") +
+      "</datalist>";
+
+    items.forEach(function (it) {
+      var row = UI.el("div", { class: "field" });
+      row.innerHTML =
+        '<label class="field-label" for="cc' + it.id + '">' + UI.esc(it.name) + "</label>" +
+        '<input class="input" id="cc' + it.id + '" list="ctCatList" maxlength="60" ' +
+          'value="' + UI.esc(it.category) + '" placeholder="uncategorised">';
+      body.appendChild(row);
+    });
+
+    return UI.modal({
+      title: "Edit gaming tabs",
+      description: "The tabs come from the games themselves.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: "Save", variant: "primary", icon: "check",
+          onClick: function (ctx) {
+            /* Only what actually changed goes to the server. Rewriting every
+               row on every save would bump timestamps on games nobody
+               touched. */
+            var changed = items.filter(function (it) {
+              var el = ctx.body.querySelector("#cc" + it.id);
+              return el && el.value.trim() !== it.category;
+            });
+            if (!changed.length) return true;
+
+            return Promise.all(changed.map(function (it) {
+              return Store.setSoftwareCategory(
+                it.id, ctx.body.querySelector("#cc" + it.id).value.trim()
+              );
+            }))
+              .then(function () {
+                UI.toast.ok("Tabs updated",
+                  changed.length === 1 ? changed[0].name
+                    : changed.length + " games refiled");
+                /* Forces the rate card and its tabs to be rebuilt. */
+                extrasLoaded = false;
+                activeCategory = "";
+                return loadExtras();
+              })
+              .then(function () {
+                renderCategories();
+                renderCatalogue();
+                return true;
+              })
+              .catch(function (err) {
+                UI.toast.error("Could not save", err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+  }
+
+  /* Rates and packages are fetched the first time one of those tabs is opened
+     rather than on mount: the till is opened all day to sell a coffee, and
+     three requests where one would do is three chances to be slow at the
+     counter. */
+  function loadExtras() {
+    if (extrasLoaded || activeSource === "products") return Promise.resolve();
+    extrasLoaded = true;
+    return Promise.all([
+      global.CXRates.list().catch(function () { return []; }),
+      Store.listPackages({ status: "ACTIVE", limit: 200 }).catch(function () { return { data: [] }; })
+    ]).then(function (res) {
+      rates = res[0];
+      packages = res[1].data || [];
+
+      /* Built from the rates actually on offer rather than from the category
+         endpoint, so a category whose games are all unpriced does not appear
+         as a chip that filters to an empty grid. */
+      var seen = {};
+      rates.forEach(function (r) { seen[r.category || UNCATEGORISED] = true; });
+      rateCategories = Object.keys(seen).sort(function (a, b) {
+        if (a === UNCATEGORISED) return 1;      // uncategorised sorts last
+        if (b === UNCATEGORISED) return -1;
+        return a.localeCompare(b);
+      });
     });
   }
 
@@ -894,6 +1211,7 @@
     ]).then(function (res) {
       products = (res[0].data || []).filter(function (p) { return p.status !== 'ARCHIVED'; });
       categories = res[1].data || [];
+      renderSources();
       renderCategories();
       renderCatalogue();
     });
@@ -910,6 +1228,15 @@
    * Its own page-head is gone; the host renders one, and the two actions that
    * belonged to it are handed up through ctx.actions.
    */
+  /**
+   * Open the till with a running session's customer already on the ticket.
+   * Called from the floor and the session list — "they want a burger".
+   */
+  global.CXOpenTillForSession = function (session) {
+    pendingAttach = session;
+    global.CXRouter.go("billing");
+  };
+
   global.CXPages._till = {
     title: "Counter",
     subtitle: "Take payment at the till",
@@ -920,6 +1247,23 @@
       codeState = null;
       bill = null;
 
+      /* Opened from a running session — food and drink for someone already
+         playing. The customer and the session come with it, so the ticket
+         settles as one bill with their gaming time rather than as a separate
+         sale nobody can connect to them afterwards. */
+      if (pendingAttach) {
+        var s = pendingAttach;
+        pendingAttach = null;
+        draft.sessionId = s.session_id;
+        if (s.customer_id) {
+          draft.customer = { customer_id: s.customer_id, customer_name: s.customer_name };
+        } else {
+          draft.guestName = s.guest_name || s.customer_name || "";
+        }
+        UI.toast.info("Adding to " + s.pc_name,
+          (s.customer_name || "Guest") + "'s ticket — settles with their session.");
+      }
+
       var page = UI.el("div", { class: "page ct-page" });
       page.innerHTML =
         '<div class="ct-layout">' +
@@ -928,6 +1272,7 @@
               '<div class="search grow">' + Icon("search", 15) +
                 '<input class="input" id="ctSearch" type="search" placeholder="Search products…" autocomplete="off"></div>' +
             "</div>" +
+            '<div class="row gap-2 wrap" id="ctSources"></div>' +
             '<div class="row gap-2 wrap" id="ctCategories"></div>' +
             '<div id="ctProducts" class="grid ct-products"></div>' +
           "</div>" +

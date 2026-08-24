@@ -16,6 +16,11 @@
 
     <!-- ==================== SIDEBAR ==================== -->
     <aside class="sidebar" id="sidebar">
+      <!-- The brand carries the real CafeXP logo when the asset is present.
+           The mark and text below it are not dead weight: they are what shows
+           when the sidebar is collapsed to icons, and what shows if the image
+           is missing, so the console never renders a broken image where its
+           own name should be. -->
       <div class="brand">
         <span class="brand-mark">
           <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -24,6 +29,9 @@
             <path d="M7 10v4M5 12h4M16 11h.01M18.5 13.5h.01"></path>
           </svg>
         </span>
+        <img class="brand-logo" src="Images/cafexp-logo.png"
+             alt="CafeXP — powered by ManagerXP"
+             onerror="this.closest('.brand').classList.add('brand-no-logo'); this.remove();" />
         <div class="brand-copy grow">
           <div class="brand-text">Cafe<span>XP</span></div>
           <div class="brand-sub">Admin Console</div>
@@ -98,6 +106,7 @@
   <script src="app/coin.js"></script>
   <script src="app/ui.js"></script>
   <script src="app/store.js"></script>
+  <script src="app/rates.js"></script>
   <script src="app/router.js"></script>
 
   <!-- pages (planned.js first: real pages below it replace their shells) -->

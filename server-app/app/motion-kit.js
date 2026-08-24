@@ -198,10 +198,38 @@
   }
 
   /** Small nudge for invalid input / rejected action. */
+  /*
+   * Shake an element to say "no".
+   *
+   * The nudge is composed on top of whatever transform the element already
+   * carries, rather than replacing it. A modal is centred with
+   * `translate(-50%,-50%)`, so a bare `translateX(...)` here would overwrite
+   * that and drop the dialog half its own width down and to the right — where
+   * its buttons end up off the bottom of the screen. That is a refusal
+   * animation making the dialog it is complaining about unusable.
+   *
+   * The computed transform is a matrix, which composes cleanly as a prefix and
+   * is an empty string for the plain inputs most callers pass.
+   */
   function shake(el) {
     if (!enabled || !el) return;
+
+    var base = "";
+    try {
+      var current = window.getComputedStyle(el).transform;
+      if (current && current !== "none") base = current + " ";
+    } catch (e) { /* no computed style — shake from nothing */ }
+
     M.animate(el,
-      { transform: ["translateX(0)", "translateX(-5px)", "translateX(4px)", "translateX(-2px)", "translateX(0)"] },
+      {
+        transform: [
+          base + "translateX(0)",
+          base + "translateX(-5px)",
+          base + "translateX(4px)",
+          base + "translateX(-2px)",
+          base + "translateX(0)"
+        ]
+      },
       { duration: 0.32, easing: EASE.inOut }
     );
   }

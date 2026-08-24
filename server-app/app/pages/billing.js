@@ -1132,12 +1132,72 @@
           '<option value="gaming">Gaming</option>' +
           '<option value="other">Other</option>' +
         "</select></div>" +
+      /* The gaming rate card, from the Gaming Price Master. Only shown for a
+         gaming line, because that is the only type it prices. Choosing a rate
+         fills the description and the price rather than replacing them, so a
+         one-off charge can still be typed over the top. */
+      '<div class="field hidden" id="itemRateField">' +
+        '<label class="field-label" for="itemRate">Gaming price</label>' +
+        '<select class="select" id="itemRate"><option value="">Loading rates…</option></select>' +
+        '<div class="field-hint" id="itemRateHint">From the Gaming Price Master.</div></div>' +
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
         '<div class="field"><label class="field-label field-req" for="itemQty">Quantity</label>' +
           '<input class="input" id="itemQty" type="number" min="1" step="1" value="1"></div>' +
         '<div class="field"><label class="field-label field-req" for="itemPrice">Unit price</label>' +
           '<input class="input" id="itemPrice" type="number" min="0" step="0.01" placeholder="149"></div>' +
       "</div>";
+
+    /* ---- gaming rates ---------------------------------------------------- */
+    var rateField = body.querySelector("#itemRateField");
+    var rateSel = body.querySelector("#itemRate");
+    var rateHint = body.querySelector("#itemRateHint");
+    var rates = [];
+    var ratesLoaded = false;
+
+    function syncRateVisibility() {
+      var gaming = body.querySelector("#itemType").value === "gaming";
+      rateField.classList.toggle("hidden", !gaming);
+      if (gaming && !ratesLoaded) loadRates();
+    }
+
+    function loadRates() {
+      ratesLoaded = true;
+      global.CXRates.list()
+        .then(function (list) {
+          rates = list;
+          if (!rates.length) {
+            rateSel.innerHTML = '<option value="">No gaming prices set</option>';
+            rateSel.disabled = true;
+            rateHint.textContent = "Add prices under Catalogue → Gaming Prices to pick them here.";
+            return;
+          }
+          rateSel.disabled = false;
+          rateSel.innerHTML = '<option value="">Type it in manually…</option>' +
+            rates.map(function (r) {
+              return '<option value="' + r.price_id + '">' +
+                UI.esc(global.CXRates.label(r)) + " — " +
+                UI.esc(global.CXRates.money(r.price, r.currency)) + "</option>";
+            }).join("");
+        })
+        .catch(function (err) {
+          /* A rate card that will not load must not block adding a line — the
+             customer is at the counter. Say so and leave the manual fields. */
+          rateSel.innerHTML = '<option value="">Could not load rates</option>';
+          rateSel.disabled = true;
+          rateHint.textContent = err.message + " — enter the price manually.";
+        });
+    }
+
+    rateSel.addEventListener("change", function () {
+      var picked = rates.filter(function (r) {
+        return String(r.price_id) === rateSel.value;
+      })[0];
+      if (!picked) return;
+      body.querySelector("#itemDesc").value = global.CXRates.billDescription(picked);
+      body.querySelector("#itemPrice").value = picked.price;
+    });
+    body.querySelector("#itemType").addEventListener("change", syncRateVisibility);
+    syncRateVisibility();
 
     return UI.modal({
       title: "Add item",

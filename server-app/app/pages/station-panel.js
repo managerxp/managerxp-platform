@@ -328,7 +328,14 @@
             '<span id="sessionAmount">' + SessionUI.coins(session.running_amount) + "</span> XP so far" +
             " · " + SessionUI.coins(session.rate_per_hour) + " XP/hr" +
           "</div>" +
+          /* Food and drink first: it is what staff reach for most while a
+             session is running, and it was previously only on the sessions
+             list — a page away from where anyone was actually standing. */
           '<div class="row gap-2 wrap" style="margin-top:18px">' +
+            '<button class="btn btn-primary grow" id="btnSessItems">' + Icon("fnb", 15) +
+              '<span class="btn-label">Add food &amp; drink</span></button>' +
+          "</div>" +
+          '<div class="row gap-2 wrap" style="margin-top:8px">' +
             '<button class="btn ' + (paused ? "btn-ok" : "btn-outline") + ' grow" id="btnSessPause">' +
               Icon(paused ? "play" : "pause", 15) +
               '<span class="btn-label">' + (paused ? "Resume" : "Pause") + "</span></button>" +
@@ -341,6 +348,12 @@
           "</div>";
         wrap.appendChild(card);
 
+        card.querySelector("#btnSessItems").addEventListener("click", function () {
+          /* Opens the till with this customer and session already attached, so
+             what they eat settles on the same bill as what they played. */
+          panel.close();
+          global.CXOpenTillForSession(session);
+        });
         card.querySelector("#btnSessPause").addEventListener("click", function () {
           var call = paused ? Store.resumeSession(session) : Store.pauseSession(session);
           call.then(function () { renderAll(); })

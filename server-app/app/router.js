@@ -31,8 +31,7 @@
         { id: "floor",     label: "Floor",     icon: "floor",     feature: "FLOOR" },
         { id: "sessions",  label: "Sessions",  icon: "sessions",  feature: "SESSION_MANAGEMENT" },
         { id: "customers", label: "Customers", icon: "customers", feature: "CUSTOMERS" },
-        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING" },
-        { id: "receipt-template", label: "Receipt Template", icon: "edit", feature: "BILLING" }
+        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING" }
       ]
     },
     {
@@ -65,9 +64,25 @@
         { id: "reports",  label: "Reports",  icon: "reports",   feature: "REPORTS" },
         { id: "payments", label: "Payments", icon: "billing",   feature: "BILLING" },
         { id: "staff",    label: "Staff",    icon: "staff",     feature: "STAFF" },
-        { id: "audit",    label: "Audit Log", icon: "audit" },
-        { id: "plan",     label: "Subscription", icon: "plan" },
-        { id: "settings", label: "Settings", icon: "settings" }
+        { id: "audit",    label: "Audit Log", icon: "audit" }
+      ]
+    },
+    {
+      /* Configuration, gathered in one place. Receipt Template moved out of
+         Operations and Subscription out of Business: neither is something a
+         member of staff does during a shift, and hunting for the receipt
+         layout among the day's tills is how it stays unconfigured.
+
+         They stay separate nav entries rather than becoming tabs inside the
+         Settings page, because Receipt Template is gated on BILLING while
+         Settings is deliberately ungated — the sidebar is where entitlements
+         are applied, so folding one into the other would quietly drop its
+         gate and show the page to a café that has not paid for it. */
+      group: "Settings",
+      items: [
+        { id: "settings", label: "Settings", icon: "settings" },
+        { id: "receipt-template", label: "Receipt Template", icon: "edit", feature: "BILLING" },
+        { id: "plan",     label: "Subscription", icon: "plan" }
       ]
     }
   ];

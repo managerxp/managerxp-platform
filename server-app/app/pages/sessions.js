@@ -54,8 +54,14 @@
   function canStartSession(pc) {
     if (!pc) return { ok: false, reason: "Station not found" };
     if (pc.is_active === false) return { ok: false, reason: "This station is deactivated" };
+    if (pc.status === "INACTIVE") return { ok: false, reason: "This station is not in service" };
+    if (pc.status === "MAINTENANCE") return { ok: false, reason: "This station is under maintenance" };
     if (Store.sessionFor(pc.name)) return { ok: false, reason: "This station already has a session" };
-    if (!Store.isConnected(pc.name)) return { ok: false, reason: "This station is offline" };
+    /* Only a networked station can be offline. A pool table has nothing to
+       connect to, so requiring a connection here would make it unsellable. */
+    if (Store.isNetworked(pc) && !Store.isConnected(pc.name)) {
+      return { ok: false, reason: "This station is offline" };
+    }
     return { ok: true };
   }
 
@@ -114,9 +120,24 @@
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
         '<div class="field"><label class="field-label" for="sessMinutes">Minutes</label>' +
           '<input class="input" id="sessMinutes" type="number" min="1" max="1440" value="60"></div>' +
-        '<div class="field"><label class="field-label" for="sessRate">Rate (XP / hour)</label>' +
-          '<input class="input" id="sessRate" type="number" min="0" step="1" value="' + defaultRate + '"></div>' +
+
+        /* The rate comes from the Gaming Price Master, not from a box staff
+           type into. Whatever is chosen here is sent as an id; the server
+           loads the price itself and ignores any amount in the request, so the
+           figure on the bill is one the café actually set. */
+        '<div class="field"><label class="field-label field-req" for="sessPrice">Gaming price</label>' +
+          '<select class="select" id="sessPrice"><option value="">Loading prices…</option></select>' +
+          '<div class="field-hint" id="sessPriceHint">From the Gaming Price Master.</div></div>' +
       "</div>" +
+
+      /* Only reachable when the station\'s type has no price set up. Kept so a
+         counter can still start the clock at 2am rather than being blocked by
+         a missing catalogue row — never as a way around the master. */
+      '<div class="field hidden" id="sessRateWrap">' +
+        '<label class="field-label" for="sessRate">Rate (XP / hour)</label>' +
+        '<input class="input" id="sessRate" type="number" min="0" step="1" value="' + defaultRate + '">' +
+        '<div class="field-hint">No catalogue price covers this station, so the ' +
+          "default hourly rate applies.</div></div>" +
 
       '<div class="field"><label class="field-label" for="sessGame">Launch a game with the session</label>' +
         '<select class="select" id="sessGame"><option value="">Nothing — just start the clock</option>' +
@@ -139,11 +160,23 @@
           onClick: function (ctx) {
             var minutesRaw = ctx.body.querySelector("#sessMinutes").value;
             var openEnded = ctx.body.querySelector("#sessMinutes").disabled;
+            var priceSel = ctx.body.querySelector("#sessPrice");
             var payload = {
               pc_id: pc.pc_id,
-              planned_minutes: openEnded ? null : parseInt(minutesRaw, 10),
-              rate_per_hour: Number(ctx.body.querySelector("#sessRate").value) || 0
+              planned_minutes: openEnded ? null : parseInt(minutesRaw, 10)
             };
+
+            if (priceSel.value) {
+              /* An id, never an amount. The server resolves the rate. */
+              payload.gaming_price_id = Number(priceSel.value);
+            } else if (rates.length) {
+              Motion.shake(priceSel);
+              UI.toast.warn("Choose a gaming price", "The rate comes from the price master.");
+              return false;
+            } else {
+              // No catalogue price exists for this station type.
+              payload.rate_per_hour = Number(ctx.body.querySelector("#sessRate").value) || 0;
+            }
 
             if (mode === "customer") {
               if (!chosen) {
@@ -199,6 +232,60 @@
         }
       ]
     });
+
+    /* ---- gaming price ----------------------------------------------------
+       Offered by the station's own type: a PS5 station shows PS5 prices, a
+       pool table shows pool prices. A station with no type set is general
+       purpose and shows everything, because refusing to price it would be
+       worse than showing a longer list. */
+    var priceSelect = body.querySelector("#sessPrice");
+    var priceHint = body.querySelector("#sessPriceHint");
+    var rateWrap = body.querySelector("#sessRateWrap");
+    var rates = [];
+
+    global.CXRates.list()
+      .then(function (all) {
+        rates = pc.category
+          ? all.filter(function (r) { return r.category === pc.category; })
+          : all;
+
+        if (!rates.length) {
+          priceSelect.innerHTML = '<option value="">No price set for this station</option>';
+          priceSelect.disabled = true;
+          priceHint.textContent = pc.category
+            ? "Nothing priced for " + pc.category + " yet — add one under Gaming Prices."
+            : "No gaming prices set up yet.";
+          rateWrap.classList.remove("hidden");
+          return;
+        }
+
+        priceSelect.disabled = false;
+        priceSelect.innerHTML =
+          (rates.length === 1 ? "" : '<option value="">— Select price —</option>') +
+          rates.map(function (r) {
+            return '<option value="' + r.price_id + '">' +
+              UI.esc(r.software_name + " · " + r.session_name) + " — " +
+              UI.esc(global.CXRates.money(r.price, r.currency)) + "</option>";
+          }).join("");
+        /* One price for this station type is not a choice — preselect it so
+           staff are not made to confirm the only option there is. */
+        if (rates.length === 1) priceSelect.value = rates[0].price_id;
+        priceHint.textContent = pc.category
+          ? rates.length + " " + pc.category + " price" + (rates.length === 1 ? "" : "s") +
+            " — the rate is taken from here, not typed."
+          : "The rate is taken from the price master, not typed.";
+        refresh();
+      })
+      .catch(function (err) {
+        /* A price list that will not load must not strand a customer at the
+           counter: fall back to the hourly rate and say why. */
+        priceSelect.innerHTML = '<option value="">Could not load prices</option>';
+        priceSelect.disabled = true;
+        priceHint.textContent = err.message;
+        rateWrap.classList.remove("hidden");
+      });
+
+    priceSelect.addEventListener("change", function () { refresh(); });
 
     /* ---- game to launch with the session ---- */
     var gameSelect = body.querySelector("#sessGame");
@@ -347,18 +434,53 @@
       });
     });
 
+    /** The price the customer is actually being sold, if one is chosen. */
+    function selectedRate() {
+      if (!priceSelect || !priceSelect.value) return null;
+      return rates.filter(function (r) {
+        return String(r.price_id) === priceSelect.value;
+      })[0] || null;
+    }
+
+    /*
+     * What an hour costs under the chosen price.
+     *
+     * A block price is converted the same way the server converts it —
+     * ₹200 per 30 minutes is ₹400 an hour — so the figure quoted here is the
+     * figure that will be billed. Unlimited prices have no hourly rate and are
+     * handled separately below.
+     */
+    function effectiveHourly(rateRow) {
+      if (!rateRow) return Number(rateInput.value) || 0;
+      if (!rateRow.duration_minutes) return null;          // unlimited
+      return Number(rateRow.price) / (rateRow.duration_minutes / 60);
+    }
+
     function refresh() {
       var openEnded = minutesInput.disabled;
       var minutes = parseInt(minutesInput.value, 10) || 0;
-      var rate = Number(rateInput.value) || 0;
+      var chosenRate = selectedRate();
+      var rate = effectiveHourly(chosenRate);
       durationChips.forEach(function (c) {
         if (c.dataset.min !== "") c.setAttribute("aria-pressed", String(Number(c.dataset.min) === minutes));
       });
 
+      /* An unlimited price is a flat charge, so neither the duration nor the
+         open-ended switch changes what it costs. */
+      if (chosenRate && rate === null) {
+        preview.setAttribute("data-status", "accent");
+        preview.innerHTML = Icon("info", 16) +
+          "<div><strong>" + UI.esc(chosenRate.software_name) + " · " +
+          UI.esc(chosenRate.session_name) + "</strong> — a flat <strong>" +
+          coins(chosenRate.price) + " XP</strong> however long it runs.</div>";
+        return;
+      }
+
       if (openEnded) {
         preview.setAttribute("data-status", "warning");
         preview.innerHTML = Icon("clock", 16) +
-          "<div>Open-ended — charged at <strong>" + coins(rate) + " XP/hour</strong> for however long it runs.</div>";
+          "<div>Open-ended — charged at <strong>" + coins(rate) + " XP/hour</strong> for however long it runs." +
+          (chosenRate ? " (" + UI.esc(chosenRate.session_name) + " rate)" : "") + "</div>";
         return;
       }
       if (!minutes) {
@@ -402,8 +524,17 @@
           UI.esc(session.pc_name) + "</span></div>" +
         '<div class="kv"><span class="kv-key">Time played</span><span class="kv-val mono">' +
           clock(session.elapsed_seconds) + "</span></div>" +
+        /* The price as it was sold, not as the master reads today. A session
+           started before a price rise is settled at the old figure, and this
+           is where staff see which one that was. */
         '<div class="kv"><span class="kv-key">Rate</span><span class="kv-val">' +
-          coins(session.rate_per_hour) + " XP / hour</span></div>" +
+          (session.pricing_unit === "FLAT"
+            ? coins(session.flat_amount) + " XP flat"
+            : coins(session.rate_per_hour) + " XP / hour") + "</span></div>" +
+        (session.price_label
+          ? '<div class="kv"><span class="kv-key">Price</span><span class="kv-val">' +
+            UI.esc(session.price_label) + "</span></div>"
+          : "") +
         '<div class="kv"><span class="kv-key">Amount due</span><span class="kv-val" ' +
           'style="font-size:18px;font-weight:750">' + coins(cost) + " XP</span></div>" +
       "</div>" +
@@ -448,6 +579,64 @@
               })
               .catch(function (err) {
                 UI.toast.error("Could not end the session", err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+  }
+
+  /* ==========================================================================
+     CANCEL
+
+     Not the same as ending. Ending bills the time played; cancelling says the
+     session should never have been started — wrong station, wrong customer,
+     wrong price — and charges nothing.
+
+     The record is kept either way. A café where a station can be occupied for
+     twenty minutes and leave no trace is a café where a missing takings figure
+     has no explanation, so the row survives with who cancelled it and when.
+     ========================================================================== */
+  function cancelSessionDialog(session, onDone) {
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="col">' +
+        '<div class="kv"><span class="kv-key">Customer</span><span class="kv-val">' +
+          UI.esc(session.customer_name || "Guest") + "</span></div>" +
+        '<div class="kv"><span class="kv-key">Station</span><span class="kv-val mono">' +
+          UI.esc(session.pc_name) + "</span></div>" +
+        '<div class="kv"><span class="kv-key">Held for</span><span class="kv-val mono">' +
+          clock(session.elapsed_seconds) + "</span></div>" +
+        '<div class="kv"><span class="kv-key">Would have cost</span><span class="kv-val">' +
+          coins(session.running_amount) + " XP</span></div>" +
+      "</div>" +
+      '<div class="notice" data-status="warning">' + Icon("alert", 16) +
+        "<div><strong>Nothing will be charged</strong> and the station is released. " +
+        "The session stays on record as cancelled — it is not deleted.</div></div>" +
+      '<div class="field"><label class="field-label" for="cancelReason">Reason</label>' +
+        '<input class="input" id="cancelReason" maxlength="255" ' +
+          'placeholder="Wrong station" data-autofocus>' +
+        '<div class="field-hint">Recorded against the session and in the audit trail.</div></div>';
+
+    return UI.modal({
+      title: "Cancel this session?",
+      description: "Use this only when the session should not have been started.",
+      body: body,
+      actions: [
+        { label: "Keep it", variant: "ghost" },
+        {
+          label: "Cancel session", variant: "danger", icon: "close",
+          onClick: function (ctx) {
+            var reason = ctx.body.querySelector("#cancelReason").value.trim();
+            return Store.cancelSession(session, { reason: reason })
+              .then(function () {
+                UI.toast.ok("Session cancelled", session.pc_name + " is free — nothing charged");
+                if (onDone) onDone();
+                return true;
+              })
+              .catch(function (err) {
+                UI.toast.error("Could not cancel", err.message);
                 return false;
               });
           }
@@ -631,6 +820,32 @@
           endSessionDialog(session, load);
         });
         actions.appendChild(endBtn);
+
+        /* Food and drink for someone already playing. Opens the till with
+           their ticket started, so it settles with their gaming time instead
+           of becoming a separate sale nobody can tie back to them. */
+        var addBtn = UI.el("button", {
+          class: "btn btn-outline btn-sm",
+          html: Icon("fnb", 13) + '<span class="btn-label">Add items</span>'
+        });
+        addBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          global.CXOpenTillForSession(session);
+        });
+        actions.appendChild(addBtn);
+
+        /* Deliberately the quieter of the two. Ending is the normal close and
+           should be the obvious button; cancelling writes off the time and
+           wants a moment's thought first. */
+        var cancelBtn = UI.el("button", {
+          class: "btn btn-ghost btn-sm",
+          html: Icon("close", 13) + '<span class="btn-label">Cancel</span>'
+        });
+        cancelBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          cancelSessionDialog(session, load);
+        });
+        actions.appendChild(cancelBtn);
       }
       tbody.appendChild(tr);
     });
@@ -738,6 +953,7 @@
     canStartSession: canStartSession,
     startSessionDialog: startSessionDialog,
     endSessionDialog: endSessionDialog,
+    cancelSessionDialog: cancelSessionDialog,
     extendDialog: extendDialog,
     transferDialog: transferDialog,
     clock: clock,
