@@ -14,6 +14,10 @@
   var API_BASE = "http://localhost:5000";
   var Session = global.CXSession;
 
+  /* This station's own name, so a cash top-up request can say which café's
+     counter it was raised at — see requestCashTopup below. */
+  var STATION_NAME = "";
+
   (function watchBackendBase() {
     var api = global.api || {};
     // Pulled first: SET_NAME may already have arrived and been missed if this
@@ -21,6 +25,8 @@
     // correct for.
     if (api.getBackendBase) api.getBackendBase(function (base) { if (base) API_BASE = base; });
     if (api.onBackendBase) api.onBackendBase(function (base) { if (base) API_BASE = base; });
+    if (api.getPcName) api.getPcName(function (name) { STATION_NAME = name || STATION_NAME; });
+    if (api.onPcName) api.onPcName(function (name) { STATION_NAME = name || STATION_NAME; });
   })();
 
   var state = {
@@ -315,7 +321,7 @@
    * confirms the notes arrived and their approval is what moves the balance.
    */
   function requestCashTopup(amountValue) {
-    return post("/api/payments/topup/cash", { amount: amountValue })
+    return post("/api/payments/topup/cash", { amount: amountValue, pc_name: STATION_NAME })
       .then(function (body) { return body.data; });
   }
 

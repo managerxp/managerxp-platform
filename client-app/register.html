@@ -93,6 +93,13 @@
       if (window.api.getBackendBase) window.api.getBackendBase(function (b) { if (b) API_BASE = b; });
       if (window.api.onBackendBase) window.api.onBackendBase(function (b) { if (b) API_BASE = b; });
 
+      /* Which station this is, so the backend can work out which café a new
+         account belongs to — a public signup form cannot be trusted to say so
+         itself. See customer.Controller.js's register() for the lookup. */
+      var pcName = "";
+      window.api.getPcName(function (name) { pcName = name || ""; });
+      if (window.api.onPcName) window.api.onPcName(function (name) { pcName = name || pcName; });
+
       document.getElementById("toWelcome").addEventListener("click", function () {
         window.api.navigateTo("welcome");
       });
@@ -147,7 +154,8 @@
               email: email,
               phone_number: phoneNumber,
               password: password,
-              address: address
+              address: address,
+              pc_name: pcName
             })
           });
 
