@@ -23,7 +23,14 @@
     launching: null,     // { appName } while a launch is in flight
     endedAt: null,       // set when a session finishes, for the ended screen
     session: null,       // café session pushed by the admin console
-    games: []            // games this station may offer, pushed by the console
+    games: [],           // games this station may offer, pushed by the console
+
+    // Self-service start: what this station's customer could start right
+    // now, sent whether or not a session is already running (unlike `games`
+    // above, which is empty until one is).
+    startGames: [],      // titles installed+enabled on this station
+    startPrices: [],      // this café's active prices for this station's type
+    startFailed: null    // last reason a self-start attempt was refused
   };
 
   /* Thresholds the timer's visual states key off. */
@@ -177,6 +184,21 @@
     if (api.onGamesList) api.onGamesList(adoptGames);
     if (api.getGames) api.getGames(adoptGames);
 
+    /* ---------- self-service start options, pushed on request ---------- */
+    if (api.onStartOptions) {
+      api.onStartOptions(function (data) {
+        state.startGames = (data && data.games) || [];
+        state.startPrices = (data && data.prices) || [];
+        emit("start-options", { games: state.startGames, prices: state.startPrices });
+      });
+    }
+    if (api.onStartSessionFailed) {
+      api.onStartSessionFailed(function (data) {
+        state.startFailed = (data && data.message) || "Could not start the session";
+        emit("start-failed", state.startFailed);
+      });
+    }
+
     /* ---------- launch timer ---------- */
     if (api.onStartTimer) {
       api.onStartTimer(function (data) {
@@ -305,6 +327,12 @@
     sessionState: sessionState,
     /* Hand a chosen game to the main process to launch through its launcher. */
     launchGame: function (game) { if (api.launchGame) api.launchGame(game); },
+    /* Self-service start: ask what's available, then ask to begin one. */
+    requestStartOptions: function () { if (api.requestStartOptions) api.requestStartOptions(); },
+    requestStartSession: function (game, gamingPriceId) {
+      state.startFailed = null;
+      if (api.requestStartSession) api.requestStartSession({ game: game, gaming_price_id: gamingPriceId });
+    },
     sessionClockSeconds: sessionClockSeconds,
     progress: progress,
     clock: clock,

@@ -76,7 +76,14 @@
   }
 
   function request(path, options) {
-    return fetch(API_BASE + path, Object.assign({ headers: authHeaders() }, options || {}))
+    /* A FormData body sets its own multipart boundary in the Content-Type
+       header; forcing "application/json" on top of it, as authHeaders always
+       used to, leaves the server unable to parse either. */
+    var isFormData = options && options.body && typeof FormData !== "undefined" && options.body instanceof FormData;
+    var headers = isFormData
+      ? { "Authorization": "Bearer " + token() }
+      : authHeaders();
+    return fetch(API_BASE + path, Object.assign({ headers: headers }, options || {}))
       .then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (body) {
           if (!res.ok) {
@@ -849,10 +856,10 @@
           .filter(function (g) { return g.installed && g.enabled; })
           .map(function (g) {
             return {
-              game_id: g.game_id, name: g.name, category: g.category,
+              cafe_game_id: g.cafe_game_id, game_id: g.game_id, name: g.name, category: g.category,
               launcher: g.launcher, launch_type: g.launch_type, app_id: g.app_id,
-              executable: g.executable, process_name: g.process_name,
-              launch_args: g.launch_args, icon_url: g.icon_url, auto_launch: g.auto_launch
+              launcher_config: g.launcher_config, process_name: g.process_name,
+              launch_arguments: g.launch_arguments, logo_url: g.logo_url
             };
           });
         return api.pushGames(pcName, list);
@@ -1289,24 +1296,29 @@
     return api.refreshStationLaunchers(pcName);
   }
 
-  /* ---- Game Library (titles + launcher config + per-PC availability) ---- */
-  /* Named `libraryGames`, not `listGames` — that name is already taken above by
-     the software-master catalogue (station types). Two different things called
-     "games" in one café: the station types you sell time on, and the titles a
-     PC can launch. This is the latter. */
+  /* ---- Game Library (café selections from ManagerXP's master catalog) ----
+     Named `libraryGames`, not `listGames` — that name is already taken above
+     by the software-master catalogue (station types). Two different things
+     called "games" in one café: the station types you sell time on, and the
+     titles a PC can launch. This is the latter.
+
+     There is deliberately no createGame/updateGame/uploadGameIcon here — a
+     café never authors a title's App ID, executable or artwork. It only
+     browses ManagerXP's catalog and picks from it. */
+  function gameCatalog(params) { return request("/api/games/catalog" + qs(params)); }
   function libraryGames(params) { return request("/api/games" + qs(params)); }
-  function createGame(body) {
-    return request("/api/games", { method: "POST", body: JSON.stringify(body) });
+  function addGame(gameId) {
+    return request("/api/games", { method: "POST", body: JSON.stringify({ game_id: gameId }) });
   }
-  function updateGame(id, body) {
-    return request("/api/games/" + id, { method: "PATCH", body: JSON.stringify(body) });
+  function setGameEnabled(cafeGameId, enabled) {
+    return request("/api/games/" + cafeGameId, { method: "PATCH", body: JSON.stringify({ enabled: enabled }) });
   }
-  function deleteGame(id) {
-    return request("/api/games/" + id, { method: "DELETE" });
+  function removeGame(cafeGameId) {
+    return request("/api/games/" + cafeGameId, { method: "DELETE" });
   }
   function getPcGames(pcId) { return request("/api/games/pc/" + pcId); }
-  function setPcGames(pcId, gameIds) {
-    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ game_ids: gameIds }) });
+  function setPcGames(pcId, cafeGameIds) {
+    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ cafe_game_ids: cafeGameIds }) });
   }
 
   function listGamingPrices(params) { return request("/api/gaming-prices" + qs(params)); }
@@ -1628,6 +1640,59 @@
       });
     }
 
+    /*
+     * A logged-in customer opened the game picker while idle. Unlike
+     * GAMES_LIST (only sent once a session exists), this answers "what could
+     * I play and what would it cost" so they can choose before anything has
+     * started — the station's own installed+enabled titles, and this café's
+     * prices for the station's type.
+     */
+    if (api.onStationStartOptionsRequest) {
+      api.onStationStartOptionsRequest(function (data) {
+        var pcName = data && data.pcName;
+        var pc = pcName && getPC(pcName);
+        if (!pc) return;
+        Promise.all([
+          getPcGames(pc.pc_id).catch(function () { return { data: { games: [] } }; }),
+          listGamingPrices({ status: "ACTIVE" }).catch(function () { return { data: [] }; })
+        ]).then(function (results) {
+          var games = (results[0].data.games || []).filter(function (g) { return g.installed && g.enabled; });
+          var prices = (results[1].data || []).filter(function (p) {
+            return !pc.category || !p.category || p.category === pc.category;
+          }).map(function (p) {
+            return {
+              price_id: p.price_id, session_name: p.session_name,
+              duration_minutes: p.duration_minutes, is_unlimited: p.is_unlimited, price: p.price
+            };
+          });
+          if (api.pushStartOptions) api.pushStartOptions(pcName, games, prices);
+        });
+      });
+    }
+
+    /* The customer picked a game and a price and tapped Start. Runs with the
+       console's own staff-equivalent authority — the same reason the extend
+       flow above works this way, since the station itself holds no token at
+       all. `require_prepaid` is what makes this safe to run unattended: the
+       backend refuses unless the wallet already covers the price. */
+    if (api.onStationStartRequest) {
+      api.onStationStartRequest(function (data) {
+        var pcName = data && data.pcName;
+        var pc = pcName && getPC(pcName);
+        var fail = function (message) { if (api.pushStartFailed) api.pushStartFailed(pcName, message); };
+        if (!pc) return fail("Station not recognised");
+        if (state.sessions[pcName]) return fail("A session is already running here");
+        if (!data.gaming_price_id) return fail("Choose a duration to start");
+
+        startSession({
+          pc_id: pc.pc_id,
+          customer_id: data.customer_id,
+          gaming_price_id: data.gaming_price_id,
+          require_prepaid: true
+        }).catch(function (e) { fail(e.message || "Could not start the session"); });
+      });
+    }
+
     if (api.onLog) api.onLog(pushLog);
 
     // Same event bridge the old renderer listened on.
@@ -1770,10 +1835,11 @@
     setSoftwareCategory: setSoftwareCategory,
     launchersFor: launchersFor,
     refreshLaunchers: refreshLaunchers,
+    gameCatalog: gameCatalog,
     libraryGames: libraryGames,
-    createGame: createGame,
-    updateGame: updateGame,
-    deleteGame: deleteGame,
+    addGame: addGame,
+    setGameEnabled: setGameEnabled,
+    removeGame: removeGame,
     getPcGames: getPcGames,
     setPcGames: setPcGames,
     listGamingPrices: listGamingPrices,

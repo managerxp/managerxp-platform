@@ -321,30 +321,185 @@
   /* Kept across mounts so navigating away and back does not stack listeners. */
   var gamesOff = null;
 
+  /**
+   * Self-service start — the picker a customer uses to begin their own
+   * session, shown in place of the plain launch grid while the station is
+   * idle. Pick a game, pick a price, tap Start; the console starts the
+   * session with its own token and the chosen title launches the moment it
+   * actually goes active (handled in the main process, not here).
+   *
+   * The wallet gate is enforced server-side (see session.Controller.js's
+   * `require_prepaid`) — this UI only shows the balance so the customer isn't
+   * surprised by the refusal, it never decides on its own whether Start works.
+   */
+  function startPicker(view) {
+    var Wallet = global.CXWallet;
+    var host = UI.el("div", { class: "col gap-4" });
+    var selectedGame = null, selectedPriceId = null, starting = false;
+
+    function priceLabel(p) {
+      var length = p.is_unlimited ? "Unlimited" : (
+        p.duration_minutes >= 60
+          ? (p.duration_minutes % 60 === 0 ? (p.duration_minutes / 60) + " Hr" : p.duration_minutes + " Min")
+          : p.duration_minutes + " Min"
+      );
+      return length + " · " + Wallet.money(p.price);
+    }
+
+    function render() {
+      UI.clear(host);
+
+      var games = Session.state.startGames || [];
+      var prices = Session.state.startPrices || [];
+
+      if (!games.length) {
+        host.appendChild(awaiting({
+          icon: "games", title: "No games set up on this station yet",
+          text: "Ask a staff member to add a game to this station before you can start a session yourself."
+        }));
+        return;
+      }
+      if (!prices.length) {
+        host.appendChild(awaiting({
+          icon: "billing", title: "No price set for this station",
+          text: "Ask a staff member to set a price for this station's type before you can start a session yourself."
+        }));
+        return;
+      }
+
+      host.appendChild(UI.el("div", { class: "shelf-title", text: "1. Choose a game" }));
+      var gameGrid = UI.el("div", { class: "col gap-2" });
+      games.forEach(function (g) {
+        var chosen = selectedGame && selectedGame.cafe_game_id === g.cafe_game_id;
+        var el = UI.el("button", {
+          class: "card card-pad row gap-4",
+          style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%" },
+          dataset: chosen ? { status: "accent" } : {}
+        });
+        el.innerHTML =
+          '<span class="avatar" style="width:40px;height:40px;font-size:14px;flex:0 0 auto">' +
+            UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) + "</span>" +
+          '<span class="grow" style="min-width:0">' +
+            '<span style="display:block;font-size:14px;font-weight:700">' + UI.esc(g.name) + "</span>" +
+            '<span class="faint" style="font-size:12px">' +
+              UI.esc([g.category, g.launcher].filter(Boolean).join(" · ")) + "</span>" +
+          "</span>" +
+          (chosen ? '<span class="tx-icon" data-status="online" style="flex:0 0 auto">' + Icon("check", 14) + "</span>" : "");
+        el.addEventListener("click", function () { selectedGame = g; render(); });
+        gameGrid.appendChild(el);
+      });
+      host.appendChild(gameGrid);
+
+      host.appendChild(UI.el("div", { class: "shelf-title", text: "2. Choose how long" }));
+      var priceRow = UI.el("div", { class: "row gap-2 wrap" });
+      prices.forEach(function (p) {
+        var chip = UI.el("button", {
+          class: "chip", text: priceLabel(p),
+          "aria-pressed": String(selectedPriceId === p.price_id)
+        });
+        if (selectedPriceId === p.price_id) chip.setAttribute("data-status", "accent");
+        chip.addEventListener("click", function () { selectedPriceId = p.price_id; render(); });
+        priceRow.appendChild(chip);
+      });
+      host.appendChild(priceRow);
+
+      var balance = Wallet.state.balance;
+      var selectedPrice = prices.filter(function (p) { return p.price_id === selectedPriceId; })[0];
+      if (selectedPrice) {
+        var covers = balance !== null && balance >= selectedPrice.price;
+        var note = UI.el("div", { class: "notice" });
+        note.setAttribute("data-status", covers ? "online" : "warning");
+        note.innerHTML = Icon(covers ? "check" : "alert", 16) + "<div>" +
+          (balance === null
+            ? "Checking your balance…"
+            : covers
+              ? "Your wallet holds " + UI.esc(Wallet.money(balance)) + " — enough to start."
+              : "Your wallet holds " + UI.esc(Wallet.money(balance)) + ", and this needs " +
+                UI.esc(Wallet.money(selectedPrice.price)) + ". Top up at the counter to start.") +
+          "</div>";
+        host.appendChild(note);
+      }
+
+      if (Session.state.startFailed) {
+        var errNote = UI.el("div", { class: "notice", dataset: { status: "error" } });
+        errNote.innerHTML = Icon("alert", 16) + "<div>" + UI.esc(Session.state.startFailed) + "</div>";
+        host.appendChild(errNote);
+      }
+
+      var startBtn = UI.el("button", {
+        class: "btn btn-primary btn-lg btn-block",
+        html: Icon("play", 17) + '<span class="btn-label">' + (starting ? "Starting…" : "Start session") + "</span>"
+      });
+      startBtn.disabled = !selectedGame || !selectedPriceId || starting;
+      startBtn.addEventListener("click", function () {
+        starting = true;
+        render();
+        Session.requestStartSession(selectedGame, selectedPriceId);
+      });
+      host.appendChild(startBtn);
+    }
+
+    render();
+    view.appendChild(host);
+
+    return {
+      /* The console answered, or a session just went active — either way the
+         "Starting…" state is over. */
+      stopWaiting: function () { starting = false; render(); },
+      refresh: render
+    };
+  }
+
   global.CXViews.games = {
     label: "Games",
     icon: "games",
     title: "Games",
     mount: function (root) {
+      var idle = !Session.state.session;
+
       var view = UI.el("div", { class: "view" });
       view.innerHTML =
         '<div class="view-head">' +
           "<div>" +
-            '<div class="view-title">Choose a game</div>' +
-            '<div class="view-sub">Everything your café has made available on this station.</div>' +
+            '<div class="view-title">' + (idle ? "Start a session" : "Choose a game") + "</div>" +
+            '<div class="view-sub">' + (idle
+              ? "Pick a game and a duration to start playing — no staff needed."
+              : "Everything your café has made available on this station.") + "</div>" +
           "</div>" +
-          '<div class="row gap-3">' +
-            '<div class="search" style="width:300px">' + Icon("search", 16) +
-              '<input class="input" id="gameSearch" type="search" placeholder="Search games…"></div>' +
-          "</div>" +
+          (idle ? "" :
+            '<div class="row gap-3">' +
+              '<div class="search" style="width:300px">' + Icon("search", 16) +
+                '<input class="input" id="gameSearch" type="search" placeholder="Search games…"></div>' +
+            "</div>") +
         "</div>";
-      var grid = UI.el("div", { class: "col gap-3", id: "gameGrid" });
-      view.appendChild(grid);
       root.appendChild(view);
 
-      var filter = "";
+      if (gamesOff) { gamesOff.forEach(function (off) { try { off(); } catch (e) {} }); gamesOff = null; }
 
-      function launcherClass(l) { return "badge"; }
+      /* -------- idle: self-service start picker -------- */
+      if (idle) {
+        var picker = startPicker(view);
+        Session.requestStartOptions();
+        gamesOff = [
+          Session.on("start-options", picker.refresh),
+          Session.on("start-failed", picker.stopWaiting),
+          // The balance line updates once the wallet actually loads, rather
+          // than sitting on "Checking your balance…" until the next repaint.
+          global.CXWallet.on(picker.refresh)
+          // No need to watch for the session actually starting here — the
+          // portal shell already re-mounts the active view on every "session"
+          // change (see portal.js), which re-runs this same mount function
+          // and finds `Session.state.session` truthy on the next pass.
+        ];
+        Motion.enter(view, { y: 14 });
+        return;
+      }
+
+      /* -------- mid-session: plain launch grid (unchanged) -------- */
+      var grid = UI.el("div", { class: "col gap-3", id: "gameGrid" });
+      view.appendChild(grid);
+
+      var filter = "";
 
       function card(g) {
         var el = UI.el("button", {
@@ -398,8 +553,7 @@
       });
 
       // Re-render live when the console pushes an updated list.
-      if (gamesOff) { try { gamesOff(); } catch (e) {} }
-      gamesOff = Session.on("games", render);
+      gamesOff = [Session.on("games", render)];
 
       render();
       Motion.enter(view, { y: 14 });

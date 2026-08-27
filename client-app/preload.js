@@ -56,6 +56,13 @@ contextBridge.exposeInMainWorld("api", {
   sessionOvertime: (appName) => ipcRenderer.send("session-overtime", appName),
   // The console added a block; grow the timer card's clock by these minutes.
   onExtendTimer: (cb) => ipcRenderer.on("extend-timer", (_, data) => cb(data)),
+  // Self-service: ask what this station's customer could start (its games,
+  // this café's prices), whether or not a session is already running.
+  requestStartOptions: () => ipcRenderer.send("request-start-options"),
+  onStartOptions: (cb) => ipcRenderer.on("start-options", (_, data) => cb(data)),
+  // The customer picked a game and a price and tapped Start.
+  requestStartSession: (payload) => ipcRenderer.send("request-start-session", payload),
+  onStartSessionFailed: (cb) => ipcRenderer.on("start-session-failed", (_, data) => cb(data)),
   navigateTo: (page) => ipcRenderer.send("navigate", page),
   storeToken: (token) => ipcRenderer.send("store-token", token),
   getToken: (cb) => ipcRenderer.invoke("get-token").then(cb),

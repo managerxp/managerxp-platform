@@ -55,6 +55,14 @@ contextBridge.exposeInMainWorld("api", {
   onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
   // A station's block ran out with the game still running.
   onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
+  // A logged-in customer opened the game picker while idle — send this
+  // station's games and prices so they can choose without staff.
+  onStationStartOptionsRequest: (cb) => ipcRenderer.on("station:start-options-request", (_, d) => cb(d)),
+  pushStartOptions: (pcName, games, prices) =>
+    ipcRenderer.invoke("session:push-start-options", { pcName, games, prices }),
+  // The customer picked a game and a price and tapped Start.
+  onStationStartRequest: (cb) => ipcRenderer.on("station:start-request", (_, d) => cb(d)),
+  pushStartFailed: (pcName, message) => ipcRenderer.invoke("session:push-start-failed", { pcName, message }),
 
   // Telemetry — live readings live in the main process, history in the backend
   getLatestTelemetry: () => ipcRenderer.invoke("telemetry:get-latest"),

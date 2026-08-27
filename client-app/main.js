@@ -77,6 +77,7 @@ let currentPage = 'welcome'; // Track current page
 let currentStatus = 'DISCONNECTED'; // Track current connection status
 let currentSession = null; // Session pushed by the admin console, for display
 let currentGames = [];     // Games this station may offer, pushed by the console
+let pendingSelfStartGame = null; // The title chosen when self-starting, launched once the session actually begins
 
 /*
  * Where the backend API lives.
@@ -90,30 +91,93 @@ let currentGames = [];     // Games this station may offer, pushed by the consol
 let BACKEND_BASE = "http://localhost:5000";
 
 /*
- * Turn a game's launcher config into a concrete way to start it.
+ * One adapter per launcher, each turning a game's master-catalog config into
+ * a concrete way to start it — a URL protocol hand-off where the launcher
+ * owns the sign-in, or a direct executable where there is no such protocol.
+ * `launcher_config` is the field ManagerXP's catalog calls the launcher
+ * command/executable a title needs; `app_id` is its store id where one
+ * applies (Steam appid, Epic namespace id, etc.).
  *
- * Prefer the launcher's URL protocol with the game id — the launcher owns the
- * sign-in and the store handles the rest. Riot, Rockstar and Custom titles have
- * no useful public protocol here, so they run their executable; so does any
- * title with an id its launcher does not key on. Returns null when there is
- * nothing to launch with, so the caller can say so rather than run "".
+ * Adding a launcher CafeXP has never seen means adding one entry here — the
+ * café side and the master catalog schema need no change, per the
+ * modularity the catalog architecture calls for.
+ */
+const LAUNCHER_ADAPTERS = {
+  Steam:      { launch: (id) => id && { url: `steam://rungameid/${id}` } },
+  Epic:       { launch: (id) => id && { url: `com.epicgames.launcher://apps/${id}?action=launch&silent=true` } },
+  EA:         { launch: (id) => id && { url: `origin2://game/launch?offerIds=${id}` } },
+  Ubisoft:    { launch: (id) => id && { url: `uplay://launch/${id}/0` } },
+  'Battle.net': { launch: (id) => id && { url: `battlenet://${id}` } },
+  Riot:       { launch: () => null },
+  Rockstar:   { launch: () => null },
+  Custom:     { launch: () => null }
+};
+
+/*
+ * Resolve a game to a launch plan. The URL protocol wins when the launcher
+ * has one and the title carries an App ID; every launcher — including Riot,
+ * Rockstar and Custom, which have no useful public protocol — falls back to
+ * running `launcher_config` directly. Returns null when there is nothing to
+ * launch with, so the caller can say so rather than run "".
  */
 function buildGameLaunch(game) {
   const id = game.app_id ? String(game.app_id).trim() : '';
-  const exe = game.executable ? String(game.executable).trim() : '';
-  if (id) {
-    switch (game.launcher) {
-      case 'Steam':      return { url: `steam://rungameid/${id}` };
-      case 'Epic':       return { url: `com.epicgames.launcher://apps/${id}?action=launch&silent=true` };
-      case 'EA':         return { url: `origin2://game/launch?offerIds=${id}` };
-      case 'Ubisoft':    return { url: `uplay://launch/${id}/0` };
-      case 'Battle.net': return { url: `battlenet://${id}` };
-      default: break;
+  const exe = game.launcher_config ? String(game.launcher_config).trim() : '';
+  const adapter = LAUNCHER_ADAPTERS[game.launcher];
+  const plan = adapter && adapter.launch(id);
+  if (plan) return plan;
+  if (exe) return { exe };
+  return null;
+}
+
+/*
+ * Launch a game the customer chose, through its launcher.
+ *
+ * CafeXP hands off and steps back: it starts the launcher, the customer signs
+ * into their own account. No credential is stored, passed, or logged here.
+ *
+ * Shared by the "Play" button (the `launch-game` IPC channel) and the
+ * self-service start flow, which launches the customer's chosen title itself
+ * the moment their session actually begins — one launch path, however it was
+ * reached, which is why this lives at module scope rather than nested inside
+ * `createWindow` where only the IPC handler could see it.
+ */
+function launchGame(game) {
+  if (!game || typeof game !== 'object') return;
+  const plan = buildGameLaunch(game);
+  if (!plan) {
+    log(`No launch config for ${game.name}`);
+    sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'This game has no launch configuration yet.' });
+    return;
+  }
+
+  sendToWindow(win, 'app-launching', { appName: game.name });
+  log(`Launching ${game.name} via ${game.launcher}${plan.url ? ' (protocol)' : ' (exe)'}`);
+
+  if (plan.url) {
+    // Protocol hand-off to the launcher. openExternal resolves once the OS
+    // has accepted the URL, not when the game is up — which is all we need.
+    shell.openExternal(plan.url).catch((err) => {
+      log(`Launch failed for ${game.name}: ${err.message}`);
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'Could not reach the launcher.' });
+    });
+  } else if (plan.exe) {
+    const cmd = game.launch_arguments ? `"${plan.exe}" ${game.launch_arguments}` : `"${plan.exe}"`;
+    const child = exec(cmd, (err) => {
+      if (err) {
+        log(`Launch failed for ${game.name}: ${err.message}`);
+        sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'The game could not be started.' });
+      }
+    });
+    // Track the process under the game's name so the existing close path can
+    // find it, and attach a timer card if the session is timed.
+    if (child.pid) {
+      const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
+      const mins = sessionRemainingMinutes();
+      if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins);
+      runningProcesses.set(game.name, info);
     }
   }
-  if (exe) return { exe };
-  if (id && game.launcher === 'Steam') return { url: `steam://rungameid/${id}` };
-  return null;
 }
 
 /** Whole minutes left on the current session, or 0 if it is open-ended. */
@@ -493,6 +557,41 @@ function createWindow() {
     }
   });
 
+  /* The customer opened the game picker while idle and wants to see what they
+     could start — this station's games and this café's prices. */
+  ipcMain.on('request-start-options', () => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "REQUEST_START_OPTIONS", simId: SIM_ID }));
+      log("Sent REQUEST_START_OPTIONS to console");
+    }
+  });
+
+  /*
+   * The customer picked a game and a price and tapped Start.
+   *
+   * This never touches the backend directly — the station holds no staff
+   * token, only the customer's own, and starting a session is a staff-scoped
+   * endpoint. The console does the actual call once this reaches it (see
+   * server-app's `station:start-request`), the same hand-off the Extend
+   * button already relies on.
+   */
+  ipcMain.on('request-start-session', (event, { game, gaming_price_id } = {}) => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      // Remembered whole, not just its id, so it can be launched directly the
+      // moment the session goes active — no extra round trip to look it up.
+      pendingSelfStartGame = game || null;
+      serverConnection.send(JSON.stringify({
+        type: "START_SESSION_REQUEST", simId: SIM_ID,
+        customer_id: userInfo && userInfo.customer_id,
+        cafe_game_id: game && game.cafe_game_id || null,
+        gaming_price_id: gaming_price_id || null
+      }));
+      log("Sent START_SESSION_REQUEST to console");
+    } else {
+      sendToWindow(win, "start-session-failed", { message: "Not connected to the café server" });
+    }
+  });
+
   // IPC handler for page navigation
   ipcMain.on('navigate', (event, page) => {
     navigateToPage(page);
@@ -544,56 +643,7 @@ function createWindow() {
 
   ipcMain.handle('get-games', async () => currentGames);
 
-  /*
-   * Launch a game the customer chose, through its launcher.
-   *
-   * Every store has its own way of being told "start this title". The reliable
-   * one across Steam, Epic, EA, Ubisoft and Battle.net is the launcher's URL
-   * protocol with the game's id — the launcher signs the customer in if needed
-   * and starts the game, and CafeXP never sees a launcher password. Riot,
-   * Rockstar and Custom titles, and anything with no id, fall back to running
-   * the executable directly.
-   *
-   * CafeXP hands off and steps back: it starts the launcher, the customer signs
-   * into their own account. No credential is stored, passed, or logged here.
-   */
-  ipcMain.on('launch-game', (event, game) => {
-    if (!game || typeof game !== 'object') return;
-    const plan = buildGameLaunch(game);
-    if (!plan) {
-      log(`No launch config for ${game.name}`);
-      sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'This game has no launch configuration yet.' });
-      return;
-    }
-
-    sendToWindow(win, 'app-launching', { appName: game.name });
-    log(`Launching ${game.name} via ${game.launcher}${plan.url ? ' (protocol)' : ' (exe)'}`);
-
-    if (plan.url) {
-      // Protocol hand-off to the launcher. openExternal resolves once the OS
-      // has accepted the URL, not when the game is up — which is all we need.
-      shell.openExternal(plan.url).catch((err) => {
-        log(`Launch failed for ${game.name}: ${err.message}`);
-        sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'Could not reach the launcher.' });
-      });
-    } else if (plan.exe) {
-      const cmd = game.launch_args ? `"${plan.exe}" ${game.launch_args}` : `"${plan.exe}"`;
-      const child = exec(cmd, (err) => {
-        if (err) {
-          log(`Launch failed for ${game.name}: ${err.message}`);
-          sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'The game could not be started.' });
-        }
-      });
-      // Track the process under the game's name so the existing close path can
-      // find it, and attach a timer card if the session is timed.
-      if (child.pid) {
-        const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
-        const mins = sessionRemainingMinutes();
-        if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins);
-        runningProcesses.set(game.name, info);
-      }
-    }
-  });
+  ipcMain.on('launch-game', (event, game) => launchGame(game));
 
   /* ---- Window controls ----
    *
@@ -1664,6 +1714,7 @@ function listen() {
       // Session state pushed by the admin console. The client only displays
       // it — the café server owns the session and its billing.
       if (msg.type === "SESSION_STATE") {
+        const wasRunning = !!currentSession;
         currentSession = msg.session || null;
         const summary = currentSession
           ? `${currentSession.status} for ${currentSession.customer_name || "guest"}`
@@ -1671,6 +1722,17 @@ function listen() {
         log(`Session ${summary}`);
         console.log(`[Session] Received: ${summary}`);
         sendToWindow(win, "session-state", currentSession);
+
+        /* The self-started session just went live — launch the title the
+           customer picked when they hit Start, so they land straight in the
+           game rather than having to find and click it again. */
+        if (!wasRunning && currentSession && currentSession.status === 'active' && pendingSelfStartGame) {
+          const game = pendingSelfStartGame;
+          pendingSelfStartGame = null;
+          launchGame(game);
+        } else if (!currentSession) {
+          pendingSelfStartGame = null;
+        }
       }
 
       /* The games this station may offer. Held so a portal that mounts after
@@ -1680,6 +1742,21 @@ function listen() {
         currentGames = Array.isArray(msg.games) ? msg.games : [];
         log(`Games list: ${currentGames.length} titles`);
         sendToWindow(win, "games-list", currentGames);
+      }
+
+      /* What a logged-in customer can start for themself — this station's
+         games and this café's prices, sent whether or not a session is
+         already running (unlike GAMES_LIST above). */
+      if (msg.type === "START_OPTIONS") {
+        log(`Start options: ${(msg.games || []).length} games, ${(msg.prices || []).length} prices`);
+        sendToWindow(win, "start-options", { games: msg.games || [], prices: msg.prices || [] });
+      }
+
+      /* The self-start this station asked for could not begin — insufficient
+         balance, the station taken by someone else, etc. */
+      if (msg.type === "START_SESSION_FAILED") {
+        log(`Self-start failed: ${msg.message || ""}`);
+        sendToWindow(win, "start-session-failed", { message: msg.message || "Could not start the session" });
       }
 
       /* The console extended this station's session. Grow every open timer

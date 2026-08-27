@@ -215,6 +215,22 @@ function handleStationRequest(msg, ws) {
     if (win) win.webContents.send("station:overtime", { pcName, appName: msg.appName || null });
     return true;
   }
+  /* A logged-in customer opened the "choose a game" screen while idle — send
+     what they need to start their own session (the café's games and prices
+     for this station), independent of whether one is already running. */
+  if (msg.type === "REQUEST_START_OPTIONS") {
+    if (win) win.webContents.send("station:start-options-request", { pcName });
+    return true;
+  }
+  /* The customer picked a game and a price and tapped Start. */
+  if (msg.type === "START_SESSION_REQUEST") {
+    log(`[Self-start] ${pcName} requested a session (price #${msg.gaming_price_id}, customer #${msg.customer_id})`);
+    if (win) win.webContents.send("station:start-request", {
+      pcName, customer_id: msg.customer_id || null,
+      cafe_game_id: msg.cafe_game_id || null, gaming_price_id: msg.gaming_price_id || null
+    });
+    return true;
+  }
   /* A station finished its end-of-session cleanup. */
   if (msg.type === "CLEANUP_DONE") {
     log(`[Cleanup] ${pcName} is clean and ready`);
@@ -1038,6 +1054,31 @@ function registerIPCHandlers() {
     }
     client.ws.send(JSON.stringify({ type: "GAMES_LIST", games: games || [] }));
     log(`Sent ${(games || []).length} games to ${pcName}`);
+    return { success: true };
+  });
+
+  /* What a customer can self-start with — this café's games and prices for
+     the requesting station — sent whether or not a session is already
+     running there, unlike GAMES_LIST which only carries a title once one is. */
+  ipcMain.handle("session:push-start-options", async (_, { pcName, games, prices }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "START_OPTIONS", games: games || [], prices: prices || [] }));
+    log(`Sent start options to ${pcName}: ${(games || []).length} games, ${(prices || []).length} prices`);
+    return { success: true };
+  });
+
+  /* The self-start the customer asked for could not begin — station or
+     wallet issue, station or price no longer valid. Told to the station
+     itself since nobody at the counter is watching this one start. */
+  ipcMain.handle("session:push-start-failed", async (_, { pcName, message }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "START_SESSION_FAILED", message: message || "Could not start the session" }));
     return { success: true };
   });
 
