@@ -78,6 +78,13 @@
         if (name) document.getElementById("pcName").textContent = name;
       });
 
+      /* Defaults to this machine, corrected to the console's real address once
+         this station has been told it — see main.js's SET_NAME handler. A
+         station on its own machine cannot sign a customer in against itself. */
+      var API_BASE = "http://localhost:5000";
+      if (window.api.getBackendBase) window.api.getBackendBase(function (b) { if (b) API_BASE = b; });
+      if (window.api.onBackendBase) window.api.onBackendBase(function (b) { if (b) API_BASE = b; });
+
       document.getElementById("toWelcome").addEventListener("click", function () {
         window.api.navigateTo("welcome");
       });
@@ -115,7 +122,7 @@
         busy(true);
         try {
           // Unchanged endpoint and payload.
-          var response = await fetch("http://localhost:5000/api/customers/login", {
+          var response = await fetch(API_BASE + "/api/customers/login", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email: email, password: password })

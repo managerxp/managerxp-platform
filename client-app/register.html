@@ -87,6 +87,12 @@
 
       Motion.enter(card, { y: 18, duration: 0.4 });
 
+      /* Defaults to this machine, corrected to the console's real address once
+         this station has been told it — see main.js's SET_NAME handler. */
+      var API_BASE = "http://localhost:5000";
+      if (window.api.getBackendBase) window.api.getBackendBase(function (b) { if (b) API_BASE = b; });
+      if (window.api.onBackendBase) window.api.onBackendBase(function (b) { if (b) API_BASE = b; });
+
       document.getElementById("toWelcome").addEventListener("click", function () {
         window.api.navigateTo("welcome");
       });
@@ -133,7 +139,7 @@
         busy(true);
         try {
           // Unchanged endpoint and payload shape.
-          var response = await fetch("http://localhost:5000/api/customers/register", {
+          var response = await fetch(API_BASE + "/api/customers/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
