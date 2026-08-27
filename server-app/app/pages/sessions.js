@@ -243,7 +243,10 @@
     var rateWrap = body.querySelector("#sessRateWrap");
     var rates = [];
 
-    global.CXRates.list()
+    /* Live, not base: whatever peak or happy-hour window is open right now is
+       already folded into these prices, so what staff read out is what the
+       customer is charged. */
+    global.CXRates.listLive()
       .then(function (all) {
         rates = pc.category
           ? all.filter(function (r) { return r.category === pc.category; })
@@ -265,15 +268,23 @@
           rates.map(function (r) {
             return '<option value="' + r.price_id + '">' +
               UI.esc(r.software_name + " · " + r.session_name) + " — " +
-              UI.esc(global.CXRates.money(r.price, r.currency)) + "</option>";
+              UI.esc(global.CXRates.money(r.price, r.currency)) +
+              (r.changed ? " (" + UI.esc(r.rule_label) + ")" : "") + "</option>";
           }).join("");
         /* One price for this station type is not a choice — preselect it so
            staff are not made to confirm the only option there is. */
         if (rates.length === 1) priceSelect.value = rates[0].price_id;
-        priceHint.textContent = pc.category
-          ? rates.length + " " + pc.category + " price" + (rates.length === 1 ? "" : "s") +
-            " — the rate is taken from here, not typed."
-          : "The rate is taken from the price master, not typed.";
+
+        /* Naming the window that is open answers the question staff get asked
+           at the counter — "why is it more than last time?" — before it is
+           asked, and without anyone opening the pricing screen. */
+        var adjusted = rates.filter(function (r) { return r.changed; });
+        priceHint.textContent = adjusted.length
+          ? adjusted[0].rule_label + " is running — prices shown already include it."
+          : pc.category
+            ? rates.length + " " + pc.category + " price" + (rates.length === 1 ? "" : "s") +
+              " — the rate is taken from here, not typed."
+            : "The rate is taken from the price master, not typed.";
         refresh();
       })
       .catch(function (err) {
@@ -311,27 +322,39 @@
       if (gameSelect.value === "__custom") gamePath.focus();
     });
 
-    // The station's own list, so staff pick rather than type a path.
-    Store.getPcSoftwareViaIPC(pc.pc_id).then(function (response) {
-      var rows = (response && response.data) || [];
-      stationApps = rows
-        .filter(function (s) { return s.software_path; })
-        .map(function (s) {
-          return { name: s.software_name, launch: s.software_path, icon: s.software_icon };
+    /*
+     * A station with no address launches nothing — the customer racks up the
+     * balls themselves. Hide the picker rather than offering a list that will
+     * always be empty and a custom path that could never run.
+     */
+    var launchField = gameSelect.closest(".field") || gameSelect.parentNode;
+    if (!Store.isNetworked(pc)) {
+      if (launchField && launchField.classList) launchField.classList.add("hidden");
+      gameSelect.value = "";
+      gameSelect.disabled = true;
+    } else {
+      // The station's own list, so staff pick rather than type a path.
+      Store.getPcSoftwareViaIPC(pc.pc_id).then(function (response) {
+        var rows = (response && response.data) || [];
+        stationApps = rows
+          .filter(function (s) { return s.software_path; })
+          .map(function (s) {
+            return { name: s.software_name, launch: s.software_path, icon: s.software_icon };
+          });
+        if (!stationApps.length) {
+          gameHint.textContent = "This station has no software configured — use a custom path, " +
+            "or add it under Games.";
+          return;
+        }
+        var custom = gameSelect.querySelector('option[value="__custom"]');
+        stationApps.forEach(function (app, i) {
+          var opt = UI.el("option", { value: String(i), text: app.name });
+          gameSelect.insertBefore(opt, custom);
         });
-      if (!stationApps.length) {
-        gameHint.textContent = "This station has no software configured — use a custom path, " +
-          "or add it under Games.";
-        return;
-      }
-      var custom = gameSelect.querySelector('option[value="__custom"]');
-      stationApps.forEach(function (app, i) {
-        var opt = UI.el("option", { value: String(i), text: app.name });
-        gameSelect.insertBefore(opt, custom);
+      }).catch(function () {
+        gameHint.textContent = "Could not read this station's software list — a custom path still works.";
       });
-    }).catch(function () {
-      gameHint.textContent = "Could not read this station's software list — a custom path still works.";
-    });
+    }
 
     /* ---- mode switch ---- */
     var customerPane = body.querySelector("#customerPane");

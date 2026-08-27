@@ -106,8 +106,8 @@
     },
     {
         "name":  "Copilot",
-        "version":  "152.0.4191.34",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\152.0.4191.34\\mscopilot.exe"
+        "version":  "152.0.4191.42",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Copilot\\Application\\152.0.4191.42\\mscopilot.exe"
     },
     {
         "name":  "Cursor",
@@ -266,7 +266,7 @@
     },
     {
         "name":  "Google Chrome",
-        "version":  "151.0.7922.172",
+        "version":  "151.0.7922.174",
         "launch":  "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe"
     },
     {

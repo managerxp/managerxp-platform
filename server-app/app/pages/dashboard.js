@@ -12,11 +12,22 @@
   var offs = [];
   var rootEl = null;
 
+  /*
+   * Online and Offline are about PCs only.
+   *
+   * They used to run over every station, so a pool table and a VR rig — which
+   * have no client and never will — were counted as "online". The dashboard
+   * then reported three clients connected when exactly one machine had ever
+   * been reachable, and the number could never be made to agree with the
+   * connection log. By-the-hour stations get their own tile instead of being
+   * folded into a connection count they can never be part of.
+   */
   var KPIS = [
     { id: "total",      label: "Stations",   icon: "floor",   status: "accent",  tip: "Registered in this cafe" },
-    { id: "online",     label: "Online",     icon: "wifi",    status: "online",  tip: "Client connected right now" },
-    { id: "running",    label: "In use",     icon: "play",    status: "gaming",  tip: "An application is running" },
-    { id: "offline",    label: "Offline",    icon: "wifiOff", status: "offline", tip: "No client connection" },
+    { id: "online",     label: "PCs online", icon: "wifi",    status: "online",  tip: "Client connected right now" },
+    { id: "running",    label: "In use",     icon: "play",    status: "gaming",  tip: "A session is running on this station" },
+    { id: "offline",    label: "PCs offline", icon: "wifiOff", status: "offline", tip: "Registered with an address but no client connection" },
+    { id: "hourly",     label: "By the hour", icon: "clock",  status: "idle",    tip: "Tables, consoles and rigs with no client to connect — always ready" },
     { id: "discovered", label: "Unregistered", icon: "radar", status: "warning", tip: "Found on the network, not in the registry" },
     { id: "seats",      label: "Licence seats", icon: "plan", status: "idle",    tip: "Stations used against your plan limit" }
   ];
@@ -31,6 +42,7 @@
       online: c.online,
       running: c.running,
       offline: c.offline,
+      hourly: c.hourly,
       discovered: c.discovered,
       seats: c.total
     };
@@ -39,6 +51,18 @@
       var valEl = rootEl.querySelector('[data-kpi="' + k.id + '"]');
       if (!valEl) return;
       Motion.countTo(valEl, values[k.id]);
+
+      /* The floor's make-up in one line — "2 PC · 1 PS5 · 1 Pool" — so the
+         headline number says how many stations and this says of what. */
+      if (k.id === "total") {
+        var mix = rootEl.querySelector('[data-kpi-foot="total"]');
+        if (mix) {
+          mix.textContent = Store.stationTypes().map(function (g) {
+            return g.total + " " + g.type;
+          }).join(" · ");
+        }
+      }
+
       if (k.id === "seats") {
         var foot = rootEl.querySelector('[data-kpi-foot="seats"]');
         if (foot) {
@@ -101,15 +125,44 @@
       return;
     }
 
-    // Busy stations first, then available, then offline — most actionable on top.
+    /*
+     * Grouped by what the station is, then sorted within the group.
+     *
+     * A floor is not one undifferentiated list — an owner reads it as "how
+     * are my PCs doing, how are my tables doing". Ungrouped and alphabetical,
+     * Pool-1 sorted above PS5-02 above VR-01 and the shape of the floor was
+     * invisible. PCs lead because they are usually the bulk of the room and
+     * the only ones with a connection that can go wrong.
+     */
     var order = { gaming: 0, online: 1, offline: 2, inactive: 3 };
-    var sorted = Store.state.pcs.slice().sort(function (a, b) {
-      var d = order[Store.pcStatus(a)] - order[Store.pcStatus(b)];
-      return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
+    var groups = Store.stationTypes();
+    var rows = [];
+
+    groups.forEach(function (group) {
+      var members = Store.state.pcs.filter(function (p) {
+        return Store.stationType(p) === group.type;
+      }).sort(function (a, b) {
+        var d = order[Store.pcStatus(a)] - order[Store.pcStatus(b)];
+        return d !== 0 ? d : String(a.name).localeCompare(String(b.name));
+      });
+      if (!members.length) return;
+
+      var busy = members.filter(function (p) { return Store.pcStatus(p) === "gaming"; }).length;
+      var free = members.filter(function (p) { return Store.pcStatus(p) === "online"; }).length;
+
+      /* One line per group saying how many are free, because that is the
+         question being asked when somebody walks in. */
+      var head = UI.el("div", { class: "floor-group" });
+      head.innerHTML =
+        '<span class="floor-group-name">' + UI.esc(group.type) + "</span>" +
+        '<span class="floor-group-count">' +
+          (busy ? busy + " in use · " : "") + free + " of " + members.length + " free" +
+        "</span>";
+      strip.appendChild(head);
+
+      members.forEach(function (pc) { var r = floorRow(pc); strip.appendChild(r); rows.push(r); });
     });
 
-    var rows = [];
-    sorted.forEach(function (pc) { var r = floorRow(pc); strip.appendChild(r); rows.push(r); });
     Motion.stagger(rows, { step: 0.012, y: 6, maxDelay: 0.18 });
   }
 
@@ -242,7 +295,8 @@
             return '<div class="stat stat-accent" data-status="' + k.status + '" data-tip="' + UI.esc(k.tip) + '">' +
               '<div class="stat-label">' + Icon(k.icon, 13) + UI.esc(k.label) + "</div>" +
               '<div class="stat-value" data-kpi="' + k.id + '">0</div>' +
-              (k.id === "seats" ? '<div class="stat-foot" data-kpi-foot="seats"></div>' : "") +
+              (k.id === "seats" || k.id === "total"
+                ? '<div class="stat-foot" data-kpi-foot="' + k.id + '"></div>' : "") +
             "</div>";
           }).join("") +
         "</div>" +

@@ -572,6 +572,18 @@
 }
 .auth-alt button:hover { text-decoration: underline; }
 
+/* A text-only link rendered as a <button> — same treatment as .auth-alt's
+   buttons, usable anywhere in the auth forms rather than only in that footer. */
+.link-btn {
+  border: 0;
+  background: transparent;
+  color: var(--accent-hot);
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0 2px;
+}
+.link-btn:hover { text-decoration: underline; }
+
 /* Client inputs run larger than the admin's */
 .input, .select { height: 46px; font-size: var(--t-body); border-radius: var(--r-sm); }
 .btn { height: 44px; font-size: var(--t-body); border-radius: var(--r-sm); }
@@ -1232,29 +1244,71 @@
 }
 .statusbar .btn, .statusbar button { -webkit-app-region: no-drag; }
 
-.timercard {
-  margin: 6px;
-  padding: var(--s-4);
-  border-radius: var(--r-lg);
-  background: var(--glass-strong);
-  backdrop-filter: blur(20px);
+/*
+ * The in-game timer.
+ *
+ * Was a 190×130 card with `backdrop-filter: blur(20px)`, which is what put a
+ * blurred strip over the corner of whatever was being played — the blur
+ * samples the game behind it, so it reads as a smear rather than as a panel.
+ *
+ * Now a small pill: the clock, a status dot, and a hairline of progress. No
+ * backdrop filter at all — a flat translucent background costs the compositor
+ * nothing and leaves the game underneath sharp.
+ */
+.timercard-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px;
+  padding: 7px 12px 7px 10px;
+  border-radius: var(--r-pill);
+  background: rgba(10, 10, 17, 0.82);
   border: 1px solid var(--line-strong);
-  box-shadow: var(--shadow-3);
-  text-align: center;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.55);
+  position: relative;
+  overflow: hidden;
   -webkit-app-region: drag;
+  cursor: move;
+}
+.timercard-dot {
+  width: 7px; height: 7px; flex: none;
+  border-radius: 50%;
+  background: var(--st, var(--accent));
+  box-shadow: 0 0 8px var(--st-glow, var(--accent-glow));
+}
+/* Name and label share one column and stay quiet — the clock is the content. */
+.timercard-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.15;
+}
+/* A hairline across the foot rather than a meter with its own row. */
+.timercard-track {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.timercard-fill {
+  display: block;
+  height: 100%;
+  background: var(--st, var(--accent));
+  transition: width var(--dur-base) var(--ease-out);
 }
 .timercard-app {
-  font-size: var(--t-xs);
+  font-size: 10px;
   font-weight: 650;
   color: var(--text-2);
+  max-width: 92px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .timercard-time {
-  margin-top: var(--s-2);
   font-family: var(--font-mono);
-  font-size: 30px;
+  /* Big enough to read across a desk, small enough not to be a panel. */
+  font-size: 19px;
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
@@ -1262,8 +1316,7 @@
   color: var(--st, var(--text));
 }
 .timercard-label {
-  margin-top: 6px;
-  font-size: 9px;
+  font-size: 8px;
   font-weight: 700;
   letter-spacing: var(--track-caps);
   text-transform: uppercase;

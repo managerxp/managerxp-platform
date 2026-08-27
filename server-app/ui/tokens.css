@@ -4,6 +4,18 @@
    ========================================================================== */
 
 :root {
+  /* Tells Chromium every native control on this page — the date/time picker
+     popup, its calendar icon, scrollbars, the default checkbox — should
+     render for a dark background. Without it, `<input type="date">` still
+     draws its little calendar icon in near-black (invisible against this
+     app's own near-black fields) and, worse, opens the *picker itself* in
+     Chromium's plain light theme: a white month grid popping out of a dark
+     card. This one line is what switches that popup to Chromium's actual
+     dark-mode calendar — rounded, dark-surfaced, accent-highlighted "today" —
+     which is the "modern" one already built into the browser, not something
+     to hand-roll per input. */
+  color-scheme: dark;
+
   /* ---------- Surface ramp (near-black, cool-neutral) ---------- */
   --bg-base:        #07070b;   /* app background, behind everything */
   --bg-surface:     #0d0d13;   /* page canvas */

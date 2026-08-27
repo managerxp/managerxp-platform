@@ -55,6 +55,22 @@
     if (inNav) host.appendChild(bar);
     else document.body.appendChild(bar);
 
+    /*
+     * Hidden while the station is sealed.
+     *
+     * The client runs as a kiosk, so for a customer there is nothing here to
+     * press — the main process refuses these calls anyway, and showing dead
+     * buttons only invites someone to try them. They appear the moment staff
+     * unlock the station with the PIN, and go again when it is re-sealed.
+     */
+    function paintKioskState(locked) {
+      bar.classList.toggle("hidden", !!locked);
+      bar.setAttribute("aria-hidden", String(!!locked));
+    }
+    paintKioskState(true);   // assume sealed until told otherwise
+    if (api.isKioskLocked) api.isKioskLocked().then(paintKioskState).catch(function () {});
+    if (api.onKioskState) api.onKioskState(paintKioskState);
+
     var fsBtn = bar.querySelector("#cxFullscreen");
     var maxBtn = bar.querySelector("#cxMaximize");
 

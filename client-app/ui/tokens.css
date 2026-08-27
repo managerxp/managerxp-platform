@@ -6,6 +6,13 @@
    ========================================================================== */
 
 :root {
+  /* Matches the admin console's tokens.css: tells Chromium every native
+     control — a date/time picker and its popup calendar, scrollbars, default
+     checkboxes — should render for a dark background rather than its default
+     light one. No date field exists on this screen today, but the moment one
+     does it should not need this rule added after the fact. */
+  color-scheme: dark;
+
   /* ---------- Surface ramp ---------- */
   --bg-base:        #050509;
   --bg-surface:     #0a0a11;

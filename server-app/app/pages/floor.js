@@ -138,8 +138,30 @@
       confirm: "Only the CafeXP client restarts. Windows and any game keep running." }
   ];
 
-  function runBulk(spec) {
-    var names = selectedNames();
+  /*
+   * Stations a power command can actually reach.
+   *
+   * A pool table, a console or a VR rig has no client to send anything to —
+   * "shut down all" must mean all the machines, not every row on the floor,
+   * or the result is a run that reports failures for stations that were never
+   * capable of succeeding.
+   */
+  function powerableStations() {
+    return (Store.state.pcs || [])
+      .filter(function (p) { return Store.isNetworked(p); })
+      .map(function (p) { return p.name; });
+  }
+
+  /**
+   * Run one action over a set of stations.
+   *
+   * `names` is passed in rather than read from the selection, because the same
+   * confirmation, reason and progress reporting serve both the picked set and
+   * the whole floor. Two copies of this would be two places for the
+   * mid-session warning to drift out of step.
+   */
+  function runBulk(spec, names) {
+    names = names || selectedNames();
     if (!names.length) return;
 
     /* A station mid-session is the one thing worth stopping for. Named
@@ -273,7 +295,13 @@
       // A real play session outranks the launch timer as the card's headline.
       middle =
         '<div class="station-headline">' + UI.esc(session.customer_name) +
-          (session.is_guest ? ' <span class="badge badge-plain">Guest</span>' : "") + "</div>" +
+          (session.is_guest ? ' <span class="badge badge-plain">Guest</span>' : "") +
+          /* The bill has outrun the wallet. The game is never stopped for this
+             — the badge is how staff know to ask for a top-up before the
+             session ends unpaid. */
+          (session.low_balance
+            ? ' <span class="badge" data-status="warning" title="Wallet cannot cover the bill">Low balance</span>'
+            : "") + "</div>" +
         '<div class="station-timer" data-session-timer="' + UI.esc(pc.name) + '">' +
           SessionUI.displayTime(session) + "</div>" +
         '<div class="station-subline">' +
@@ -1151,19 +1179,71 @@
     return made;
   }
 
+  /*
+   * What the wall is currently showing.
+   *
+   * The floor rebuilt every card and re-ran the staggered slide-in on every
+   * `connected`, `connection-status`, `running` and `sessions` event. The
+   * heartbeat pushes a connection status per station every few seconds and
+   * the session reconcile fires every fifteen, so the whole wall was being
+   * torn down and re-animated more or less constantly — which is what the
+   * flicker was.
+   *
+   * The signature covers everything a card's *structure* depends on and
+   * deliberately excludes the clocks: remaining seconds and running totals
+   * change every second and are already written straight into their own
+   * elements by tickTimers. Including them would mean rebuilding once a
+   * second, which is the very thing being fixed.
+   */
+  var lastSignature = "";
+
+  function gridSignature(list, showDiscovered, loading) {
+    if (loading) return "loading";
+    /* selectMode is deliberately absent: toggling it is a CSS class change on
+       checkboxes that are already in the DOM, and repainting for it is the
+       jank that optimisation exists to avoid. zonesLoaded is present because
+       it decides whether the zoned layout can draw at all. */
+    return [layout, cardSize, filter, query, zonesLoaded ? "z" : "",
+            showDiscovered ? "d" + Store.state.discovered.length : ""].join("|") +
+      "::" +
+      list.map(function (pc) {
+        var s = Store.sessionFor(pc.name);
+        var run = Store.state.running[pc.name];
+        var cs = Store.state.connectionStatus[pc.name];
+        return [
+          /* Every field a card draws. A value rendered but not listed here is
+             a change that would never reach the screen. */
+          pc.name, pc.pc_id, pc.category || "", pc.ip_address || "",
+          pc.zone_id || "", pc.description || "",
+          Store.pcStatus(pc),
+          s ? s.session_id + ":" + s.status + ":" + (s.customer_name || "") +
+              ":" + (s.low_balance ? "low" : "") : "",
+          run ? run.appName + ":" + (run.paused ? "p" : "r") : "",
+          cs && cs.failures ? cs.failures : ""
+        ].join(",");
+      }).join(";");
+  }
+
   function renderGrid() {
     if (!rootEl) return;
     var grid = rootEl.querySelector("#stationGrid");
     if (!grid) return;
 
-    if (Store.state.loading.pcs && !Store.state.pcs.length) {
+    var loadingCards = Store.state.loading.pcs && !Store.state.pcs.length;
+    var list = loadingCards ? [] : visiblePCs();
+    var showDiscovered = !loadingCards && (filter === "all") && Store.state.discovered.length;
+
+    /* Nothing a card draws has changed, so the existing DOM is already
+       correct — leaving it alone is what keeps the wall still. */
+    var signature = gridSignature(list, showDiscovered, loadingCards);
+    if (signature === lastSignature && grid.childElementCount) return;
+    lastSignature = signature;
+
+    if (loadingCards) {
       UI.clear(grid);
       grid.appendChild(UI.skeletonCards(8, "172px"));
       return;
     }
-
-    var list = visiblePCs();
-    var showDiscovered = (filter === "all") && Store.state.discovered.length;
 
     UI.clear(grid);
     grid.setAttribute("data-size", cardSize);
@@ -1321,6 +1401,8 @@
 
     mount: function (root, ctx) {
       rootEl = root;
+      // Fresh DOM, so nothing drawn yet matches any earlier signature.
+      lastSignature = "";
       var page = UI.el("div", { class: "page" });
 
       var counts = Store.counts();
@@ -1331,6 +1413,23 @@
             '<div class="page-sub">Every registered station and what it is doing right now.</div>' +
           "</div>" +
           '<div class="page-actions">' +
+            /* Whole-floor power, for opening and closing up. Every one of
+               these goes through the same confirmation as the picked-set
+               actions below — it names each station, warns about any
+               mid-session, and refuses to run without a typed reason, which
+               is what makes three destructive buttons safe to leave in a
+               header. */
+            '<div class="row gap-2" id="floorAllPower">' +
+              '<button class="btn btn-outline btn-sm" id="btnAllWake" ' +
+                'data-tip="Wake every station on the network">' + Icon("power", 14) +
+                '<span class="btn-label">Power on all</span></button>' +
+              '<button class="btn btn-warn btn-sm" id="btnAllRestart" ' +
+                'data-tip="Reboot every connected station">' + Icon("refresh", 14) +
+                '<span class="btn-label">Restart all</span></button>' +
+              '<button class="btn btn-danger btn-sm" id="btnAllShutdown" ' +
+                'data-tip="Power off every connected station">' + Icon("power", 14) +
+                '<span class="btn-label">Shut down all</span></button>' +
+            "</div>" +
             '<button class="btn btn-outline" id="btnRefreshFloor">' + Icon("refresh", 15) +
               '<span class="btn-label">Refresh</span></button>' +
             '<button class="btn btn-outline" id="btnSelectMode">' + Icon("list", 15) +
@@ -1384,6 +1483,27 @@
       root.appendChild(page);
 
       page.querySelector("#btnAddStation").addEventListener("click", addStationDialog);
+
+      /* Whole-floor power. Each hands the full station list to the same
+         runBulk the picked-set actions use, so the confirmation, the
+         mid-session warning and the per-station progress are identical
+         whether one station was chosen or all of them. */
+      [
+        { id: "#btnAllWake", action: "wake" },
+        { id: "#btnAllRestart", action: "restart" },
+        { id: "#btnAllShutdown", action: "shutdown" }
+      ].forEach(function (b) {
+        var spec = BULK_ACTIONS.filter(function (a) { return a.action === b.action; })[0];
+        page.querySelector(b.id).addEventListener("click", function () {
+          var names = powerableStations();
+          if (!names.length) {
+            UI.toast.warn("Nothing to power",
+              "No station on this floor has a network address — tables and consoles have no client to reach.");
+            return;
+          }
+          runBulk(spec, names);
+        });
+      });
 
       /* Select mode. Toggled rather than always-on: the floor is mostly used
          to glance at one station, and permanent checkboxes on every card make
@@ -1472,6 +1592,9 @@
       offs.forEach(function (f) { f(); });
       offs = [];
       rootEl = null;
+      /* The grid is gone with the page, so the next mount must draw rather
+         than recognise its own signature and skip. */
+      lastSignature = "";
     },
 
     addStationDialog: addStationDialog

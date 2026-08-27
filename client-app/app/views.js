@@ -318,6 +318,9 @@
   /* ==========================================================================
      GAMES
      ========================================================================== */
+  /* Kept across mounts so navigating away and back does not stack listeners. */
+  var gamesOff = null;
+
   global.CXViews.games = {
     label: "Games",
     icon: "games",
@@ -327,24 +330,78 @@
       view.innerHTML =
         '<div class="view-head">' +
           "<div>" +
-            '<div class="view-title">Games</div>' +
+            '<div class="view-title">Choose a game</div>' +
             '<div class="view-sub">Everything your café has made available on this station.</div>' +
           "</div>" +
           '<div class="row gap-3">' +
             '<div class="search" style="width:300px">' + Icon("search", 16) +
-              '<input class="input" type="search" placeholder="Search games…" disabled></div>' +
+              '<input class="input" id="gameSearch" type="search" placeholder="Search games…"></div>' +
           "</div>" +
         "</div>";
-
-      view.appendChild(awaiting({
-        icon: "games",
-        title: "No games have reached this station yet",
-        text: "Your café's staff choose which games appear here. Once the server sends this station's library, every title shows up with its artwork and a play button.",
-        note: "The client talks to the server over its existing connection, which today carries launch and close commands but no game catalogue. " +
-              "Sending the configured list — the same one behind <code>/api/pc-software</code> — is what switches this page on."
-      }));
-
+      var grid = UI.el("div", { class: "col gap-3", id: "gameGrid" });
+      view.appendChild(grid);
       root.appendChild(view);
+
+      var filter = "";
+
+      function launcherClass(l) { return "badge"; }
+
+      function card(g) {
+        var el = UI.el("button", {
+          class: "card card-pad row gap-4",
+          style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%" }
+        });
+        el.innerHTML =
+          '<span class="avatar" style="width:44px;height:44px;font-size:15px;flex:0 0 auto">' +
+            UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) + "</span>" +
+          '<span class="grow" style="min-width:0">' +
+            '<span style="display:block;font-size:15px;font-weight:700">' + UI.esc(g.name) + "</span>" +
+            '<span class="faint" style="font-size:12px">' +
+              UI.esc([g.category, g.launcher].filter(Boolean).join(" · ")) + "</span>" +
+          "</span>" +
+          '<span class="btn btn-primary btn-sm" style="flex:0 0 auto">' + Icon("play", 14) +
+            '<span class="btn-label">Play</span></span>';
+        el.addEventListener("click", function () {
+          Session.launchGame(g);   // portal's global "launching" handler shows the overlay
+        });
+        return el;
+      }
+
+      function render() {
+        UI.clear(grid);
+        var games = (Session.state.games || []).filter(function (g) {
+          return !filter || (g.name || "").toLowerCase().indexOf(filter) !== -1
+            || (g.category || "").toLowerCase().indexOf(filter) !== -1;
+        });
+
+        if (!Session.state.games || !Session.state.games.length) {
+          grid.appendChild(awaiting({
+            icon: "games",
+            title: "No games have reached this station yet",
+            text: "Your café's staff choose which games appear here. Once a session starts and the server sends this station's library, every title shows up with a play button.",
+            note: "Waiting for the server to send this station's game list."
+          }));
+          return;
+        }
+        if (!games.length) {
+          grid.appendChild(awaiting({ icon: "games", title: "No games match", text: "Nothing matches “" + filter + "”." }));
+          return;
+        }
+        var made = [];
+        games.forEach(function (g) { var c = card(g); grid.appendChild(c); made.push(c); });
+        Motion.stagger(made, { step: 0.03, y: 8 });
+      }
+
+      view.querySelector("#gameSearch").addEventListener("input", function (e) {
+        filter = e.target.value.trim().toLowerCase();
+        render();
+      });
+
+      // Re-render live when the console pushes an updated list.
+      if (gamesOff) { try { gamesOff(); } catch (e) {} }
+      gamesOff = Session.on("games", render);
+
+      render();
       Motion.enter(view, { y: 14 });
     }
   };
@@ -403,8 +460,31 @@
         view.querySelector("#foodCartBtn").disabled = count === 0;
       }
 
+      /*
+       * What the menu and the order list are currently showing.
+       *
+       * Both painters ran on every wallet emit, and the wallet emits for
+       * anything it does — a balance refresh, a transaction load, a top-up —
+       * none of which change the menu. Each emit tore down every product card
+       * and re-ran the staggered slide-in, which is what the flicker was.
+       *
+       * The signature is the rendered input itself rather than a list of
+       * fields, because a menu is a few dozen small objects: stringifying it
+       * costs microseconds and cannot miss a field the way a hand-written
+       * list can. The cart is deliberately absent — quantities are written
+       * straight into their own elements by setQty and never need a repaint.
+       */
+      var lastMenuSig = "";
+      var lastOrdersSig = "";
+
       /* ---- menu ---- */
       function paintMenu(s) {
+        var sig = s.menuError ? "error:" + s.menuError
+          : !s.menu ? "loading"
+          : activeCategory + "::" + JSON.stringify(s.menu);
+        if (sig === lastMenuSig && host.childElementCount) return;
+        lastMenuSig = sig;
+
         UI.clear(catsRow);
         UI.clear(host);
 
@@ -581,6 +661,12 @@
       }
 
       function paintOrders(s) {
+        /* Same guard as the menu: an order list only changes when an order
+           does, not when the balance is refreshed underneath it. */
+        var sig = JSON.stringify(s.orders || []);
+        if (sig === lastOrdersSig) return;
+        lastOrdersSig = sig;
+
         UI.clear(ordersHost);
         if (!s.orders || !s.orders.length) return;
 

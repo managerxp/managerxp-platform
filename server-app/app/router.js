@@ -38,10 +38,12 @@
       group: "Catalogue",
       items: [
         { id: "games",       label: "Games",       icon: "games",     feature: "SESSION_MANAGEMENT" },
+        { id: "game-library", label: "Game Library", icon: "games",   feature: "SESSION_MANAGEMENT" },
         { id: "fnb",         label: "F&B",         icon: "fnb",       feature: "FNB" },
         { id: "inventory",   label: "Inventory",   icon: "inventory", feature: "INVENTORY" },
         { id: "session-master", label: "Session Master", icon: "clock",   feature: "SESSION_MANAGEMENT" },
         { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT" },
+        { id: "pricing-windows", label: "Peak & Happy Hours", icon: "clock", feature: "SESSION_MANAGEMENT" },
         { id: "packages",    label: "Packages",    icon: "packages",   feature: "PRODUCTS" },
         { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP" },
         { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING" },

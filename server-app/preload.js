@@ -39,6 +39,22 @@ contextBridge.exposeInMainWorld("api", {
 
   // Session state push to a station
   pushSessionState: (pcName, session) => ipcRenderer.invoke("session:push-state", { pcName, session }),
+  // Grow a station's floating timer card after its session was extended.
+  pushExtendTimer: (pcName, minutes) => ipcRenderer.invoke("session:push-extend-timer", { pcName, minutes }),
+  // Send a station the games its customer may choose from (installed + enabled).
+  pushGames: (pcName, games) => ipcRenderer.invoke("session:push-games", { pcName, games }),
+  // End-of-session cleanup on a station (close game, sign launchers out, free PC).
+  cleanupStation: (pcName, config, games) =>
+    ipcRenderer.invoke("session:cleanup", { pcName, config, games }),
+  onStationCleanupDone: (cb) => ipcRenderer.on("station:cleanup-done", (_, d) => cb(d)),
+  // Which game launchers a station has installed (Steam, Riot, EA, …).
+  getStationLaunchers: (pcName) => ipcRenderer.invoke("station:get-launchers", { pcName }),
+  refreshStationLaunchers: (pcName) => ipcRenderer.invoke("station:refresh-launchers", { pcName }),
+  onStationLaunchers: (cb) => ipcRenderer.on("station:launchers", (_, d) => cb(d)),
+  // A player tapped Extend at the station; the console acts with its token.
+  onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
+  // A station's block ran out with the game still running.
+  onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
 
   // Telemetry — live readings live in the main process, history in the backend
   getLatestTelemetry: () => ipcRenderer.invoke("telemetry:get-latest"),

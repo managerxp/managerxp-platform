@@ -65,13 +65,57 @@
   }
 
   function newDraft() {
-    return { customer: null, guestName: "", sessionId: null, lines: [], note: "" };
+    return {
+      customer: null, guestName: "", sessionId: null, lines: [], note: "",
+      /* The attached customer's standing gaming discount, if they have one.
+         Fetched when a customer is attached and cleared with them. This is
+         display only — the server resolves its own copy of this when the
+         bill is actually created and is the only figure that is ever
+         charged, but the ticket has to agree with it or the payment
+         collected here will not match what the bill turns out to cost. */
+      membership: { percent: 0, label: null }
+    };
+  }
+
+  /* What a gaming line actually costs this customer — the same arithmetic
+     billing.Controller.js applies when the bill is created, so what the
+     cashier collects and what the server charges are the same number. */
+  function lineUnitPrice(line) {
+    var pct = draft.membership.percent;
+    if (line.item_type !== "gaming" || !pct) return Number(line.unit_price);
+    return Number((Number(line.unit_price) * (1 - pct / 100)).toFixed(2));
   }
 
   function subtotal() {
     return draft.lines.reduce(function (sum, l) {
-      return sum + Number(l.quantity) * Number(l.unit_price);
+      return sum + Number(l.quantity) * lineUnitPrice(l);
     }, 0);
+  }
+
+  /* Pulls the attached customer's live membership so the ticket can show
+     their real gaming price rather than the listed one. Resets silently for a
+     guest or an unattached ticket — most tickets have no customer yet, and
+     that must not read as an error. */
+  function refreshMembership() {
+    if (!draft.customer || !draft.customer.customer_id) {
+      draft.membership = { percent: 0, label: null };
+      renderTicket();
+      return;
+    }
+    Store.customerMembership(draft.customer.customer_id)
+      .then(function (data) {
+        var current = data && data.current;
+        draft.membership = current && current.discount_percent > 0
+          ? { percent: Number(current.discount_percent), label: current.plan_name }
+          : { percent: 0, label: null };
+        renderTicket();
+      })
+      .catch(function () {
+        // A wallet/membership lookup failing must not block a sale — the
+        // server still applies the real discount when the bill is created.
+        draft.membership = { percent: 0, label: null };
+        renderTicket();
+      });
   }
 
   function discountAmount() {
@@ -349,11 +393,20 @@
     });
   }
 
-  /**
-   * Create the bill, apply the code, take the tenders. The bill is only
-   * written at this point, so an abandoned ticket never leaves a stray record.
+  /*
+   * Create the bill — or join the one already open for this session — and
+   * apply the discount code. Shared by "take payment" and "save for later":
+   * the only difference between the two is whether a payment follows
+   * immediately, and putting both through one path is what guarantees they
+   * agree on what the bill actually is.
+   *
+   * A ticket opened from a running session (Floor's "Add food & drink") is
+   * the case this exists for: the server now folds a second trip to the till
+   * for the same session onto its one open bill instead of refusing it, so
+   * ordering a snack, then another, then ending the session, is one growing
+   * bill throughout — not several that collide.
    */
-  function finalise(tenders) {
+  function raiseBill() {
     var payload = {
       customer_id: draft.customer ? draft.customer.customer_id : null,
       guest_name: draft.customer ? null : draft.guestName.trim(),
@@ -370,19 +423,25 @@
       })
     };
 
-    return Store.createBill(payload)
-      .then(function (r) {
-        bill = r.data;
-        if (!codeState || !codeState.code) return null;
-        return Store.applyBillCode(bill.bill_id, codeState.code.code).then(function (applied) {
-          // The code was checked a moment ago, but state can move — if the
-          // server refuses now, settle without it rather than fail the sale.
-          if (applied.success) bill = applied.data;
-          else UI.toast.warn("Code not applied", applied.message);
-          return null;
-        });
-      })
-      .then(function () {
+    return Store.createBill(payload).then(function (r) {
+      var raised = r.data;
+      if (!codeState || !codeState.code) return raised;
+      return Store.applyBillCode(raised.bill_id, codeState.code.code).then(function (applied) {
+        // The code was checked a moment ago, but state can move — if the
+        // server refuses now, raise the bill without it rather than fail
+        // the sale over a discount.
+        if (applied.success) return applied.data;
+        UI.toast.warn("Code not applied", applied.message);
+        return raised;
+      });
+    });
+  }
+
+  /** Create the bill, apply the code, take the tenders — pay now. */
+  function finalise(tenders) {
+    return raiseBill()
+      .then(function (raised) {
+        bill = raised;
         // Sequential, not parallel: each payment recalculates the bill, and
         // concurrent writes would race on the same row.
         return tenders.reduce(function (chain, t) {
@@ -406,9 +465,63 @@
       });
   }
 
+  /*
+   * Raise the bill and stop there — no tenders, no payment dialog.
+   *
+   * For a customer who is still playing, or still deciding: the food they
+   * ordered lands on their bill as owed, and it stays open until someone
+   * settles it — from here later, or from the Bills tab. Nothing about
+   * ordering a Coke should require the till to know how they intend to pay.
+   */
+  function saveForLater() {
+    if (!draft.customer && !draft.guestName.trim()) {
+      UI.toast.warn("Choose a customer, or give the guest a name");
+      return Promise.resolve(false);
+    }
+    return raiseBill()
+      .then(function (raised) {
+        UI.toast.ok(
+          "Added to bill " + raised.bill_number,
+          (raised.customer_name || "Guest") + " owes " + money(raised.balance_due) +
+            " XP — settle it any time from Bills."
+        );
+        draft = newDraft();
+        codeState = null;
+        renderTicket();
+        return true;
+      })
+      .catch(function (err) {
+        UI.toast.error("Could not save", err.message);
+        return false;
+      });
+  }
+
   /* ==========================================================================
      RECEIPT
      ========================================================================== */
+  /*
+   * Whether the ManagerXP mark prints on this café's receipts.
+   *
+   * Read once when the till opens and held for the life of the page — it
+   * changes about as often as the café's address, and a settled sale should
+   * not wait on a settings round trip before showing the receipt. Absent or
+   * unreadable means it prints: the mark is the default, and a failed lookup
+   * must not silently remove it.
+   */
+  var poweredByPref = null;
+
+  function poweredByOn() { return poweredByPref !== "false"; }
+
+  function loadPoweredByPref() {
+    return Store.getSettings("billing")
+      .then(function (rows) {
+        (rows || []).forEach(function (r) {
+          if (r.setting_key === "billing.receipt_powered_by") poweredByPref = String(r.setting_value);
+        });
+      })
+      .catch(function () { /* leave it on */ });
+  }
+
   function receiptDialog(settled) {
     var body = UI.el("div", { class: "col gap-3" });
     body.innerHTML =
@@ -444,6 +557,10 @@
           }).join("") +
         "</div>" +
         '<div class="receipt-foot">Thank you — see you next time</div>' +
+        // Same rule as the Billing page's receipt: printed unless the café
+        // has explicitly removed it.
+        (poweredByOn()
+          ? '<div class="receipt-powered">Powered by ManagerXP</div>' : "") +
       "</div>";
 
     return UI.modal({
@@ -502,7 +619,7 @@
       clear.addEventListener("click", function () {
         draft.customer = null;
         revalidateCode();
-        renderTicket();
+        refreshMembership();
       });
       picked.appendChild(clear);
       who.appendChild(picked);
@@ -545,11 +662,22 @@
     }
 
     draft.lines.forEach(function (line, i) {
+      var effective = lineUnitPrice(line);
+      var discounted = effective < Number(line.unit_price) - 0.001;
+
       var row = UI.el("div", { class: "kv row-between" });
       row.innerHTML =
         "<span style='min-width:0'>" +
           '<span style="display:block;font-size:13px;font-weight:600">' + UI.esc(line.description) + "</span>" +
-          '<span class="faint" style="font-size:10px">' + money(line.unit_price) + " each</span>" +
+          '<span class="faint" style="font-size:10px">' +
+            (discounted
+              /* Struck through, not silently swapped — a cashier who watches
+                 the listed price disappear without a mark left up would have
+                 no way to tell this was a discount and not a mistake. */
+              ? '<s>' + money(line.unit_price) + '</s> ' + money(effective) + " each · " +
+                UI.esc(draft.membership.label) + " -" + draft.membership.percent + "%"
+              : money(line.unit_price) + " each") +
+          "</span>" +
         "</span>";
 
       var controls = UI.el("span", { class: "row gap-2" });
@@ -561,7 +689,7 @@
       var plus = UI.el("button", { class: "btn btn-outline btn-sm btn-icon", text: "+" });
       var amount = UI.el("span", {
         style: { minWidth: "64px", textAlign: "right", fontWeight: "700", fontVariantNumeric: "tabular-nums" },
-        text: money(line.quantity * line.unit_price)
+        text: money(line.quantity * effective)
       });
       var del = UI.el("button", {
         class: "btn btn-ghost btn-sm btn-icon", html: Icon("trash", 12), "data-tip": "Remove"
@@ -625,6 +753,17 @@
     });
     settle.addEventListener("click", settleDialog);
     foot.appendChild(settle);
+
+    var saveLater = UI.el("button", {
+      class: "btn btn-ghost btn-lg btn-block",
+      html: Icon("clock", 17) + '<span class="btn-label">Save to bill — pay later</span>',
+      disabled: !draft.lines.length
+    });
+    saveLater.addEventListener("click", function () {
+      saveLater.disabled = true;
+      saveForLater().finally(function () { saveLater.disabled = !draft.lines.length; });
+    });
+    foot.appendChild(saveLater);
 
     var clearBtn = UI.el("button", {
       class: "btn btn-ghost btn-sm btn-block",
@@ -713,7 +852,7 @@
               draft.guestName = "";
               dialog.close();
               revalidateCode();
-              renderTicket();
+              refreshMembership();
             });
             results.appendChild(row);
           });
@@ -1262,7 +1401,11 @@
         }
         UI.toast.info("Adding to " + s.pc_name,
           (s.customer_name || "Guest") + "'s ticket — settles with their session.");
+        refreshMembership();
       }
+
+      // Fetched now so it is already known by the time a sale is settled.
+      loadPoweredByPref();
 
       var page = UI.el("div", { class: "page ct-page" });
       page.innerHTML =

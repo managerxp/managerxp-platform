@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, screen, Menu } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, Menu, globalShortcut, shell } = require("electron");
 const WebSocket = require("ws");
 const os = require("os");
 const path = require("path");
@@ -16,6 +16,53 @@ let TELEMETRY_INTERVAL = null; // Hardware sampling loop, started once registere
 let telemetryIntervalSeconds = 15; // Overridden by the console's TELEMETRY_CONFIG
 
 let win;
+
+/* Set only by the deliberate quit paths — a remote restart-client, or the app
+   shutting itself down. Everything else that asks the kiosk window to close
+   is refused. */
+let allowQuit = false;
+
+/* Whether the kiosk is currently sealed. True in normal trading; dropped only
+   by staff at the station using Ctrl+Alt+Shift+Q with the café's PIN. While it
+   is false the window behaves like an ordinary one — the point of unlocking is
+   that staff can actually use the machine.
+
+   A console-driven minimise deliberately leaves this true: that is a window
+   moved aside, not a station unlocked, so clicking it in the task bar seals
+   it straight back to full screen. */
+let kioskLocked = true;
+
+/*
+ * The café's staff-unlock PIN, pushed by the console when this station
+ * registers and cached on disk.
+ *
+ * Cached because the hatch it guards is for the case the console cannot be
+ * reached — a PIN only held in memory would be gone after the restart that
+ * often accompanies exactly that situation. Empty means no PIN has been set,
+ * and the hatch is refused rather than left open: a station that unlocks
+ * without a PIN is a station every customer can unlock.
+ */
+let staffUnlockPin = "";
+
+const unlockPinFile = () => path.join(app.getPath("userData"), "station-config.json");
+
+function loadUnlockPin() {
+  try {
+    const raw = fs.readFileSync(unlockPinFile(), "utf8");
+    const parsed = JSON.parse(raw);
+    staffUnlockPin = typeof parsed.staffUnlockPin === "string" ? parsed.staffUnlockPin : "";
+  } catch (e) {
+    staffUnlockPin = "";   // never configured, or unreadable — treat as unset
+  }
+}
+
+function persistUnlockPin(pin) {
+  try {
+    fs.writeFileSync(unlockPinFile(), JSON.stringify({ staffUnlockPin: pin }), "utf8");
+  } catch (e) {
+    log(`Could not cache the staff unlock PIN: ${e.message}`);
+  }
+}
 let statusBarWin;
 let timerCardWin;
 let wss; // WebSocket server instance (client listens)
@@ -29,6 +76,345 @@ let userInfo = null; // Store authenticated user profile
 let currentPage = 'welcome'; // Track current page
 let currentStatus = 'DISCONNECTED'; // Track current connection status
 let currentSession = null; // Session pushed by the admin console, for display
+let currentGames = [];     // Games this station may offer, pushed by the console
+
+/*
+ * Turn a game's launcher config into a concrete way to start it.
+ *
+ * Prefer the launcher's URL protocol with the game id — the launcher owns the
+ * sign-in and the store handles the rest. Riot, Rockstar and Custom titles have
+ * no useful public protocol here, so they run their executable; so does any
+ * title with an id its launcher does not key on. Returns null when there is
+ * nothing to launch with, so the caller can say so rather than run "".
+ */
+function buildGameLaunch(game) {
+  const id = game.app_id ? String(game.app_id).trim() : '';
+  const exe = game.executable ? String(game.executable).trim() : '';
+  if (id) {
+    switch (game.launcher) {
+      case 'Steam':      return { url: `steam://rungameid/${id}` };
+      case 'Epic':       return { url: `com.epicgames.launcher://apps/${id}?action=launch&silent=true` };
+      case 'EA':         return { url: `origin2://game/launch?offerIds=${id}` };
+      case 'Ubisoft':    return { url: `uplay://launch/${id}/0` };
+      case 'Battle.net': return { url: `battlenet://${id}` };
+      default: break;
+    }
+  }
+  if (exe) return { exe };
+  if (id && game.launcher === 'Steam') return { url: `steam://rungameid/${id}` };
+  return null;
+}
+
+/** Whole minutes left on the current session, or 0 if it is open-ended. */
+function sessionRemainingMinutes() {
+  if (!currentSession || currentSession.remaining_seconds == null) return 0;
+  return Math.max(0, Math.floor(Number(currentSession.remaining_seconds) / 60));
+}
+
+/* ==========================================================================
+   LAUNCHER DETECTION
+
+   Which game launchers this machine actually has. The console shows it against
+   each station ("Steam ✓ Riot ✓"), so staff can see at a glance why a title
+   will not start on PC-07 before a customer discovers it.
+
+   Deliberately a filesystem check rather than the installed-apps PowerShell
+   scan: that scan takes tens of seconds and is cached for minutes, while this
+   is a handful of existsSync calls and can run on every connect. A launcher
+   installed somewhere unusual is caught by the registry fallback below.
+   ========================================================================== */
+const PROGRAM_FILES = process.env['ProgramFiles'] || 'C:\\Program Files';
+const PROGRAM_FILES_X86 = process.env['ProgramFiles(x86)'] || 'C:\\Program Files (x86)';
+const LOCAL_APPDATA = process.env['LOCALAPPDATA'] || '';
+
+/* Candidate executables per launcher, most likely first. The first that exists
+   wins and its folder is reported, which is also what an operator needs when
+   filling in a game's executable path. */
+const LAUNCHER_PATHS = {
+  Steam: [
+    path.join(PROGRAM_FILES_X86, 'Steam', 'steam.exe'),
+    path.join(PROGRAM_FILES, 'Steam', 'steam.exe')
+  ],
+  Riot: [
+    path.join(PROGRAM_FILES, 'Riot Games', 'Riot Client', 'RiotClientServices.exe'),
+    path.join(PROGRAM_FILES_X86, 'Riot Games', 'Riot Client', 'RiotClientServices.exe'),
+    'C:\\Riot Games\\Riot Client\\RiotClientServices.exe'
+  ],
+  EA: [
+    path.join(PROGRAM_FILES, 'Electronic Arts', 'EA Desktop', 'EA Desktop', 'EADesktop.exe'),
+    path.join(PROGRAM_FILES_X86, 'Origin', 'Origin.exe')
+  ],
+  Epic: [
+    path.join(PROGRAM_FILES_X86, 'Epic Games', 'Launcher', 'Portal', 'Binaries', 'Win32', 'EpicGamesLauncher.exe'),
+    path.join(PROGRAM_FILES, 'Epic Games', 'Launcher', 'Portal', 'Binaries', 'Win64', 'EpicGamesLauncher.exe')
+  ],
+  Ubisoft: [
+    path.join(PROGRAM_FILES_X86, 'Ubisoft', 'Ubisoft Game Launcher', 'upc.exe'),
+    path.join(PROGRAM_FILES, 'Ubisoft', 'Ubisoft Game Launcher', 'upc.exe')
+  ],
+  'Battle.net': [
+    path.join(PROGRAM_FILES_X86, 'Battle.net', 'Battle.net.exe'),
+    path.join(PROGRAM_FILES, 'Battle.net', 'Battle.net.exe')
+  ],
+  Rockstar: [
+    path.join(PROGRAM_FILES, 'Rockstar Games', 'Launcher', 'Launcher.exe'),
+    path.join(PROGRAM_FILES_X86, 'Rockstar Games', 'Launcher', 'Launcher.exe')
+  ]
+};
+
+/* For the launchers people most often move to another drive, the registry
+   knows where they went. Only consulted when no known path matched. */
+const LAUNCHER_REGISTRY = {
+  Steam: { key: 'HKCU\\Software\\Valve\\Steam', value: 'SteamPath', exe: 'steam.exe' },
+  Epic: { key: 'HKLM\\SOFTWARE\\WOW6432Node\\Epic Games\\EpicGamesLauncher', value: 'AppDataPath', exe: null }
+};
+
+/** Ask the Windows registry for one value. Resolves null on any failure. */
+function readRegistry(key, value) {
+  return new Promise((resolve) => {
+    exec(`reg query "${key}" /v ${value}`, { windowsHide: true, timeout: 4000 }, (err, stdout) => {
+      if (err || !stdout) return resolve(null);
+      // "    SteamPath    REG_SZ    C:/Program Files (x86)/Steam"
+      const m = stdout.match(new RegExp(value + '\\s+REG_\\w+\\s+(.+)'));
+      resolve(m ? m[1].trim() : null);
+    });
+  });
+}
+
+/**
+ * What launchers are on this machine.
+ * Returns { Steam: { installed, path }, Riot: {...}, ... } for every known
+ * launcher — including the absent ones, so the console can show "not
+ * installed" rather than an ambiguous blank.
+ */
+async function detectLaunchers() {
+  const result = {};
+
+  for (const [name, candidates] of Object.entries(LAUNCHER_PATHS)) {
+    let found = null;
+    for (const candidate of candidates) {
+      try {
+        if (candidate && fs.existsSync(candidate)) { found = candidate; break; }
+      } catch (e) { /* an unreadable path is simply not a match */ }
+    }
+    result[name] = { installed: !!found, path: found };
+  }
+
+  // Registry fallback for anything the known paths missed.
+  for (const [name, reg] of Object.entries(LAUNCHER_REGISTRY)) {
+    if (result[name] && result[name].installed) continue;
+    const base = await readRegistry(reg.key, reg.value);
+    if (!base) continue;
+    const normalized = base.replace(/\//g, '\\');
+    const exe = reg.exe ? path.join(normalized, reg.exe) : normalized;
+    try {
+      if (fs.existsSync(exe)) result[name] = { installed: true, path: exe };
+    } catch (e) { /* ignore */ }
+  }
+
+  return result;
+}
+
+/* ==========================================================================
+   ACCOUNT CLEANUP
+
+   What a station does when a session ends. The whole point is that the next
+   customer must never reach the previous customer's Steam, Riot or EA account.
+
+   Signing a launcher out means two things, in order: stop the launcher (its
+   files are locked while it runs, and a live client would just rewrite them),
+   then clear the specific artefact that remembers the login. Each recipe below
+   names exact files — never a whole folder — because "delete the launcher's
+   directory" is how a café ends up reinstalling Steam on forty machines.
+
+   Every step is best-effort and independently guarded: a launcher that is not
+   installed, a file that is not there, a permission that is refused, all just
+   log and move on. A failed sign-out must never leave the station stuck.
+   ========================================================================== */
+const APPDATA = process.env['APPDATA'] || '';
+
+/*
+ * Per launcher: the processes to stop, the files whose removal forgets the
+ * login, and any registry value to blank.
+ *
+ * `paths` are resolved lazily because some depend on where the launcher was
+ * actually found (Steam's config lives beside steam.exe, which may be on D:).
+ */
+const SIGNOUT_RECIPES = {
+  Steam: {
+    processes: ['steam.exe', 'steamwebhelper.exe'],
+    // loginusers.vdf holds the remembered accounts; the ssfn* files are the
+    // saved second-factor tokens that let a machine skip Steam Guard.
+    files: (installPath) => {
+      const root = installPath ? path.dirname(installPath) : path.join(PROGRAM_FILES_X86, 'Steam');
+      return [path.join(root, 'config', 'loginusers.vdf')];
+    },
+    registry: [{ key: 'HKCU\\Software\\Valve\\Steam', value: 'AutoLoginUser' }]
+  },
+  Riot: {
+    processes: ['RiotClientServices.exe', 'RiotClientUx.exe', 'RiotClientUxRender.exe'],
+    files: () => (LOCAL_APPDATA
+      ? [path.join(LOCAL_APPDATA, 'Riot Games', 'Riot Client', 'Data', 'RiotGamesPrivateSettings.yaml')]
+      : [])
+  },
+  EA: {
+    processes: ['EADesktop.exe', 'EABackgroundService.exe', 'Origin.exe'],
+    files: () => (LOCAL_APPDATA
+      ? [path.join(LOCAL_APPDATA, 'Electronic Arts', 'EA Desktop', 'cookiejar')]
+      : [])
+  },
+  Epic: {
+    processes: ['EpicGamesLauncher.exe', 'EpicWebHelper.exe'],
+    files: () => (LOCAL_APPDATA
+      ? [path.join(LOCAL_APPDATA, 'EpicGamesLauncher', 'Saved', 'Config', 'Windows', 'GameUserSettings.ini')]
+      : [])
+  },
+  Ubisoft: {
+    processes: ['upc.exe', 'UbisoftConnect.exe'],
+    files: () => (LOCAL_APPDATA
+      ? [path.join(LOCAL_APPDATA, 'Ubisoft Game Launcher', 'user.dat')]
+      : [])
+  },
+  'Battle.net': {
+    processes: ['Battle.net.exe', 'Agent.exe'],
+    files: () => (APPDATA ? [path.join(APPDATA, 'Battle.net', 'Battle.net.config')] : [])
+  },
+  Rockstar: {
+    processes: ['Launcher.exe', 'RockstarService.exe'],
+    files: () => (LOCAL_APPDATA
+      ? [path.join(LOCAL_APPDATA, 'Rockstar Games', 'Launcher', 'settings_user.dat')]
+      : [])
+  }
+};
+
+/** taskkill one image name. Resolves either way — "not running" is a success. */
+function killProcess(imageName) {
+  return new Promise((resolve) => {
+    exec(`taskkill /F /IM "${imageName}" /T`, { windowsHide: true, timeout: 10000 }, () => resolve());
+  });
+}
+
+/** Remove one file if it is there. Never throws. */
+function removeIfPresent(file) {
+  try {
+    if (file && fs.existsSync(file)) {
+      fs.rmSync(file, { force: true });
+      log(`  cleared ${file}`);
+      return true;
+    }
+  } catch (e) {
+    log(`  could not clear ${file}: ${e.message}`);
+  }
+  return false;
+}
+
+/** Blank a registry value (used to forget Steam's auto-login user). */
+function blankRegistryValue(key, value) {
+  return new Promise((resolve) => {
+    exec(`reg add "${key}" /v ${value} /t REG_SZ /d "" /f`,
+      { windowsHide: true, timeout: 5000 }, () => resolve());
+  });
+}
+
+/**
+ * Sign one launcher out on this machine.
+ * Stops it first, then clears what remembers the account.
+ */
+async function signOutLauncher(name, installPath) {
+  const recipe = SIGNOUT_RECIPES[name];
+  if (!recipe) return;
+  log(`Signing out ${name}…`);
+
+  for (const proc of recipe.processes) await killProcess(proc);
+  // A moment for file handles to be released after the kill.
+  await new Promise((r) => setTimeout(r, 700));
+
+  let files = [];
+  try { files = recipe.files(installPath) || []; } catch (e) { files = []; }
+  files.forEach(removeIfPresent);
+
+  for (const reg of (recipe.registry || [])) await blankRegistryValue(reg.key, reg.value);
+}
+
+/**
+ * Run the café's end-of-session cleanup on this station.
+ *
+ * `config` is the café's session.cleanup setting; `games` are the titles that
+ * were running, so their processes can be stopped by name.
+ */
+async function runSessionCleanup(config, games) {
+  const cfg = config || {};
+  log('Session cleanup starting…');
+
+  /* 1. The game itself. Process names come from the library, so a title whose
+        window name differs from its executable is still caught. */
+  if (cfg.close_game !== false) {
+    const names = new Set();
+    (games || []).forEach((g) => { if (g && g.process_name) names.add(g.process_name); });
+    runningProcesses.forEach((info, appName) => {
+      if (info && info.appPath) names.add(path.basename(info.appPath));
+      else if (appName) names.add(appName.endsWith('.exe') ? appName : `${appName}.exe`);
+    });
+    for (const n of names) await killProcess(n);
+    // Close any timer cards the launches left behind.
+    runningProcesses.forEach((info) => {
+      if (info.timerCardWin && !info.timerCardWin.isDestroyed()) info.timerCardWin.close();
+    });
+    runningProcesses.clear();
+    if (names.size) log(`  closed ${names.size} game process(es)`);
+  }
+
+  /* 2. Sign out of the launchers the café asked for. Done before "close
+        launcher" because signing out stops the launcher anyway. */
+  const signout = cfg.signout || {};
+  const wanted = Object.keys(signout).filter((k) => signout[k]);
+  if (wanted.length) {
+    const installed = await detectLaunchers();
+    for (const name of wanted) {
+      const info = installed[name];
+      if (!info || !info.installed) { log(`  ${name} not installed, nothing to sign out`); continue; }
+      await signOutLauncher(name, info.path);
+    }
+  }
+
+  /* 3. Close any launcher still running, for cafés that want the desktop clean
+        without clearing credentials. */
+  if (cfg.close_launcher) {
+    for (const [name, recipe] of Object.entries(SIGNOUT_RECIPES)) {
+      if (signout[name]) continue;               // already stopped by the sign-out
+      for (const proc of recipe.processes) await killProcess(proc);
+    }
+    log('  launchers closed');
+  }
+
+  /* 4. Forget the customer on this station. The café server owns the session
+        record; this only clears what the station itself is showing. */
+  if (cfg.clear_session !== false) {
+    currentSession = null;
+    currentGames = [];
+    sendToWindow(win, 'session-state', null);
+    sendToWindow(win, 'games-list', []);
+    log('  station session cleared');
+  }
+
+  log('Session cleanup done.');
+}
+
+/** Detect and report this station's launchers to the console. */
+async function reportLaunchers(ws) {
+  try {
+    const launchers = await detectLaunchers();
+    const on = Object.keys(launchers).filter((k) => launchers[k].installed);
+    log(`Launchers detected: ${on.length ? on.join(', ') : 'none'}`);
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'LAUNCHERS', simId: SIM_ID, launchers }));
+    }
+    return launchers;
+  } catch (e) {
+    log(`Launcher detection failed: ${e.message}`);
+    return {};
+  }
+}
 
 function createWindow() {
   const { width } = screen.getPrimaryDisplay().workAreaSize;
@@ -71,6 +457,29 @@ function createWindow() {
   ipcMain.on('timer-expired', (event, appName) => {
     log(`Timer expired for ${appName}, closing application...`);
     closeApplication(appName);
+  });
+
+  /* The player tapped Extend on the timer card. Relay it to the console, which
+     holds the session and the staff token; it extends the session and pushes
+     an EXTEND_TIMER back so the card's clock grows. Fire-and-forget: if the
+     console is not connected, the tap simply does nothing rather than erroring
+     on the station. */
+  ipcMain.on('request-extend', () => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "EXTEND_REQUEST", simId: SIM_ID, blocks: 1 }));
+      log("Sent EXTEND_REQUEST to console");
+    } else {
+      log("Extend requested but console not connected");
+    }
+  });
+
+  /* The block ran out and the game was left running. Tell the console so it can
+     flag the station (over time, possibly low balance) for staff to settle. */
+  ipcMain.on('session-overtime', (event, appName) => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "SESSION_OVERTIME", simId: SIM_ID, appName: appName || null }));
+      log("Sent SESSION_OVERTIME to console");
+    }
   });
 
   // IPC handler for page navigation
@@ -116,40 +525,114 @@ function createWindow() {
     return currentSession;
   });
 
-  // ---- Window controls ----
-  // The client runs full screen, so staff need a visible way out that does not
-  // depend on knowing the F11 shortcut. This is presentation only and adds no
-  // kiosk lockdown of its own.
-  ipcMain.on('window:toggle-fullscreen', () => {
-    if (!alive(win)) return;
-    win.setFullScreen(!win.isFullScreen());
+  ipcMain.handle('get-games', async () => currentGames);
+
+  /*
+   * Launch a game the customer chose, through its launcher.
+   *
+   * Every store has its own way of being told "start this title". The reliable
+   * one across Steam, Epic, EA, Ubisoft and Battle.net is the launcher's URL
+   * protocol with the game's id — the launcher signs the customer in if needed
+   * and starts the game, and CafeXP never sees a launcher password. Riot,
+   * Rockstar and Custom titles, and anything with no id, fall back to running
+   * the executable directly.
+   *
+   * CafeXP hands off and steps back: it starts the launcher, the customer signs
+   * into their own account. No credential is stored, passed, or logged here.
+   */
+  ipcMain.on('launch-game', (event, game) => {
+    if (!game || typeof game !== 'object') return;
+    const plan = buildGameLaunch(game);
+    if (!plan) {
+      log(`No launch config for ${game.name}`);
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'This game has no launch configuration yet.' });
+      return;
+    }
+
+    sendToWindow(win, 'app-launching', { appName: game.name });
+    log(`Launching ${game.name} via ${game.launcher}${plan.url ? ' (protocol)' : ' (exe)'}`);
+
+    if (plan.url) {
+      // Protocol hand-off to the launcher. openExternal resolves once the OS
+      // has accepted the URL, not when the game is up — which is all we need.
+      shell.openExternal(plan.url).catch((err) => {
+        log(`Launch failed for ${game.name}: ${err.message}`);
+        sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'Could not reach the launcher.' });
+      });
+    } else if (plan.exe) {
+      const cmd = game.launch_args ? `"${plan.exe}" ${game.launch_args}` : `"${plan.exe}"`;
+      const child = exec(cmd, (err) => {
+        if (err) {
+          log(`Launch failed for ${game.name}: ${err.message}`);
+          sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'The game could not be started.' });
+        }
+      });
+      // Track the process under the game's name so the existing close path can
+      // find it, and attach a timer card if the session is timed.
+      if (child.pid) {
+        const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
+        const mins = sessionRemainingMinutes();
+        if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins);
+        runningProcesses.set(game.name, info);
+      }
+    }
   });
 
-  ipcMain.on('window:minimize', () => {
-    if (alive(win)) win.minimize();
-  });
+  /* ---- Window controls ----
+   *
+   * Gated on the kiosk lock rather than removed.
+   *
+   * While a station is sealed each of these is a way onto the Windows
+   * desktop, so each is refused. Once staff have unlocked it with the PIN
+   * they are working on an ordinary machine and need ordinary controls, so
+   * the same calls start working.
+   *
+   * The check lives here, in the main process, and not in the page: a control
+   * the renderer merely hides is still a control the renderer can call.
+   */
+  const ifUnlocked = (what, run) => () => {
+    if (kioskLocked) {
+      log(`Ignored a request to ${what}: this station is sealed. Unlock it with Ctrl+Alt+Shift+Q.`);
+      return;
+    }
+    if (alive(win)) run();
+  };
 
-  ipcMain.handle('window:is-fullscreen', async () => {
-    return alive(win) ? win.isFullScreen() : false;
-  });
-
-  // With the OS frame gone, maximise/restore and close have to come from here.
-  ipcMain.on('window:toggle-maximize', () => {
-    if (!alive(win)) return;
-    // Leaving full screen first, otherwise maximise is a no-op and the button
-    // looks broken to whoever pressed it.
+  /*
+   * Going back to full screen means going back to being a kiosk.
+   *
+   * For this app the two are the same state — full screen is how it trades,
+   * and an unlocked full-screen window would be a station that looks sealed
+   * to the customer sitting at it while every escape still works. So the
+   * button that returns it to full screen re-seals it, which also puts the
+   * window controls away and is the quickest way for staff to hand a station
+   * back after working on it.
+   *
+   * Leaving full screen while unlocked stays an ordinary un-maximise.
+   */
+  ipcMain.on('window:toggle-fullscreen', ifUnlocked('leave full screen', () => {
+    if (win.isFullScreen()) { win.setFullScreen(false); return; }
+    kioskLocked = true;
+    win.setKiosk(true);
+    win.setFullScreen(true);
+    win.focus();
+    publishKioskState();
+    log('Kiosk re-sealed by the full-screen control.');
+  }));
+  ipcMain.on('window:minimize', ifUnlocked('minimise', () => win.minimize()));
+  ipcMain.on('window:toggle-maximize', ifUnlocked('un-maximise', () => {
     if (win.isFullScreen()) { win.setFullScreen(false); return; }
     if (win.isMaximized()) win.unmaximize();
     else win.maximize();
-  });
+  }));
+  ipcMain.on('window:close', ifUnlocked('close the window', () => {
+    allowQuit = true;      // unlocked and asked for deliberately by staff
+    win.close();
+  }));
 
-  ipcMain.on('window:close', () => {
-    if (alive(win)) win.close();
-  });
-
-  ipcMain.handle('window:is-maximized', async () => {
-    return alive(win) ? win.isMaximized() : false;
-  });
+  ipcMain.handle('window:is-fullscreen', async () => alive(win) ? win.isFullScreen() : true);
+  ipcMain.handle('window:is-maximized', async () => alive(win) ? win.isMaximized() : true);
+  ipcMain.handle('window:is-kiosk-locked', async () => kioskLocked);
 
   /*
    * Payment checkout.
@@ -220,30 +703,137 @@ function createWindow() {
   // The customer portal is a full-screen experience — no title bar, no chrome.
   win = new BrowserWindow({
     fullscreen: true,
-    // Frameless: the window was full screen but still framed, so the moment
-    // anyone left full screen Windows put its own white title bar and white
-    // min/max/close buttons on top of a black-and-red portal. The controls in
-    // ui/portal.css replace them.
+    /*
+     * Kiosk mode.
+     *
+     * This window is what a paying customer sits in front of, on a machine
+     * the café owns. Everything that could put them behind it — minimising,
+     * un-maximising, closing, the OS frame — is refused at the window level
+     * rather than merely hidden, because a control that is only hidden is
+     * still reachable by the shortcut that drives it.
+     *
+     * Staff are not locked out: the console drives this client remotely
+     * (restart-client, lock, sign out, shut down) over the same socket it
+     * already uses, so the way back in is the admin side, not a key combo a
+     * customer could stumble onto.
+     */
+    kiosk: true,
     frame: false,
+    closable: false,
+    minimizable: false,
+    maximizable: false,
+    autoHideMenuBar: true,
     minWidth: 1024,
     minHeight: 700,
     backgroundColor: '#050509', // matches the portal background, avoids a white flash
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      // No dev tools on a customer machine.
+      devTools: false
     }
   });
 
-  // F11 and Escape both leave full screen, alongside the on-screen control.
+  /*
+   * Every keyboard route out of the kiosk, refused.
+   *
+   * F11 and Escape used to toggle full screen here on purpose — that was the
+   * staff escape before the console could drive this client remotely. On a
+   * customer-facing machine they are exactly the shortcuts that put someone
+   * on the Windows desktop, so they are now swallowed along with the reload,
+   * dev-tools and window-closing combinations.
+   *
+   * Alt+F4 and Ctrl+W are caught here *and* refused again by the window's
+   * close handler below: this listener only sees keys the page receives, and
+   * defence in one place is not defence.
+   */
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
-    if (input.key === 'F11') {
-      win.setFullScreen(!win.isFullScreen());
+
+    const key = String(input.key || '').toLowerCase();
+
+    /*
+     * The staff way out: Ctrl+Alt+Shift+Q.
+     *
+     * Deliberately a four-key combination with a modifier set nothing else in
+     * the app uses. A customer will not find it by pressing things, and it
+     * cannot be hit by accident on the way to typing an email address — which
+     * is the bar an escape hatch on a kiosk has to clear.
+     *
+     * This exists for the case the remote route cannot cover: the café's
+     * network or the console is down, and somebody physically at the station
+     * needs the desktop. It toggles, so the same keys put the kiosk back
+     * rather than leaving the station unlocked until it is rebooted.
+     */
+    /* `code` is the physical key, `key` is the character it produced. With
+       Ctrl+Alt held Windows applies AltGr behaviour on several layouts, so
+       the character can be something other than "q" while the key under the
+       finger is unchanged. Matching the physical key makes the combination
+       work the same on every keyboard. */
+    if (input.control && input.alt && input.shift &&
+        (input.code === 'KeyQ' || key === 'q')) {
       event.preventDefault();
-    } else if (input.key === 'Escape' && win.isFullScreen()) {
-      win.setFullScreen(false);
+      toggleKioskLock('the station keyboard');
+      return;
+    }
+    const blockedAlone = ['f11', 'f12', 'escape'];
+    const blocked = !!(
+      blockedAlone.includes(key) ||
+      // Reload, close, print, dev tools, and the "open a new window" family.
+      ((input.control || input.meta) && ['r', 'w', 'n', 't', 'p', 'q'].includes(key)) ||
+      ((input.control || input.meta) && input.shift && ['i', 'j', 'c', 'r'].includes(key)) ||
+      (input.alt && ['f4', 'tab'].includes(key))
+    );
+
+    /* Only while sealed. Once staff have unlocked the station these are the
+       very keys they need — refusing Alt+Tab on a machine somebody is trying
+       to install a driver on would make the unlock pointless. */
+    if (blocked && kioskLocked) event.preventDefault();
+  });
+
+  /*
+   * Coming back from minimised puts the kiosk back exactly as it was.
+   *
+   * A minimised window restores to whatever size it had before, and the
+   * minimise that got us here had to leave kiosk mode first — Electron keeps
+   * a kiosk window on top, so it would otherwise spring straight back. The
+   * result was a client sitting in a small floating window with the desktop
+   * visible around it the moment anybody clicked it in the task bar.
+   *
+   * Restoring is the signal that whoever minimised it is finished, so the
+   * seal goes back on. Staff who still want the desktop minimise it again;
+   * staff who want it genuinely unlocked use Ctrl+Alt+Shift+Q, which sets
+   * kioskLocked false and is deliberately left alone here.
+   */
+  /* While the PIN prompt is up, the kiosk must not re-assert itself. It is an
+     always-on-top window sitting over an always-on-top window: each raise
+     would pull focus back from the other and the pair would strobe. */
+  const reseal = () => {
+    if (!kioskLocked || alive(pinWin)) return;
+    if (win.isFullScreen()) return;   // already sealed — do not re-apply
+    win.setKiosk(true);
+    win.setFullScreen(true);
+  };
+
+  win.on('restore', reseal);
+  /* Same for a plain show, which is what a task-bar click raises when the
+     window was hidden rather than minimised. */
+  win.on('show', reseal);
+
+  /*
+   * The window cannot be closed from the machine it runs on.
+   *
+   * `closable: false` already removes the frame's own control, but a close
+   * can still arrive from Alt+F4 or the task bar, and Electron delivers that
+   * as an ordinary close event. Quitting deliberately — a remote
+   * restart-client — goes through app.exit(), which does not raise this at
+   * all, so the legitimate path is unaffected.
+   */
+  win.on('close', (event) => {
+    if (!allowQuit && kioskLocked) {
       event.preventDefault();
+      log('Close refused: the client is in kiosk mode. Use the console to restart or stop it.');
     }
   });
 
@@ -281,6 +871,7 @@ function navigateToPage(page) {
   const pages = {
     'welcome': 'welcome.html',
     'login': 'login.html',
+    'forgot-password': 'forgot-password.html',
     'register': 'register.html',
     'userdashboard': 'userdashboard.html',
     'dashboard': 'index.html',
@@ -315,10 +906,27 @@ function log(message) {
 }
 
 function updateStatus(status) {
+  /*
+   * Only tell the windows when it actually changed.
+   *
+   * The console opens a fresh socket on every heartbeat sweep, so this used
+   * to be called with "CONNECTED" over and over. The status bar shows itself
+   * on each message and hides three seconds later, which turned a healthy
+   * link into a strip flashing in and out across the top of the welcome
+   * screen — the flicker, rather than anything the page was drawing.
+   *
+   * The navigation below still runs on every call: it is guarded by the page
+   * the client is currently on, not by the message being new, and a
+   * reconnect that finds the client stranded on the wrong page should still
+   * move it.
+   */
+  const changed = currentStatus !== status;
   currentStatus = status; // Update current status
 
-  sendToWindow(win, "status", status);
-  sendToWindow(statusBarWin, "status", status);
+  if (changed) {
+    sendToWindow(win, "status", status);
+    sendToWindow(statusBarWin, "status", status);
+  }
   
   // Navigate to welcome page when connected
   if (status === "CONNECTED" && currentPage === 'status') {
@@ -454,11 +1062,14 @@ function getSystemMacAddress() {
 function createTimerCard(appName, timerMinutes) {
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
+  /* Sized to the pill, not to a panel. The old 190×130 window was mostly
+     empty space with a blurred background, which is what read as a strip
+     across the corner of the game. */
   const timerCard = new BrowserWindow({
-    width: 190,
-    height: 130,
-    x: width - 210,  // 20px from right edge
-    y: 20,           // 20px from top
+    width: 186,
+    height: 48,
+    x: width - 202,  // 16px from the right edge
+    y: 16,           // 16px from the top
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -596,6 +1207,205 @@ const POWER_ACTIONS = {
   }
 };
 
+/*
+ * The staff lock toggle, reached two ways.
+ *
+ * `before-input-event` only fires while the kiosk window itself has focus,
+ * which is the normal case on a station but not the only one — a café that
+ * runs the console on the same machine, or any moment the client has been
+ * minimised, leaves focus somewhere else entirely and the combination looked
+ * dead. So the same toggle is also registered as a system-wide shortcut, and
+ * both routes land here rather than each growing their own copy of the rules.
+ */
+/*
+ * Put the window's own capabilities in step with the lock.
+ *
+ * closable/minimizable/maximizable are set false when the window is built, and
+ * they are enforced by the OS rather than by anything this code checks — so
+ * lifting the kiosk flag alone left Close and Minimise dead even after staff
+ * had unlocked the station with the PIN. The buttons appeared and did nothing.
+ *
+ * They are toggled with the lock rather than left permanently on, because they
+ * are also what removes the frame's own controls for the customer.
+ */
+function applyKioskCapabilities() {
+  if (!alive(win)) return;
+  const unlocked = !kioskLocked;
+  try {
+    win.setClosable(unlocked);
+    win.setMinimizable(unlocked);
+    win.setMaximizable(unlocked);
+  } catch (e) {
+    log(`Could not change the window's capabilities: ${e.message}`);
+  }
+}
+
+/* Tell the page whether it is sealed, so the on-screen window controls can
+   appear only when they would actually do something. */
+function publishKioskState() {
+  applyKioskCapabilities();
+  sendToWindow(win, 'window:kiosk-state', kioskLocked);
+}
+
+function toggleKioskLock(source) {
+  /* Console too, not just the in-app log: when staff are chasing "the
+     shortcut does nothing", the answer is usually in whether this line
+     appears at all. */
+  console.log(`[Kiosk] Toggle requested from ${source} (currently ${kioskLocked ? 'sealed' : 'unlocked'}).`);
+  if (!alive(win)) return;
+
+  // Re-sealing needs no PIN. Locking a station down is never the risky
+  // direction, and asking for one would only tempt staff to leave it open.
+  if (!kioskLocked) {
+    kioskLocked = true;
+    win.setKiosk(true);
+    win.setFullScreen(true);
+    win.focus();
+    publishKioskState();
+    log(`Kiosk re-locked from ${source}.`);
+    return;
+  }
+
+  if (!staffUnlockPin) {
+    log(`Unlock requested from ${source}, but no staff PIN is set for this café.`);
+    promptStaffPin(null);
+    return;
+  }
+  log(`Unlock requested from ${source} — asking for the staff PIN.`);
+  promptStaffPin(staffUnlockPin);
+}
+
+/*
+ * Ask for the staff PIN before unlocking the kiosk.
+ *
+ * Its own always-on-top window, because the thing it sits over is a kiosk
+ * window that Electron deliberately keeps above everything else — a prompt
+ * drawn inside the page would be reachable by the very customer the PIN is
+ * meant to keep out, and one drawn in an ordinary window would be hidden
+ * behind the kiosk.
+ *
+ * The PIN is compared here in the main process. It is never sent to the page:
+ * the renderer only reports what was typed, and gets back nothing but whether
+ * the window should close.
+ *
+ * `expected` of null means no PIN is configured for this café — the prompt
+ * still appears, and explains why it cannot let anybody through, rather than
+ * leaving staff pressing a combination that silently does nothing.
+ */
+let pinWin = null;
+
+function promptStaffPin(expected) {
+  if (alive(pinWin)) { pinWin.focus(); return; }
+
+  pinWin = new BrowserWindow({
+    width: 340,
+    height: 260,
+    resizable: false,
+    minimizable: false,
+    maximizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    frame: false,
+    backgroundColor: '#0b0b0f',
+    parent: alive(win) ? win : undefined,
+    modal: false,
+    webPreferences: {
+      preload: path.join(__dirname, "pin-preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      devTools: false
+    }
+  });
+  pinWin.setAlwaysOnTop(true, 'screen-saver');
+
+  const unset = expected === null;
+  const body = unset
+    ? `<p class="msg">No staff PIN has been set for this caf&eacute;.</p>
+       <p class="hint">Set one in the admin console under Settings, then try again.
+       Staff can still minimise this station from the console.</p>
+       <button id="cancel" class="btn">Close</button>`
+    : `<p class="msg">Staff PIN</p>
+       <input id="pin" type="password" inputmode="numeric" maxlength="4" autofocus />
+       <p class="hint" id="err">&nbsp;</p>
+       <div class="row"><button id="cancel" class="btn">Cancel</button>
+       <button id="ok" class="btn primary">Unlock</button></div>`;
+
+  const html = `<!doctype html><meta charset="utf-8"><style>
+    *{box-sizing:border-box} body{margin:0;height:100vh;display:flex;align-items:center;
+      justify-content:center;background:#0b0b0f;color:#f4f4f7;
+      font-family:'Segoe UI',system-ui,sans-serif;border:1px solid #2a2a35;border-radius:10px}
+    .card{padding:22px;width:100%;text-align:center}
+    .msg{margin:0 0 14px;font-size:14px;font-weight:600}
+    .hint{margin:10px 0 0;font-size:11px;color:#8a8a9a;line-height:1.5}
+    input{width:150px;padding:10px;font-size:24px;text-align:center;letter-spacing:12px;
+      background:#15151d;border:1px solid #2a2a35;border-radius:8px;color:#fff;outline:none}
+    input:focus{border-color:#ff1744}
+    .row{display:flex;gap:8px;justify-content:center;margin-top:16px}
+    .btn{padding:8px 16px;font-size:12px;border-radius:7px;border:1px solid #2a2a35;
+      background:transparent;color:#c9c9d4;cursor:pointer}
+    .btn.primary{background:#ff1744;border-color:#ff1744;color:#fff;font-weight:600}
+    .err{color:#ff5a6e}
+  </style><div class="card">${body}</div>
+  <script>
+    document.getElementById('cancel').addEventListener('click', () => window.staffPin.cancel());
+    const pin = document.getElementById('pin');
+    if (pin) {
+      const err = document.getElementById('err');
+      const submit = () => {
+        if (pin.value.length !== 4) return;
+        window.staffPin.try(pin.value).then((ok) => {
+          if (ok) return;   // main closes the window on success
+          err.textContent = 'Incorrect PIN'; err.className = 'hint err';
+          pin.value = ''; pin.focus();
+        });
+      };
+      document.getElementById('ok').addEventListener('click', submit);
+      pin.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+      pin.addEventListener('input', () => {
+        pin.value = pin.value.replace(/\\D/g, '');
+        // Four digits is the whole PIN, so there is nothing to press Enter for.
+        if (pin.value.length === 4) submit();
+      });
+      setTimeout(() => pin.focus(), 50);
+    }
+  <\/script>`;
+
+  pinWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
+
+  pinWin.on('closed', () => { pinWin = null; if (alive(win)) win.focus(); });
+}
+
+/*
+ * Checking the PIN.
+ *
+ * Registered once, at module scope, rather than per prompt — re-registering
+ * an ipcMain handler throws, so doing it inside promptStaffPin would fail the
+ * second time staff ever used the hatch.
+ *
+ * A wrong PIN is answered with a plain false and nothing else: no count of
+ * how many digits matched, no timing difference worth measuring over four
+ * digits typed by hand.
+ */
+ipcMain.handle('staff-pin:try', async (_event, typed) => {
+  if (!staffUnlockPin) return false;
+  if (String(typed) !== String(staffUnlockPin)) {
+    log('Staff unlock refused: wrong PIN entered at the station.');
+    return false;
+  }
+
+  kioskLocked = false;
+  if (alive(win)) {
+    win.setKiosk(false);
+    win.setFullScreen(false);
+  }
+  publishKioskState();
+  log('Kiosk UNLOCKED at the station with the staff PIN — the desktop is reachable.');
+  if (alive(pinWin)) pinWin.close();
+  return true;
+});
+
+ipcMain.on('staff-pin:cancel', () => { if (alive(pinWin)) pinWin.close(); });
+
 function runPowerAction(ws, action, delaySeconds) {
   const reply = (ok, message) => {
     if (ws && ws.readyState === WebSocket.OPEN) {
@@ -608,9 +1418,53 @@ function runPowerAction(ws, action, delaySeconds) {
 
   if (action === "restart-client") {
     reply(true, "Restarting the CafeXP client");
+    // The console asked for this, so the kiosk's close guard stands aside.
+    allowQuit = true;
     // Relaunch, then quit — Electron starts the new instance as this one goes.
     app.relaunch();
     setTimeout(() => app.exit(0), 400);
+    return;
+  }
+
+  /*
+   * Getting the kiosk out of the way, on the console's authority.
+   *
+   * The window refuses to be minimised by the person sitting at it — that is
+   * what makes it a kiosk. It does not refuse the café that owns it. Kiosk
+   * mode has to come off first: Electron keeps a kiosk window on top, so
+   * minimising without leaving kiosk gives a window that hides and springs
+   * straight back.
+   */
+  if (action === "minimize-client") {
+    if (!alive(win)) { reply(false, "The client window is not available"); return; }
+    /*
+     * Out of the way, but still sealed.
+     *
+     * kioskLocked deliberately stays true: this is a window that has been
+     * moved aside, not a station that has been unlocked. Kiosk mode itself
+     * has to come off for the minimise to stick — Electron keeps a kiosk
+     * window on top — but the flag is what makes clicking the client in the
+     * task bar put it straight back to full screen, which is the behaviour
+     * staff expect when they are finished on the desktop.
+     *
+     * Genuinely unlocking a station is Ctrl+Alt+Shift+Q, at the station.
+     */
+    win.setKiosk(false);
+    win.setFullScreen(false);
+    win.minimize();
+    reply(true, "Client minimised — the desktop is reachable until the client is clicked again");
+    return;
+  }
+
+  if (action === "restore-client") {
+    if (!alive(win)) { reply(false, "The client window is not available"); return; }
+    kioskLocked = true;
+    publishKioskState();
+    win.restore();
+    win.setKiosk(true);
+    win.setFullScreen(true);
+    win.focus();
+    reply(true, "Client restored to kiosk mode");
     return;
   }
 
@@ -717,7 +1571,12 @@ function listen() {
           simId: SIM_ID,
           hostname: os.hostname()
         }));
-        
+
+        /* Which launchers this machine has. Sent before the app scan because it
+           takes milliseconds, so the console knows what this station can run
+           long before the full software inventory arrives. */
+        reportLaunchers(ws);
+
         // Fetch and send installed apps to server
         try {
           log("Fetching installed applications...");
@@ -747,6 +1606,23 @@ function listen() {
         log(`Command received: ${msg.command}`);
       }
 
+      /*
+       * Settings this station has to hold locally.
+       *
+       * The unlock PIN in particular: the escape hatch it guards exists for
+       * the moment this console cannot be reached, so a PIN that had to be
+       * verified over the network would be useless exactly when it is
+       * needed. Cached to disk so it survives a restart with the café
+       * offline.
+       */
+      if (msg.type === "STATION_CONFIG") {
+        if (typeof msg.staffUnlockPin === "string") {
+          staffUnlockPin = msg.staffUnlockPin;
+          persistUnlockPin(staffUnlockPin);
+          log(`Station config received — staff unlock PIN is ${staffUnlockPin ? "set" : "not set"}.`);
+        }
+      }
+
       // Power actions issued from the admin console. The console has already
       // checked the operator's permission and written the audit entry, so by
       // the time this arrives the decision is made.
@@ -765,8 +1641,32 @@ function listen() {
         console.log(`[Session] Received: ${summary}`);
         sendToWindow(win, "session-state", currentSession);
       }
-      
-      
+
+      /* The games this station may offer. Held so a portal that mounts after
+         the push still gets them (via get-games), and forwarded so one already
+         open updates live. */
+      if (msg.type === "GAMES_LIST") {
+        currentGames = Array.isArray(msg.games) ? msg.games : [];
+        log(`Games list: ${currentGames.length} titles`);
+        sendToWindow(win, "games-list", currentGames);
+      }
+
+      /* The console extended this station's session. Grow every open timer
+         card by the added minutes so the visible clock matches the block the
+         customer just bought. */
+      if (msg.type === "EXTEND_TIMER") {
+        const minutes = Number(msg.minutes) || 0;
+        log(`Extend timer by ${minutes} min`);
+        runningProcesses.forEach((info) => {
+          if (info.timerCardWin && !info.timerCardWin.isDestroyed()) {
+            info.timerCardWin.webContents.send("extend-timer", { minutes });
+          }
+        });
+        // Mirror to the portal's own countdown too.
+        sendToWindow(win, "extend-timer", { minutes });
+      }
+
+
       if (msg.type === "LAUNCH_APP") {
         log(`Launching: ${msg.appName}`);
         if (msg.appPath) {
@@ -802,6 +1702,28 @@ function listen() {
         }
       }
       
+      /* The console asked which launchers are here — re-detected rather than
+         answered from memory, so installing Steam and clicking refresh shows
+         it without restarting the station. */
+      if (msg.type === "GET_LAUNCHERS") {
+        reportLaunchers(ws);
+      }
+
+      /* The session on this station ended and the café wants the machine put
+         back to a clean state. The console sends the configuration rather than
+         the station holding its own copy, so changing the policy takes effect
+         on the next session without touching the stations. */
+      if (msg.type === "SESSION_CLEANUP") {
+        const games = Array.isArray(msg.games) ? msg.games : currentGames;
+        runSessionCleanup(msg.config, games)
+          .then(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "CLEANUP_DONE", simId: SIM_ID }));
+            }
+          })
+          .catch((e) => log(`Cleanup failed: ${e.message}`));
+      }
+
       if (msg.type === "REFRESH_APPS") {
         log("Refreshing apps list...");
         try {
@@ -986,8 +1908,38 @@ function closeByExecutableName(appPath, appName) {
 app.whenReady().then(() => {
   // Get local IP on startup
   LOCAL_IP = getLocalIPAddress();
-  
+
+  /* Read the cached staff PIN before the window exists, so the escape hatch
+     works on a station that starts up with the café's network down — which is
+     one of the situations it is there for. The console refreshes it over the
+     socket as soon as one is available. */
+  loadUnlockPin();
+
   createWindow();
+
+  /*
+   * The same staff toggle, system-wide.
+   *
+   * Registered as a global shortcut as well as a window one because the
+   * window route needs focus, and the situations this hatch exists for are
+   * exactly the ones where focus is elsewhere — the client minimised, or a
+   * café running the console on the same machine as a station.
+   *
+   * Failing to register is not fatal: another application may already own
+   * the combination. Saying so in the log beats a shortcut that silently
+   * does nothing.
+   */
+  const combo = 'Control+Alt+Shift+Q';
+  const registered = globalShortcut.register(combo, () => toggleKioskLock('the system shortcut'));
+  const shortcutNote = registered
+    ? `[Kiosk] Staff shortcut ${combo} is active (works even without focus).`
+    : `[Kiosk] Could not register ${combo} — another application already holds it. ` +
+      `The same keys still work while the client window has focus.`;
+  /* console as well as the in-app log: `log()` only reaches the renderer, and
+     whether this registered is the first thing anyone debugging the hatch
+     needs to know — including when the window is not up yet. */
+  console.log(shortcutNote);
+  log(shortcutNote);
   listen();
   
   // Start broadcasting PC info every 10 seconds
@@ -1001,6 +1953,16 @@ app.whenReady().then(() => {
 
 // Stop the discovery broadcast on the way out so it cannot fire against
 // windows that are already gone.
+/* A quit that reached this point is deliberate — the OS is shutting down, or
+   the app asked to go. Release the kiosk guard so the window can actually
+   close rather than refusing and hanging the shutdown. */
+app.on('before-quit', () => {
+  allowQuit = true;
+  // Hand the combination back to the OS, or it stays claimed for the life of
+  // the session and a relaunched client cannot register it again.
+  globalShortcut.unregisterAll();
+});
+
 app.on('before-quit', () => {
   if (BROADCAST_INTERVAL) {
     clearInterval(BROADCAST_INTERVAL);

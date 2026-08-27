@@ -34,14 +34,29 @@ function paint(status) {
   statusTextEl.textContent = connected ? "CONNECTED" : "STATION OFFLINE";
 }
 
-window.api.onStatus((status) => {
+/*
+ * The bar appears on a *change*, not on every message.
+ *
+ * The main process now only pushes when the status really moved, but this
+ * guards it too: showing itself is the one thing here a customer notices, and
+ * it should happen when something happened — not because a socket was
+ * re-established behind the scenes.
+ */
+let lastStatus = null;
+
+function applyStatus(status, announce) {
+  const changed = status !== lastStatus;
+  lastStatus = status;
+  paint(status);
+
+  if (!announce || !changed) return;
+
   if (hideTimeout) {
     clearTimeout(hideTimeout);
     hideTimeout = null;
   }
 
   window.api.showStatusBar();
-  paint(status);
 
   if (status === "CONNECTED") {
     // Get out of the customer's way once the link is healthy.
@@ -49,4 +64,17 @@ window.api.onStatus((status) => {
       window.api.hideStatusBar();
     }, 3000);
   }
-});
+}
+
+window.api.onStatus((status) => applyStatus(status, true));
+
+/*
+ * Ask once on load.
+ *
+ * This window is created alongside the main one, so a status pushed while it
+ * was still loading was simply missed — leaving the strip reading CONNECTING
+ * over a station that had been connected for minutes. Painted without
+ * announcing, because nothing has changed for the customer; it is this window
+ * catching up.
+ */
+if (window.api.getStatus) window.api.getStatus((status) => applyStatus(status, false));

@@ -22,7 +22,8 @@
     play: null,          // { appName, totalSeconds, remaining, startedAt }
     launching: null,     // { appName } while a launch is in flight
     endedAt: null,       // set when a session finishes, for the ended screen
-    session: null        // café session pushed by the admin console
+    session: null,       // café session pushed by the admin console
+    games: []            // games this station may offer, pushed by the console
   };
 
   /* Thresholds the timer's visual states key off. */
@@ -115,25 +116,66 @@
       });
     }
     /* ---------- café session, pushed by the admin console ---------- */
+
+    /*
+     * What a push actually says, ignoring the clocks.
+     *
+     * Elapsed and remaining move on every push and are corrected locally by
+     * the ticker between them, so they are not what makes a push *news*. The
+     * identity, the status and who is playing are.
+     */
+    function sessionSignature(s) {
+      if (!s) return "none";
+      return [s.session_id, s.status, s.customer_name || "", s.is_guest ? "g" : "",
+              s.planned_minutes == null ? "" : s.planned_minutes].join("|");
+    }
+    var lastSessionSig = "none";
+
     function adoptSession(session) {
       var had = !!state.session;
       state.session = session || null;
+
+      /*
+       * Emit only when something changed.
+       *
+       * The console re-pushes session state on its own reconcile and on every
+       * floor event, so an idle station receives the same "cleared" message
+       * over and over. This used to emit each time, and every view listening
+       * repainted itself — which is what made the client flicker while
+       * nothing was happening. The connection handler just above has always
+       * guarded this way; this one did not.
+       *
+       * State is still updated unconditionally: the server's figures are
+       * authoritative and the ticker needs them to correct its drift, even
+       * when nothing structural moved.
+       */
+      var signature = sessionSignature(state.session);
+      var changed = signature !== lastSessionSig;
+      lastSessionSig = signature;
 
       if (state.session) {
         // The countdown runs locally between pushes; the café server stays
         // authoritative and corrects us on the next push.
         state.session.receivedAt = Date.now();
         startSessionTicker();
-        emit("session", state.session);
+        if (changed) emit("session", state.session);
       } else {
         if (sessionTicker) { clearInterval(sessionTicker); sessionTicker = null; }
-        emit("session", null);
-        if (had) emit("session-ended", null);
+        if (changed) emit("session", null);
+        if (had && changed) emit("session-ended", null);
       }
     }
 
     if (api.onSessionState) api.onSessionState(adoptSession);
     if (api.getSessionState) api.getSessionState(adoptSession);
+
+    /* ---------- game menu, pushed by the console ---------- */
+    function adoptGames(list) {
+      state.games = Array.isArray(list) ? list : [];
+      emit("games", state.games);
+    }
+    if (api.onGamesList) api.onGamesList(adoptGames);
+    if (api.getGames) api.getGames(adoptGames);
 
     /* ---------- launch timer ---------- */
     if (api.onStartTimer) {
@@ -261,6 +303,8 @@
     signOut: signOut,
     timerState: timerState,
     sessionState: sessionState,
+    /* Hand a chosen game to the main process to launch through its launcher. */
+    launchGame: function (game) { if (api.launchGame) api.launchGame(game); },
     sessionClockSeconds: sessionClockSeconds,
     progress: progress,
     clock: clock,

@@ -50,6 +50,11 @@
   function set(key, value) { dirty[key] = value; paintPreview(); paintSaveBar(); }
   function isOn(key) { return String(val(key, "false")) === "true"; }
 
+  /* Defaults to on, unlike every other toggle here — a café that has never
+     opened this page still prints the mark, and removing it is a deliberate
+     act rather than something that has to be switched on to appear. */
+  function poweredOn() { return String(val("billing.receipt_powered_by", "true")) !== "false"; }
+
   function shownBlocks() {
     return String(val("billing.receipt_show", "")).split(",")
       .map(function (s) { return s.trim(); }).filter(Boolean);
@@ -155,7 +160,13 @@
       '<div class="rt-line rt-total"><span>Total</span><span>' + money(t.total) + "</span></div>" +
 
       (blockOn("footer") && val("billing.receipt_footer")
-        ? '<div class="rt-foot">' + UI.esc(val("billing.receipt_footer")) + "</div>" : "");
+        ? '<div class="rt-foot">' + UI.esc(val("billing.receipt_footer")) + "</div>" : "") +
+
+      /* Under the café's own sign-off, quieter than it. This is our mark on
+         their paper, so it sits last and small — present, not competing with
+         the thank-you the customer is actually meant to read. */
+      (poweredOn()
+        ? '<div class="rt-powered">Powered by ManagerXP</div>' : "");
   }
 
   /* ==========================================================================
@@ -390,6 +401,27 @@
     layout.appendChild(blocks);
     layout.appendChild(field("billing.receipt_footer", "Footer line",
       { placeholder: "Thank you for playing" }));
+
+    /* Kept apart from the block chips above. Those are the café's own content
+       — their address, their logo. This is ManagerXP's mark on their paper,
+       which is a different kind of decision and reads better as its own
+       labelled switch than as one more chip in a row. */
+    var powered = UI.el("div", { class: "field" });
+    powered.innerHTML =
+      '<label class="field-label">ManagerXP branding</label>' +
+      '<div class="row gap-2" style="align-items:center">' +
+        '<button type="button" class="chip" id="rtPowered">Powered by ManagerXP</button>' +
+      "</div>" +
+      '<div class="field-hint">A small line under your footer. Turn it off to print receipts with only your own branding.</div>';
+    var poweredChip = powered.querySelector("#rtPowered");
+    poweredChip.setAttribute("aria-pressed", String(poweredOn()));
+    poweredChip.addEventListener("click", function () {
+      var next = !poweredOn();
+      set("billing.receipt_powered_by", next ? "true" : "false");
+      poweredChip.setAttribute("aria-pressed", String(next));
+    });
+    layout.appendChild(powered);
+
     editor.appendChild(layout);
 
     grid.appendChild(editor);
@@ -423,6 +455,9 @@
         ".rt-rule{border-top:1px dashed #999;margin:8px 0}" +
         ".rt-logo{display:block;max-width:180px;max-height:70px;margin:0 auto 6px}" +
         ".rt-foot{text-align:center;margin-top:10px;font-size:11px}" +
+        /* Printed grey rather than black: the mark should be legible on the
+           roll without drawing the eye away from the café's own footer. */
+        ".rt-powered{text-align:center;margin-top:8px;font-size:9px;color:#888;letter-spacing:.04em}" +
         "</style></head><body>" + node.innerHTML + "</body></html>"
       );
       w.document.close();

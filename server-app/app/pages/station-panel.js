@@ -127,15 +127,34 @@
       action: "restart-client", label: "Restart client", icon: "play", variant: "btn-outline",
       tip: "Restarts the CafeXP client app only — Windows keeps running",
       confirm: "Only the CafeXP client restarts. Windows and any game keep running."
+    },
+    /*
+     * The customer cannot minimise the kiosk; the café can. These are how
+     * staff reach a station's Windows desktop — to install a game, to fix a
+     * driver — without walking over to it, and how they seal it again after.
+     */
+    {
+      action: "minimize-client", label: "Minimise client", icon: "unlink", variant: "btn-outline",
+      tip: "Moves the kiosk aside so the Windows desktop is reachable",
+      confirm: "The client is minimised and the station's desktop becomes reachable. " +
+        "Nothing about the session or the bill changes. Use Restore client to seal it again."
+    },
+    {
+      action: "restore-client", label: "Restore client", icon: "power", variant: "btn-outline",
+      tip: "Brings the kiosk back to full screen and seals it",
+      confirm: "The client returns to full screen and the station is locked back down."
     }
   ];
 
   var DELAYS = [0, 10, 30, 60];
 
   function powerDialog(pc, spec, onDone) {
-    // Restarting our own app takes effect at once; a Windows action gets a
-    // grace period so the person at the station sees the warning first.
-    var instant = spec.action === "restart-client" || spec.action === "lock";
+    /* Restarting our own app takes effect at once; a Windows action gets a
+       grace period so the person at the station sees the warning first.
+       Moving the kiosk window is instant too — there is nothing to warn
+       about when no session, application or bill is touched. */
+    var instant = ["restart-client", "lock", "minimize-client", "restore-client"]
+      .indexOf(spec.action) !== -1;
     var delay = instant ? 0 : 10;
 
     var session = Store.state.sessions[pc.name];
@@ -449,47 +468,123 @@
         });
       }
 
+      /*
+       * A station with no address is not a computer this console talks to —
+       * a pool table, a console on a big screen, a VR rig. It still has a
+       * panel, because it still runs sessions and takes money; it just has no
+       * connection to report and no software to launch.
+       */
+      var networked = Store.isNetworked(pc);
+
       /* --- connection --- */
       var conn = UI.el("div", { class: "card" });
       conn.innerHTML =
-        '<div class="card-head"><h3>Connection</h3>' +
-          '<span class="badge" data-status="' + (connected ? "online" : "offline") + '">' +
-            (connected ? "Connected" : "Not connected") + "</span></div>" +
+        '<div class="card-head"><h3>' + (networked ? "Connection" : "Station") + "</h3>" +
+          '<span class="badge" data-status="' +
+            (networked ? (connected ? "online" : "offline") : "online") + '">' +
+            (networked ? (connected ? "Connected" : "Not connected") : "Ready") + "</span></div>" +
         '<div class="card-body col gap-1">' +
-          '<div class="kv"><span class="kv-key">IP address</span><span class="kv-val mono selectable">' + UI.esc(pc.ip_address || "—") + "</span></div>" +
-          '<div class="kv"><span class="kv-key">Port</span><span class="kv-val mono">' + UI.esc(pc.port || "—") + "</span></div>" +
-          '<div class="kv"><span class="kv-key">MAC address</span><span class="kv-val mono selectable" style="font-size:11px">' + UI.esc(pc.mac_address || "—") + "</span></div>" +
+          (networked
+            ? '<div class="kv"><span class="kv-key">IP address</span><span class="kv-val mono selectable">' + UI.esc(pc.ip_address || "—") + "</span></div>" +
+              '<div class="kv"><span class="kv-key">Port</span><span class="kv-val mono">' + UI.esc(pc.port || "—") + "</span></div>" +
+              '<div class="kv"><span class="kv-key">MAC address</span><span class="kv-val mono selectable" style="font-size:11px">' + UI.esc(pc.mac_address || "—") + "</span></div>"
+            : '<div class="kv"><span class="kv-key">Type</span><span class="kv-val">Sold by the hour — no client to connect to</span></div>') +
           '<div class="kv"><span class="kv-key">Station ID</span><span class="kv-val mono">#' + UI.esc(pc.pc_id) + "</span></div>" +
-          (cs && cs.failures ?
+          (networked && cs && cs.failures ?
             '<div class="kv"><span class="kv-key">Failed attempts</span><span class="kv-val num" style="color:var(--danger)">' + UI.esc(cs.failures) + "</span></div>" : "") +
         "</div>";
 
-      if (cs && cs.error && !connected) {
+      if (networked && cs && cs.error && !connected) {
         var err = UI.el("div", { class: "card-body", style: { paddingTop: "0" } });
         err.innerHTML = '<div class="notice" data-status="error">' + Icon("alert", 16) +
           "<div><strong>Last error</strong><br>" + UI.esc(cs.error) + "</div></div>";
         conn.appendChild(err);
       }
 
-      var connFoot = UI.el("div", { class: "card-foot row gap-2" });
-      var retryBtn = UI.el("button", {
-        class: "btn btn-outline btn-sm grow",
-        html: Icon("link", 14) + '<span class="btn-label">' + (connected ? "Reconnect" : "Connect") + "</span>"
-      });
-      retryBtn.addEventListener("click", function () {
-        UI.withBusy(retryBtn, function () {
-          return Store.clearFailures(pc.name)
-            .then(function () { return Store.connectToPC(pc.ip_address, pc.port, pc.name); })
-            .then(function (result) {
-              if (result && result.success) UI.toast.ok("Connecting to " + pc.name, result.message || "");
-              else UI.toast.error("Connection failed", (result && result.error) || "Unknown error");
-            })
-            .catch(function (e) { UI.toast.error("Connection failed", e.message); });
+      // Nothing to connect to, so no Connect button to offer.
+      if (networked) {
+        var connFoot = UI.el("div", { class: "card-foot row gap-2" });
+        var retryBtn = UI.el("button", {
+          class: "btn btn-outline btn-sm grow",
+          html: Icon("link", 14) + '<span class="btn-label">' + (connected ? "Reconnect" : "Connect") + "</span>"
+        });
+        retryBtn.addEventListener("click", function () {
+          UI.withBusy(retryBtn, function () {
+            return Store.clearFailures(pc.name)
+              .then(function () { return Store.connectToPC(pc.ip_address, pc.port, pc.name); })
+              .then(function (result) {
+                if (result && result.success) UI.toast.ok("Connecting to " + pc.name, result.message || "");
+                else UI.toast.error("Connection failed", (result && result.error) || "Unknown error");
+              })
+              .catch(function (e) { UI.toast.error("Connection failed", e.message); });
+          });
+        });
+        connFoot.appendChild(retryBtn);
+        conn.appendChild(connFoot);
+      }
+      wrap.appendChild(conn);
+
+      /*
+       * Software and remote power are both agent-only, so they are skipped
+       * for a station with no address: nothing to store a path against,
+       * nothing to launch it with, and no machine to shut down.
+       *
+       * Scoped to these two sections rather than returning early, because
+       * everything below them — editing the station's details, deleting the
+       * record — applies just as much to a pool table as to a PC.
+       */
+      if (networked) {
+
+      /* --- game launchers this machine has --- */
+      var launchers = UI.el("div", { class: "card" });
+      launchers.innerHTML =
+        '<div class="card-head"><h3>Game launchers</h3>' +
+          '<button class="btn btn-ghost btn-sm" id="btnRescanLaunchers">' + Icon("refresh", 14) +
+          '<span class="btn-label">Re-scan</span></button></div>' +
+        '<div class="card-body" id="launcherList"></div>';
+      wrap.appendChild(launchers);
+
+      function paintLaunchers() {
+        var host = launchers.querySelector("#launcherList");
+        if (!host) return;
+        UI.clear(host);
+        var rows = Store.launchersFor(pc.name);
+        if (!rows) {
+          host.innerHTML = '<div class="faint" style="font-size:12px">' +
+            (connected
+              ? "Waiting for this station to report its launchers…"
+              : "The station reports its launchers when it connects.") + "</div>";
+          return;
+        }
+        var row = UI.el("div", { class: "row gap-2 wrap" });
+        rows.forEach(function (l) {
+          var chip = UI.el("span", {
+            class: "badge",
+            title: l.path || (l.installed ? "" : "Not found on this machine")
+          });
+          if (l.installed) chip.setAttribute("data-status", "online");
+          chip.innerHTML = UI.esc(l.name) + " " + (l.installed ? "✓" : "—");
+          row.appendChild(chip);
+        });
+        host.appendChild(row);
+      }
+      /* Painted on each render; the live subscription is registered once at
+         mount (below, beside the other Store listeners) rather than here,
+         because renderBody runs again on every station change and would
+         otherwise stack a listener per repaint. */
+      paintLaunchers();
+
+      var rescanBtn = launchers.querySelector("#btnRescanLaunchers");
+      rescanBtn.disabled = !connected;
+      if (!connected) rescanBtn.setAttribute("data-tip", "Station is not connected");
+      rescanBtn.addEventListener("click", function () {
+        UI.withBusy(rescanBtn, function () {
+          return Store.refreshLaunchers(pc.name).then(function (r) {
+            if (r && r.success) UI.toast.ok("Re-scanning", pc.name + " is checking its launchers.");
+            else UI.toast.warn("Could not re-scan", (r && r.error) || "Station is not connected");
+          });
         });
       });
-      connFoot.appendChild(retryBtn);
-      conn.appendChild(connFoot);
-      wrap.appendChild(conn);
 
       /* --- software / launch --- */
       var lib = UI.el("div", { class: "card" });
@@ -622,7 +717,9 @@
       power.appendChild(powerBody);
       wrap.appendChild(power);
 
-      /* --- station record --- */
+      } // end of the agent-only sections
+
+      /* --- station record — every station has one, PC or pool table --- */
       var admin = UI.el("div", { class: "card" });
       admin.innerHTML = '<div class="card-head"><h3>Station record</h3></div>';
       var adminBody = UI.el("div", { class: "card-body row gap-2 wrap" });
@@ -739,6 +836,9 @@
     offs.push(Store.on("connected", renderAll));
     offs.push(Store.on("connection-status", function (s) { if (s.pcName === pcName) renderAll(); }));
     offs.push(Store.on("pcs", renderAll));
+    /* A station reported its launchers — repaint so the ticks appear without
+       the panel being reopened. Registered once here, not inside renderBody. */
+    offs.push(Store.on("launchers", function () { renderAll(); }));
     offs.push(Store.on("tick", function () {
       var run = Store.state.running[pcName];
       var t = document.getElementById("panelTimer");

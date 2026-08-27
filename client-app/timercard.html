@@ -12,19 +12,48 @@
     .timercard { transition: box-shadow var(--dur-slow) var(--ease-out), border-color var(--dur-base) var(--ease-out); }
     .timercard.glow {
       border-color: var(--st-line, var(--accent-line));
-      box-shadow: var(--shadow-3), 0 0 26px var(--st-glow, var(--accent-glow));
+      box-shadow: 0 4px 18px rgba(0,0,0,.55), 0 0 16px var(--st-glow, var(--accent-glow));
     }
   </style>
 </head>
 <body class="overlay-body">
-  <div class="timercard" id="timerCard" data-status="gaming">
-    <div class="timercard-app" id="appName">Session</div>
-    <div class="timercard-time" id="timerDisplay">00:00</div>
-    <div class="meter meter-sm" style="margin-top:10px">
-      <div class="meter-fill" id="progressFill" style="width:100%"></div>
-    </div>
-    <div class="timercard-label" id="timerLabel">Remaining</div>
+  <!--
+    A small pill, not a panel.
+
+    This sits on top of whatever the customer is playing, so it shows the one
+    thing they are looking for — how long is left — and gets out of the way.
+    The application name is kept for the screen reader and for the tooltip,
+    but not given a line of its own: at this size the clock is the content.
+  -->
+  <div class="timercard timercard-pill" id="timerCard" data-status="gaming" title="Session">
+    <span class="timercard-dot" aria-hidden="true"></span>
+    <span class="timercard-time" id="timerDisplay">00:00</span>
+    <span class="timercard-meta">
+      <span class="timercard-app" id="appName">Session</span>
+      <span class="timercard-label" id="timerLabel">Remaining</span>
+    </span>
+    <span class="timercard-track"><span class="timercard-fill" id="progressFill" style="width:100%"></span></span>
+    <!--
+      Extend affordance. Hidden until the clock is low; then the whole card
+      becomes tappable and this shows what a tap does. The player extends from
+      here without alt-tabbing out of their game. The extra time rides on the
+      bill and is settled at the counter later — the game is never cut off, so
+      a tap only ever adds time, it can never take it away.
+    -->
+    <button type="button" class="timercard-extend" id="extendBtn" hidden>+ Extend</button>
   </div>
+  <style>
+    .timercard-extend {
+      margin-left: 8px; padding: 4px 10px; border-radius: 999px;
+      border: 1px solid var(--st-line, var(--accent-line));
+      background: var(--st-glow, rgba(255,255,255,.08));
+      color: var(--text, #fff); font: inherit; font-size: 12px; font-weight: 700;
+      white-space: nowrap; cursor: pointer;
+    }
+    .timercard-extend:hover { filter: brightness(1.15); }
+    .timercard-extend:active { transform: scale(.96); }
+    .timercard-extend[hidden] { display: none; }
+  </style>
 
   <script src="timercard.js"></script>
 </body>

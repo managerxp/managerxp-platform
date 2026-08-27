@@ -20,6 +20,24 @@
 
   function pc() { return selectedPC ? Store.getPC(selectedPC) : null; }
 
+  /*
+   * Only stations that run the client agent belong on this screen.
+   *
+   * Configuring software means storing an executable path and later telling
+   * an agent to launch it. A pool table, a dartboard, a PS5 or a VR rig has
+   * neither — the café sells time on them and the counter runs the timer, but
+   * there is nothing to install a path against and nothing to launch it with.
+   * Listing them here offered an operator a job that could never be completed.
+   *
+   * Keyed on having a network address, the same fact the connection layer
+   * uses, rather than on category — "Pool" is a label somebody typed and
+   * could be anything, while a missing address is what actually decides
+   * whether an agent can ever be spoken to.
+   */
+  function configurableStations() {
+    return (Store.state.pcs || []).filter(function (p) { return Store.isNetworked(p); });
+  }
+
   /* ==========================================================================
      LOAD
      ========================================================================== */
@@ -38,7 +56,11 @@
   }
 
   function selectPC(name) {
-    selectedPC = name;
+    /* Refuse a station that cannot hold software, wherever the name came
+       from — a click, a deep link from the station panel, or a selection made
+       before the station's address was removed. */
+    var candidate = name ? Store.getPC(name) : null;
+    selectedPC = candidate && Store.isNetworked(candidate) ? name : null;
     scanned = [];
     renderList();
     loadSoftware();
@@ -53,6 +75,8 @@
     if (!host) return;
     UI.clear(host);
 
+    var stations = configurableStations();
+
     if (!Store.state.pcs.length) {
       host.appendChild(UI.emptyState({
         icon: "floor", title: "No stations", text: "Register a station first.",
@@ -61,7 +85,20 @@
       return;
     }
 
-    Store.state.pcs.forEach(function (p) {
+    /* Stations exist, but none of them are PCs. Worth saying plainly rather
+       than showing an empty list that looks like a loading failure. */
+    if (!stations.length) {
+      host.appendChild(UI.emptyState({
+        icon: "games",
+        title: "No PCs to configure",
+        text: "Software is configured on PCs running the CafeXP client. Pool tables, " +
+              "consoles and VR rigs are sold by the hour and need no software set up.",
+        actions: [{ label: "Go to Floor", onClick: function () { global.CXRouter.go("floor"); } }]
+      }));
+      return;
+    }
+
+    stations.forEach(function (p) {
       var status = Store.pcStatus(p);
       var row = UI.el("button", {
         class: "floor-row",
@@ -222,7 +259,7 @@
       '<div class="field">' +
         '<label class="field-label" for="swMaster">Pick from the catalogue</label>' +
         '<select class="select" id="swMaster"><option value="">Loading catalogue…</option></select>' +
-        '<div class="field-hint">Auto-fills the name and artwork. You still set the path on this station.</div>' +
+        '<div class="field-hint">Fills in the name. You still set the path on this station.</div>' +
       "</div>" +
       '<div class="field">' +
         '<label class="field-label field-req" for="swName">Name</label>' +
@@ -236,11 +273,26 @@
           (scanned.length ? "Type to search the " + scanned.length + " items found on this station." : "Scan the station to search installed applications.") +
         "</div>" +
       "</div>" +
-      '<div class="grid grid-2" style="gap:var(--s-3)">' +
-        '<div class="field"><label class="field-label" for="swIcon">Icon URL</label>' +
-          '<input class="input" id="swIcon" placeholder="https://…"></div>' +
-        '<div class="field"><label class="field-label" for="swVideo">Video URL</label>' +
-          '<input class="input" id="swVideo" placeholder="https://…"></div>' +
+      /*
+       * No icon or video field here, on purpose.
+       *
+       * Artwork is uploaded once in Software Master on the admin side, and the
+       * station's software list resolves it by name when it is read — so a
+       * station row that stores no artwork of its own always shows whatever
+       * the catalogue currently holds. Typing a URL here used to copy the
+       * catalogue's value into the station row, which froze it: re-uploading
+       * a logo centrally never reached the stations already set up, and the
+       * only way to fix one was to remove and re-add the software.
+       *
+       * What is left is a read-only look at what the catalogue has, so it is
+       * obvious where the tile's artwork comes from.
+       */
+      '<div class="field hidden" id="swArtField">' +
+        '<label class="field-label">Artwork</label>' +
+        '<div class="row gap-3" style="align-items:center">' +
+          '<div class="sw-icon" id="swArtIcon"></div>' +
+          '<div class="field-hint grow" id="swArtHint"></div>' +
+        "</div>" +
       "</div>";
 
     UI.modal({
@@ -264,8 +316,8 @@
               pc_id: parseInt(target.pc_id, 10),
               software_name: name,
               software_path: path,
-              software_icon: ctx.body.querySelector("#swIcon").value.trim() || null,
-              software_video: ctx.body.querySelector("#swVideo").value.trim() || null,
+              // Artwork deliberately not sent — leaving it empty is what lets
+              // the catalogue's current icon and video show through.
               is_active: true
             })
               .then(function () { UI.toast.ok("Added", name); return loadSoftware(); })
@@ -283,7 +335,7 @@
       master.innerHTML = '<option value="">— Choose from catalogue —</option>';
       list.forEach(function (s) {
         var opt = document.createElement("option");
-        opt.value = JSON.stringify({ name: s.software_name, icon: s.software_icon, video: s.software_video });
+        opt.value = JSON.stringify({ name: s.software_name, icon: s.software_icon });
         opt.textContent = s.software_name;
         master.appendChild(opt);
       });
@@ -293,13 +345,26 @@
       .then(fillMaster)
       .catch(function () { master.innerHTML = '<option value="">Catalogue unavailable</option>'; });
 
+    var artField = body.querySelector("#swArtField");
+    var artIcon = body.querySelector("#swArtIcon");
+    var artHint = body.querySelector("#swArtHint");
+
+    function showArtwork(icon, name) {
+      artField.classList.remove("hidden");
+      artIcon.innerHTML = icon
+        ? '<img src="' + UI.esc(icon.indexOf("/") === 0 ? Store.API_BASE + icon : icon) + '" alt="">'
+        : UI.esc((name || "?").charAt(0).toUpperCase());
+      artHint.textContent = icon
+        ? "From the catalogue. Change it in Software Master and every station follows."
+        : "Nothing in the catalogue yet — add it in Software Master and it appears here.";
+    }
+
     master.addEventListener("change", function () {
-      if (!master.value) return;
+      if (!master.value) { artField.classList.add("hidden"); return; }
       try {
         var sel = JSON.parse(master.value);
         body.querySelector("#swName").value = sel.name || "";
-        body.querySelector("#swIcon").value = sel.icon || "";
-        body.querySelector("#swVideo").value = sel.video || "";
+        showArtwork(sel.icon, sel.name);
         body.querySelector("#swPath").focus();
       } catch (e) { /* malformed option */ }
     });
@@ -381,7 +446,10 @@
 
       renderList();
 
-      if (!selectedPC && Store.state.pcs.length) selectPC(Store.state.pcs[0].name);
+      // Opens on the first PC, not the first station — the first station on
+      // the floor may well be the pool table.
+      var stations = configurableStations();
+      if (!selectedPC && stations.length) selectPC(stations[0].name);
       else renderDetail();
     },
 

@@ -32,7 +32,10 @@
         </div>
 
         <div class="field">
-          <label class="field-label" for="password">Password</label>
+          <div class="row-between">
+            <label class="field-label" for="password">Password</label>
+            <button type="button" class="link-btn" id="toForgot" style="font-size:12px">Forgot password?</button>
+          </div>
           <input class="input" type="password" id="password" placeholder="Your password"
                  autocomplete="current-password" />
         </div>
@@ -80,6 +83,9 @@
       });
       document.getElementById("toRegister").addEventListener("click", function () {
         window.api.navigateTo("register");
+      });
+      document.getElementById("toForgot").addEventListener("click", function () {
+        window.api.navigateTo("forgot-password");
       });
 
       function showError(message) {

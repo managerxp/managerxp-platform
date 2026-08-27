@@ -15,9 +15,24 @@
   var loading = false;
   var loadError = null;
   var searchTimer = null;
+  var typeFilter = "all";
 
   var PRESETS = [100, 250, 500, 1000, 2000];
   var METHODS = ["cash", "card", "upi", "other"];
+
+  /* All data comes back from one search; the filter just decides which rows
+     of it are shown, so switching tabs never needs a round trip. */
+  var TYPE_FILTERS = [
+    { id: "all", label: "All" },
+    { id: "normal", label: "Normal" },
+    { id: "regular", label: "Regular" }
+  ];
+
+  function visibleCustomers() {
+    if (typeFilter === "regular") return customers.filter(function (c) { return c.is_regular; });
+    if (typeFilter === "normal") return customers.filter(function (c) { return !c.is_regular; });
+    return customers;
+  }
 
   /** XP Coin amounts: whole numbers unless there are real part-coins. */
   function coins(value) {
@@ -214,6 +229,104 @@
   }
 
   /* ==========================================================================
+     EDIT TIER — promote an existing customer to a regular, or return them to
+     normal. The create-customer dialog only sets this once, at registration;
+     this is the same PATCH /tier call for a customer who already exists.
+     ========================================================================== */
+  function editTierDialog(customer, onDone) {
+    var wasRegular = !!customer.is_regular;
+
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="field">' +
+        '<label class="field-label">Customer type</label>' +
+        '<div class="row gap-2" id="etType">' +
+          '<button type="button" class="chip" data-type="NORMAL" aria-pressed="' + String(!wasRegular) + '">Normal</button>' +
+          '<button type="button" class="chip" data-type="REGULAR" aria-pressed="' + String(wasRegular) + '">Regular</button>' +
+        "</div>" +
+        '<div class="field-hint" id="etTypeHint">' +
+          (wasRegular
+            ? "A known customer. Gets a discount on the whole bill and can settle later."
+            : "A walk-in. Pays at the counter, no standing discount.") +
+        "</div>" +
+      "</div>" +
+
+      '<div class="' + (wasRegular ? "" : "hidden") + '" id="etRegularFields">' +
+        '<div class="grid grid-2" style="gap:var(--s-3)">' +
+          '<div class="field"><label class="field-label" for="etDiscount">Discount</label>' +
+            '<div class="row gap-2" style="align-items:center">' +
+              '<input class="input" id="etDiscount" type="number" min="0" max="100" step="1" ' +
+                'value="' + (Number(customer.discount_percent) || 0) + '" style="max-width:110px">' +
+              '<span class="field-hint">% off every line</span>' +
+            "</div></div>" +
+          '<div class="field"><label class="field-label" for="etCredit">Credit limit</label>' +
+            '<input class="input" id="etCredit" type="number" min="0" step="10" ' +
+              'value="' + (Number(customer.credit_limit) || 0) + '">' +
+            '<div class="field-hint">Most they may owe at once. Zero means no tab.</div></div>' +
+        "</div>" +
+        '<div class="field"><label class="field-label" for="etNote">Note</label>' +
+          '<input class="input" id="etNote" maxlength="255" placeholder="Why they are a regular — optional" ' +
+            'value="' + UI.esc(customer.tier_note || "") + '"></div>' +
+      "</div>";
+
+    var type = wasRegular ? "REGULAR" : "NORMAL";
+    var regularFields = body.querySelector("#etRegularFields");
+    var typeHint = body.querySelector("#etTypeHint");
+    UI.$$("#etType .chip", body).forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        type = chip.dataset.type;
+        UI.$$("#etType .chip", body).forEach(function (c) {
+          c.setAttribute("aria-pressed", String(c === chip));
+        });
+        regularFields.classList.toggle("hidden", type !== "REGULAR");
+        typeHint.textContent = type === "REGULAR"
+          ? "A known customer. Gets a discount on the whole bill and can settle later."
+          : "A walk-in. Pays at the counter, no standing discount.";
+      });
+    });
+
+    return UI.modal({
+      title: "Customer type",
+      description: wasRegular
+        ? "Change " + customer.customer_name + "’s discount, credit limit, or move them back to normal."
+        : "Move " + customer.customer_name + " to a regular, with a discount and an optional tab.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: "Save", variant: "primary", icon: "check",
+          onClick: function (ctx) {
+            var payload = { customer_type: type };
+            if (type === "REGULAR") {
+              payload.discount_percent = Number(ctx.body.querySelector("#etDiscount").value || 0);
+              payload.credit_limit = Number(ctx.body.querySelector("#etCredit").value || 0);
+              payload.tier_note = ctx.body.querySelector("#etNote").value.trim() || null;
+            }
+            return Store.setCustomerTier(customer.customer_id, payload)
+              .then(function (r) {
+                UI.toast.ok(
+                  type === "REGULAR" ? "Marked as a regular" : "Set back to normal",
+                  type === "REGULAR"
+                    ? r.data.discount_percent + "% off · " +
+                      (r.data.credit_limit > 0 ? r.data.credit_limit + " credit" : "no tab")
+                    : customer.customer_name + " now pays at the counter"
+                );
+                if (onDone) onDone();
+                return true;
+              })
+              .catch(function (err) {
+                // The backend refuses to drop a limit below what they already
+                // owe (409) — surfaced verbatim, it already says how much.
+                UI.toast.error("Could not change customer type", err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+  }
+
+  /* ==========================================================================
      CUSTOMER DRAWER
      ========================================================================== */
   function openCustomer(customer) {
@@ -270,6 +383,35 @@
       });
       wallet.querySelector("#btnDeductCoins").addEventListener("click", function () {
         moveCoinsDialog(current, "debit", refreshCustomer);
+      });
+
+      /* ---- tier ---- */
+      var tier = UI.el("div", { class: "card" });
+      tier.innerHTML =
+        '<div class="card-head row-between">' +
+          "<h3>Customer type</h3>" +
+          '<button class="btn btn-outline btn-sm" id="btnEditTier">' + Icon("edit", 13) +
+            '<span class="btn-label">Edit</span></button>' +
+        "</div>" +
+        '<div class="card-body col">' +
+          (current.is_regular
+            ? '<div class="kv"><span class="kv-key">Status</span><span class="kv-val">' +
+                '<span class="badge" data-status="accent">Regular</span></span></div>' +
+              '<div class="kv"><span class="kv-key">Discount</span><span class="kv-val">' +
+                (Number(current.discount_percent) || 0) + "% off every line</span></div>" +
+              '<div class="kv"><span class="kv-key">Credit limit</span><span class="kv-val">' +
+                (Number(current.credit_limit) > 0 ? coins(current.credit_limit) : "No tab") + "</span></div>" +
+              (current.tier_note
+                ? '<div class="kv"><span class="kv-key">Note</span><span class="kv-val">' +
+                    UI.esc(current.tier_note) + "</span></div>"
+                : "")
+            : '<div class="kv"><span class="kv-key">Status</span><span class="kv-val">' +
+                "Normal — pays at the counter, no standing discount</span></div>") +
+        "</div>";
+      wrap.appendChild(tier);
+
+      tier.querySelector("#btnEditTier").addEventListener("click", function () {
+        editTierDialog(current, refreshCustomer);
       });
 
       /* ---- profile ---- */
@@ -395,7 +537,55 @@
         '<div class="field"><label class="field-label" for="ncOpening">Opening XP Coins</label>' +
           '<input class="input" id="ncOpening" type="number" min="0" step="1" value="0">' +
           '<div class="field-hint">Credited to their new wallet and logged.</div></div>' +
+      "</div>" +
+
+      /*
+       * Normal or regular.
+       *
+       * A regular is somebody the café knows: they get a standing discount on
+       * the whole bill and may run a tab. Both are commercial decisions, so
+       * the fields only appear once REGULAR is chosen rather than sitting
+       * there inviting a number on an account that should not have one.
+       */
+      '<div class="field">' +
+        '<label class="field-label">Customer type</label>' +
+        '<div class="row gap-2" id="ncType">' +
+          '<button type="button" class="chip" data-type="NORMAL" aria-pressed="true">Normal</button>' +
+          '<button type="button" class="chip" data-type="REGULAR">Regular</button>' +
+        "</div>" +
+        '<div class="field-hint" id="ncTypeHint">A walk-in. Pays at the counter, no standing discount.</div>' +
+      "</div>" +
+
+      '<div class="hidden" id="ncRegularFields">' +
+        '<div class="grid grid-2" style="gap:var(--s-3)">' +
+          '<div class="field"><label class="field-label" for="ncDiscount">Discount</label>' +
+            '<div class="row gap-2" style="align-items:center">' +
+              '<input class="input" id="ncDiscount" type="number" min="0" max="100" step="1" value="0" style="max-width:110px">' +
+              '<span class="field-hint">% off every line</span>' +
+            "</div></div>" +
+          '<div class="field"><label class="field-label" for="ncCredit">Credit limit</label>' +
+            '<input class="input" id="ncCredit" type="number" min="0" step="10" value="0">' +
+            '<div class="field-hint">Most they may owe at once. Zero means no tab.</div></div>' +
+        "</div>" +
+        '<div class="field"><label class="field-label" for="ncNote">Note</label>' +
+          '<input class="input" id="ncNote" maxlength="255" placeholder="Why they are a regular — optional"></div>' +
       "</div>";
+
+    var customerType = "NORMAL";
+    var regularFields = body.querySelector("#ncRegularFields");
+    var typeHint = body.querySelector("#ncTypeHint");
+    UI.$$("#ncType .chip", body).forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        customerType = chip.dataset.type;
+        UI.$$("#ncType .chip", body).forEach(function (c) {
+          c.setAttribute("aria-pressed", String(c === chip));
+        });
+        regularFields.classList.toggle("hidden", customerType !== "REGULAR");
+        typeHint.textContent = customerType === "REGULAR"
+          ? "A known customer. Gets a discount on the whole bill and can settle later."
+          : "A walk-in. Pays at the counter, no standing discount.";
+      });
+    });
 
     return UI.modal({
       title: "Add customer",
@@ -438,8 +628,34 @@
                 // Say plainly that they cannot sign in yet, rather than let
                 // staff discover it when the customer is at the station.
                 if (r.note) UI.toast.warn("No sign-in yet", r.note);
-                if (onAdded) onAdded(r.data);
-                return true;
+
+                /* The tier is a second call on purpose: granting a discount
+                   and a credit limit is audited separately from creating the
+                   record, so it carries its own trail even when both happen
+                   in one dialog. A failure here leaves a valid normal
+                   customer rather than losing the whole registration. */
+                if (customerType !== "REGULAR") {
+                  if (onAdded) onAdded(r.data);
+                  return true;
+                }
+                return Store.setCustomerTier(r.data.customer_id, {
+                  customer_type: "REGULAR",
+                  discount_percent: Number(ctx.body.querySelector("#ncDiscount").value || 0),
+                  credit_limit: Number(ctx.body.querySelector("#ncCredit").value || 0),
+                  tier_note: ctx.body.querySelector("#ncNote").value.trim() || null
+                })
+                  .then(function (t) {
+                    UI.toast.ok("Marked as a regular",
+                      t.data.discount_percent + "% off · " +
+                      (t.data.credit_limit > 0 ? t.data.credit_limit + " credit" : "no tab"));
+                    if (onAdded) onAdded(t.data);
+                    return true;
+                  })
+                  .catch(function (e) {
+                    UI.toast.warn("Added, but not as a regular", e.message);
+                    if (onAdded) onAdded(r.data);
+                    return true;
+                  });
               })
               .catch(function (err) { UI.toast.error("Could not add", err.message); return false; });
           }
@@ -456,6 +672,8 @@
 
     if (loading && !customers.length) { host.appendChild(UI.skeletonRows(6)); return; }
     if (loadError) { host.appendChild(UI.errorState(loadError, load)); return; }
+
+    var shown = visibleCustomers();
 
     if (!customers.length) {
       host.appendChild(UI.emptyState({
@@ -477,20 +695,43 @@
       return;
     }
 
+    if (!shown.length) {
+      host.appendChild(UI.emptyState({
+        icon: "customers",
+        title: typeFilter === "regular" ? "No regulars yet" : "No normal customers",
+        text: typeFilter === "regular"
+          ? "Nobody has been marked as a regular. Open a customer and edit their type to promote one."
+          : "Everyone who matches is currently a regular.",
+        actions: [{ label: "Show all", icon: "close", onClick: function () {
+          typeFilter = "all";
+          render();
+        } }]
+      }));
+      return;
+    }
+
     var table = UI.el("table", { class: "tbl" });
     table.innerHTML =
       "<thead><tr><th>Customer</th><th>Mobile</th><th>Email</th>" +
       '<th class="td-num">XP Coins</th><th>Joined</th><th></th></tr></thead>';
     var tbody = UI.el("tbody");
 
-    customers.forEach(function (c) {
+    shown.forEach(function (c) {
       var balance = c.wallet_balance;
       var tr = UI.el("tr", { style: { cursor: "pointer" } });
       tr.innerHTML =
         '<td><div class="row gap-3">' +
           '<span class="avatar" style="width:28px;height:28px;font-size:11px">' +
             UI.esc(UI.initials(c.customer_name)) + "</span>" +
-          "<strong>" + UI.esc(c.customer_name) + "</strong></div></td>" +
+          "<strong>" + UI.esc(c.customer_name) + "</strong>" +
+          /* A regular is worth seeing at a glance — it changes what the till
+             offers them and what they pay. The badge carries the discount so
+             staff do not have to open the record to answer "how much off?". */
+          (c.is_regular
+            ? ' <span class="badge" data-status="accent">Regular' +
+              (c.discount_percent > 0 ? " · " + c.discount_percent + "%" : "") + "</span>"
+            : "") +
+          "</div></td>" +
         '<td class="mono faint" style="font-size:12px">' + UI.esc(c.phone_number || "—") + "</td>" +
         '<td class="faint" style="font-size:12px">' + UI.esc(c.email || "—") + "</td>" +
         '<td class="td-num"><span style="font-weight:700;font-variant-numeric:tabular-nums;color:' +
@@ -550,6 +791,12 @@
           '<div class="search" style="width:340px">' + Icon("search", 15) +
             '<input class="input" id="custSearch" type="search" placeholder="Search name, mobile or email…" autocomplete="off">' +
           "</div>" +
+          '<div class="row gap-2" id="custTypeFilter">' +
+            TYPE_FILTERS.map(function (f) {
+              return '<button class="chip" data-filter="' + f.id + '"' +
+                (f.id === typeFilter ? ' aria-pressed="true" data-status="accent"' : "") + ">" + f.label + "</button>";
+            }).join("") +
+          "</div>" +
         "</div>" +
         '<div class="card card-body-flush" id="customerTable"></div>';
       root.appendChild(page);
@@ -563,6 +810,20 @@
           query = search.value.trim();
           load();
         }, 260);
+      });
+
+      // The filter is client-side — everything matching the search is
+      // already in `customers` — so switching tabs only re-renders.
+      UI.$$("#custTypeFilter .chip", page).forEach(function (chip) {
+        chip.addEventListener("click", function () {
+          typeFilter = chip.dataset.filter;
+          UI.$$("#custTypeFilter .chip", page).forEach(function (c) {
+            c.setAttribute("aria-pressed", String(c === chip));
+            if (c === chip) c.setAttribute("data-status", "accent");
+            else c.removeAttribute("data-status");
+          });
+          render();
+        });
       });
 
       var refreshBtn = page.querySelector("#custRefresh");

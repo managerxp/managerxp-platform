@@ -45,9 +45,15 @@
       tr.innerHTML =
         '<td><div class="row gap-2"><span class="dot' + (status === "online" || status === "gaming" ? " dot-live" : "") + '"></span>' +
           '<strong>' + UI.esc(pc.name) + "</strong></div></td>" +
-        '<td class="mono faint" style="font-size:12px">' + UI.esc(pc.ip_address || "—") + ":" + UI.esc(pc.port || "—") + "</td>" +
+        '<td class="mono faint" style="font-size:12px">' +
+          (Store.isNetworked(pc)
+            ? UI.esc(pc.ip_address) + ":" + UI.esc(pc.port || "—")
+            : '<span title="Sold by the hour, not connected to">No address</span>') + "</td>" +
         '<td class="mono faint" style="font-size:11px">' + UI.esc(pc.mac_address || "—") + "</td>" +
-        '<td><span class="badge">' + UI.esc({ online: "Online", gaming: "In use", offline: "Offline", inactive: "Deactivated" }[status] || status) + "</span></td>" +
+        '<td><span class="badge">' + UI.esc(
+          !Store.isNetworked(pc) && status === "online" ? "Ready"
+            : ({ online: "Online", gaming: "In use", offline: "Offline", inactive: "Deactivated" }[status] || status)
+        ) + "</span></td>" +
         "<td>" + (run ? UI.esc(run.appName) + ' <span class="faint mono">' + UI.hms(run.remaining) + "</span>" : '<span class="faint">—</span>') + "</td>" +
         '<td class="td-num">' + (cs.failures ? '<span style="color:var(--danger)">' + UI.esc(cs.failures) + "</span>" : '<span class="faint">0</span>') + "</td>" +
         '<td class="truncate" style="max-width:260px;font-size:12px;color:var(--text-3)" title="' + UI.esc(cs.error || "") + '">' +
@@ -55,11 +61,18 @@
         '<td class="td-actions"></td>';
 
       var actions = tr.querySelector(".td-actions");
+      /* A pool table or VR rig has nothing to reconnect to, so the button is
+         disabled rather than offered and then failing. */
+      var networked = Store.isNetworked(pc);
       var retry = UI.el("button", {
-        class: "btn btn-outline btn-sm btn-icon", html: Icon("link", 13), "data-tip": "Reconnect"
+        class: "btn btn-outline btn-sm btn-icon",
+        html: Icon("link", 13),
+        "data-tip": networked ? "Reconnect" : "No network address — nothing to connect to",
+        disabled: !networked
       });
       retry.addEventListener("click", function (e) {
         e.stopPropagation();
+        if (!networked) return;
         UI.withBusy(retry, function () {
           return Store.clearFailures(pc.name)
             .then(function () { return Store.connectToPC(pc.ip_address, pc.port, pc.name); })

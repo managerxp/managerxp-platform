@@ -38,6 +38,7 @@
     subscription: null,         // row from /api/subscriptions/cafe/:id
     running: {},                // pcName -> { appName, appPath, remaining, totalSeconds } (launch timer)
     sessions: {},               // pcName -> live session from /api/sessions
+    launchers: {},              // pcName -> { Steam: {installed, path}, ... } reported by the station
     me: null,                   // signed-in principal from /api/staff/me
     permissions: null,          // permission keys, or null for full access
     loading: { pcs: false, subscription: false },
@@ -173,14 +174,71 @@
     return "offline";
   }
 
+  /*
+   * What kind of thing a station is, for grouping and counting.
+   *
+   * The café's own category when it has one. Otherwise it comes down to
+   * whether we can talk to it: something with a network address is a PC
+   * running the client, and something without is sold by the hour.
+   */
+  function stationType(pc) {
+    var category = pc && pc.category ? String(pc.category).trim() : "";
+    if (category) return category;
+    return isNetworked(pc) ? "PC" : "Other";
+  }
+
+  /*
+   * Station types present on the floor, in display order.
+   *
+   * PCs first — they are usually the bulk of a floor and the only ones with
+   * a connection to worry about — then everything else alphabetically. The
+   * order is derived rather than hardcoded because categories are free text:
+   * a café that sells darts and karaoke gets those grouped sensibly without
+   * anybody adding them to a list in the code.
+   */
+  function stationTypes() {
+    var seen = {};
+    state.pcs.forEach(function (pc) {
+      var t = stationType(pc);
+      if (!seen[t]) seen[t] = { type: t, networked: isNetworked(pc), total: 0 };
+      seen[t].total++;
+      // A group counts as networked if any station in it has an address.
+      if (isNetworked(pc)) seen[t].networked = true;
+    });
+    return Object.keys(seen).sort(function (a, b) {
+      var an = seen[a].networked ? 0 : 1;
+      var bn = seen[b].networked ? 0 : 1;
+      if (an !== bn) return an - bn;
+      return a.localeCompare(b);
+    }).map(function (k) { return seen[k]; });
+  }
+
   function counts() {
-    var c = { total: state.pcs.length, online: 0, offline: 0, running: 0, inactive: 0, discovered: state.discovered.length, failing: 0 };
+    var c = {
+      total: state.pcs.length, online: 0, offline: 0, running: 0, inactive: 0,
+      discovered: state.discovered.length, failing: 0,
+      /* Kept apart from online/offline on purpose. A pool table is neither
+         connected nor disconnected — counting it as "online" made the
+         dashboard claim three clients were connected when only one machine
+         had ever been reachable. */
+      managed: 0, hourly: 0,
+      byType: {}
+    };
     state.pcs.forEach(function (pc) {
       var s = pcStatus(pc);
-      if (s === "gaming") { c.running++; c.online++; }
-      else if (s === "online") c.online++;
-      else if (s === "inactive") c.inactive++;
-      else c.offline++;
+      var networked = isNetworked(pc);
+      if (networked) c.managed++; else c.hourly++;
+
+      var t = stationType(pc);
+      var bucket = c.byType[t] || (c.byType[t] = { total: 0, running: 0, free: 0, offline: 0, networked: networked });
+      bucket.total++;
+      if (networked) bucket.networked = true;
+
+      if (s === "gaming") { c.running++; bucket.running++; if (networked) c.online++; }
+      else if (s === "online") { if (networked) c.online++; bucket.free++; }
+      else if (s === "inactive") { c.inactive++; }
+      else { c.offline++; bucket.offline++; }
+
       var cs = state.connectionStatus[pc.name];
       if (cs && cs.failures > 0 && state.connected.indexOf(pc.name) === -1) c.failing++;
     });
@@ -384,6 +442,41 @@
     return request("/api/audit/facets").then(function (d) { return d.data; });
   }
 
+  // Expenses — what the café spends, compared against reports of what it takes in.
+  function listExpenses(opts) {
+    opts = opts || {};
+    var query = [];
+    Object.keys(opts).forEach(function (key) {
+      if (opts[key] !== undefined && opts[key] !== null && opts[key] !== "") {
+        query.push(key + "=" + encodeURIComponent(opts[key]));
+      }
+    });
+    return request("/api/expenses" + (query.length ? "?" + query.join("&") : ""));
+  }
+  function expenseCategories() {
+    return request("/api/expenses/categories").then(function (r) { return r.data; });
+  }
+  function expenseSummary(opts) {
+    opts = opts || {};
+    var query = [];
+    Object.keys(opts).forEach(function (key) {
+      if (opts[key]) query.push(key + "=" + encodeURIComponent(opts[key]));
+    });
+    return request("/api/expenses/summary" + (query.length ? "?" + query.join("&") : ""))
+      .then(function (r) { return r.data; });
+  }
+  function createExpense(body) {
+    return request("/api/expenses", { method: "POST", body: JSON.stringify(body) });
+  }
+  function updateExpense(id, body) {
+    return request("/api/expenses/" + id, { method: "PUT", body: JSON.stringify(body) });
+  }
+  function voidExpense(id, reason) {
+    return request("/api/expenses/" + id + "/void", {
+      method: "POST", body: JSON.stringify({ reason: reason || null })
+    });
+  }
+
   function reportQuery(path, opts) {
     opts = opts || {};
     var query = [];
@@ -543,6 +636,20 @@
     return request("/api/customers/" + customerId).then(function (d) { return d.data; });
   }
 
+  /* Promote a customer to a regular, or return them to normal. Separate from
+     the create/update calls because it grants a discount and the right to owe
+     the café money, and is audited as its own decision. */
+  function setCustomerTier(id, body) {
+    return request("/api/customers/" + id + "/tier", {
+      method: "PATCH", body: JSON.stringify(body)
+    });
+  }
+  /* What they owe and how much of their limit is left — read before the till
+     offers to put a ticket on their tab. */
+  function getCustomerCredit(id) {
+    return request("/api/customers/" + id + "/credit").then(function (r) { return r.data; });
+  }
+
   function createCustomer(body) {
     return request("/api/customers", { method: "POST", body: JSON.stringify(body) });
   }
@@ -660,16 +767,28 @@
         if (s.status !== "active") return;
         s.elapsed_seconds += 1;
         if (s.remaining_seconds !== null) s.remaining_seconds = Math.max(0, s.remaining_seconds - 1);
-        /* An unlimited session is a flat charge — ticking it up by the hour
-           would show a number climbing towards something nobody will be
-           asked to pay. */
-        s.running_amount = s.pricing_unit === "FLAT"
-          ? Number(s.flat_amount || 0)
-          : Number((s.rate_per_hour * (s.elapsed_seconds / 3600)).toFixed(2));
+        /* A FLAT (unlimited) and a BLOCK (fixed-length) session both cost a
+           fixed amount — ticking either up by the hour would show a number
+           climbing towards something nobody will be asked to pay. Only a
+           legacy HOUR session meters against elapsed time. The membership
+           discount, if any, is already baked into flat_amount by the server. */
+        var mult = 1 - (Number(s.membership_discount_percent) || 0) / 100;
+        s.running_amount = (s.pricing_unit === "FLAT" || s.pricing_unit === "BLOCK")
+          ? Number(s.flat_amount || 0) * mult
+          : Number((s.rate_per_hour * (s.elapsed_seconds / 3600) * mult).toFixed(2));
         checkExpiryWarning(s, name);
       });
       emit("session-tick", state.sessions);
     }, 1000);
+  }
+
+  /* A toast from the store layer. Views own the toast component, so this just
+     reaches for it when it exists and stays silent (a console line only) if the
+     UI has not loaded — the store must never throw for want of a toast. */
+  function UIToast(kind, title, message) {
+    var t = global.CXUI && global.CXUI.toast;
+    if (t && typeof t[kind] === "function") t[kind](title, message);
+    else console.log("[store] " + kind + ": " + title + " — " + (message || ""));
   }
 
   /** Mirror a session onto its station so the customer portal can show it. */
@@ -678,6 +797,67 @@
     return api.pushSessionState(pcName, session).catch(function (e) {
       console.warn("[store] session push failed", e);
     });
+  }
+
+  /*
+   * End-of-session cleanup.
+   *
+   * Read fresh from settings each time rather than cached, so a café that
+   * switches "sign out of Steam" on sees it apply to the very next session
+   * that ends, without restarting a console or touching a station.
+   *
+   * Best-effort by design: a station that is offline simply is not cleaned —
+   * it re-reports on connect and staff can see its state. Never allowed to
+   * reject, because ending a session must not fail on housekeeping.
+   */
+  function cleanupStation(pcName, pcId) {
+    if (!api.cleanupStation || !pcName) return Promise.resolve();
+    return getSettings("client")
+      .then(function (rows) {
+        var row = (rows || []).filter(function (r) { return r.setting_key === "session.cleanup"; })[0];
+        var cfg = {};
+        if (row && row.setting_value) {
+          try { cfg = JSON.parse(row.setting_value); } catch (e) { cfg = {}; }
+        }
+        /* Nothing switched on at all still clears the station's own display —
+           the customer's name must not linger on an idle machine. */
+        if (!cfg || typeof cfg !== "object") cfg = {};
+        /* The process names of what was available here, so the agent can stop a
+           game whose window title differs from its executable. */
+        return (pcId ? getPcGames(pcId).catch(function () { return { data: { games: [] } }; })
+                     : Promise.resolve({ data: { games: [] } }))
+          .then(function (body) {
+            var games = (body.data.games || []).map(function (g) {
+              return { name: g.name, process_name: g.process_name };
+            });
+            return api.cleanupStation(pcName, cfg, games);
+          });
+      })
+      .catch(function (e) { console.warn("[store] cleanup failed", e); });
+  }
+
+  /* Send a station the games its customer may pick — this PC's installed and
+     enabled titles only. Called when a session starts (the menu appears) and
+     cleared when it ends (the menu goes with the session). Best-effort: a
+     station with no games or no connection simply shows nothing. */
+  function pushGamesToStation(pcName, pcId) {
+    if (!api.pushGames) return Promise.resolve();
+    if (!pcId) return api.pushGames(pcName, []).catch(function () {});
+    return getPcGames(pcId)
+      .then(function (body) {
+        var list = (body.data.games || [])
+          .filter(function (g) { return g.installed && g.enabled; })
+          .map(function (g) {
+            return {
+              game_id: g.game_id, name: g.name, category: g.category,
+              launcher: g.launcher, launch_type: g.launch_type, app_id: g.app_id,
+              executable: g.executable, process_name: g.process_name,
+              launch_args: g.launch_args, icon_url: g.icon_url, auto_launch: g.auto_launch
+            };
+          });
+        return api.pushGames(pcName, list);
+      })
+      .catch(function (e) { console.warn("[store] games push failed", e); });
   }
 
   /* Ended and cancelled both free the station. Testing only for "ended" would
@@ -697,6 +877,14 @@
     startSessionTicker();
     emit("sessions", state.sessions);
     emit("pcs", state.pcs);
+    /* The customer's game menu follows the session: sent when one is running,
+       cleared when it is not. Fired alongside the session-state push. */
+    var running = stillRunning(session);
+    pushGamesToStation(pcName, running && session ? session.pc_id : null);
+
+    /* A session that has just ended leaves a machine holding the last
+       customer's game accounts. Clean it before the next person sits down. */
+    if (session && !running && pcName) cleanupStation(pcName, session.pc_id);
     return pushSessionToStation(pcName, stillRunning(session) ? session : null)
       .then(function () { return session; });
   }
@@ -726,6 +914,25 @@
   function extendSession(session, minutes) {
     return sessionAction(session.session_id, "extend", { minutes: minutes }).then(function (r) {
       return afterSessionChange(r.data);
+    });
+  }
+  /*
+   * Extend a fixed-price session by whole blocks. Used by the player-driven
+   * Extend at the station: the block is added to the bill (settled at the end,
+   * never a wallet debit here), the station's timer card is grown to match, and
+   * the floor is updated. `blocks` defaults to one.
+   */
+  function extendSessionBlocks(session, blocks) {
+    var n = blocks || 1;
+    var unitMin = Number(session.block_unit_minutes) || 0;
+    return sessionAction(session.session_id, "extend", { blocks: n }).then(function (r) {
+      var pcName = session.pc_name;
+      if (pcName && unitMin > 0 && api.pushExtendTimer) {
+        api.pushExtendTimer(pcName, unitMin * n).catch(function (e) {
+          console.warn("[store] extend-timer push failed", e);
+        });
+      }
+      return afterSessionChange(r.data, pcName);
     });
   }
   function transferSession(session, pcId) {
@@ -1061,6 +1268,47 @@
   }
 
   // Gaming Price Master
+  /* ---- Launchers a station has installed ---- */
+  var LAUNCHER_ORDER = ["Steam", "Riot", "EA", "Epic", "Ubisoft", "Battle.net", "Rockstar"];
+
+  /** [{ name, installed, path }] for a station, in a stable display order.
+      Returns null when the station has never reported — which is different
+      from "reported, and has none". */
+  function launchersFor(pcName) {
+    var map = state.launchers[pcName];
+    if (!map) return null;
+    return LAUNCHER_ORDER.map(function (name) {
+      var entry = map[name] || {};
+      return { name: name, installed: !!entry.installed, path: entry.path || null };
+    });
+  }
+
+  /** Ask a station to detect its launchers again. */
+  function refreshLaunchers(pcName) {
+    if (!api.refreshStationLaunchers) return Promise.resolve({ success: false });
+    return api.refreshStationLaunchers(pcName);
+  }
+
+  /* ---- Game Library (titles + launcher config + per-PC availability) ---- */
+  /* Named `libraryGames`, not `listGames` — that name is already taken above by
+     the software-master catalogue (station types). Two different things called
+     "games" in one café: the station types you sell time on, and the titles a
+     PC can launch. This is the latter. */
+  function libraryGames(params) { return request("/api/games" + qs(params)); }
+  function createGame(body) {
+    return request("/api/games", { method: "POST", body: JSON.stringify(body) });
+  }
+  function updateGame(id, body) {
+    return request("/api/games/" + id, { method: "PATCH", body: JSON.stringify(body) });
+  }
+  function deleteGame(id) {
+    return request("/api/games/" + id, { method: "DELETE" });
+  }
+  function getPcGames(pcId) { return request("/api/games/pc/" + pcId); }
+  function setPcGames(pcId, gameIds) {
+    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ game_ids: gameIds }) });
+  }
+
   function listGamingPrices(params) { return request("/api/gaming-prices" + qs(params)); }
   function createGamingPrice(body) {
     return request("/api/gaming-prices", { method: "POST", body: JSON.stringify(body) });
@@ -1080,6 +1328,24 @@
     return request("/api/gaming-prices/lookup" + qs({
       software_id: softwareId, session_master_id: sessionMasterId
     }));
+  }
+
+  // Time-based pricing — peak, off-peak, weekend and happy hours.
+  function listPricingRules() { return request("/api/pricing-rules"); }
+  function createPricingRule(body) {
+    return request("/api/pricing-rules", { method: "POST", body: JSON.stringify(body) });
+  }
+  function updatePricingRule(id, body) {
+    return request("/api/pricing-rules/" + id, { method: "PUT", body: JSON.stringify(body) });
+  }
+  function deletePricingRule(id) {
+    return request("/api/pricing-rules/" + id, { method: "DELETE" });
+  }
+  /* What every catalogue price costs at a given moment. `at` is optional and
+     lets the rate card show any hour of the week, not only right now. */
+  function previewRates(at) {
+    return request("/api/pricing-rules/preview" + qs(at ? { at: at } : null))
+      .then(function (r) { return r.data; });
   }
 
   /* ==========================================================================
@@ -1296,7 +1562,71 @@
       });
     }
 
+    /* Which launchers each station has. Seeded from whatever the main process
+       already collected (stations connect before this renderer mounts), then
+       kept live as stations report in. */
+    if (api.getStationLaunchers) {
+      api.getStationLaunchers().then(function (r) {
+        (r && r.data ? r.data : []).forEach(function (row) {
+          state.launchers[row.pcName] = row.launchers;
+        });
+        emit("launchers", state.launchers);
+      }).catch(function () {});
+    }
+    if (api.onStationLaunchers) {
+      api.onStationLaunchers(function (d) {
+        if (!d || !d.pcName) return;
+        state.launchers[d.pcName] = d.launchers || {};
+        emit("launchers", state.launchers);
+      });
+    }
+
     startSessionReconcile();
+
+    /* A player tapped Extend at their station. Find the session on that station
+       and add a block to it — the same fixed-price extend staff have, but
+       driven from the customer's end. */
+    if (api.onStationExtendRequest) {
+      api.onStationExtendRequest(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        if (!session) {
+          emit("station-extend-failed", { pcName: pcName, reason: "no active session" });
+          return;
+        }
+        if (!session.can_extend) {
+          UIToast("warn", "Cannot extend", (session.customer_name || "That station") +
+            " is not on a fixed-price block.");
+          return;
+        }
+        extendSessionBlocks(session, (data && data.blocks) || 1)
+          .then(function () {
+            UIToast("ok", "Extended at the station",
+              (session.customer_name || "Player") + " added a block to their session.");
+          })
+          .catch(function (e) {
+            UIToast("error", "Extend failed", e.message || "Could not extend the session.");
+          });
+      });
+    }
+
+    /* A station's block ran out and the game was left running (never cut off).
+       Surface it so staff can settle or extend; the low-balance state rides on
+       the session object the floor already renders. */
+    if (api.onStationOvertime) {
+      api.onStationOvertime(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        var who = (session && session.customer_name) || pcName || "A station";
+        var lowBal = session && session.low_balance;
+        UIToast(lowBal ? "warn" : "info",
+          lowBal ? "Time up · low balance" : "Session over its time",
+          who + (lowBal
+            ? " has run out of time and cannot cover the bill — ask them to top up."
+            : " is past its block. Extend or end when they finish."));
+        emit("station-overtime", { pcName: pcName, session: session || null, low_balance: !!lowBal });
+      });
+    }
 
     if (api.onLog) api.onLog(pushLog);
 
@@ -1347,6 +1677,8 @@
     // derived
     pcStatus: pcStatus,
     counts: counts,
+    stationType: stationType,
+    stationTypes: stationTypes,
     getPC: getPC,
     isConnected: isConnected,
     isNetworked: isNetworked,
@@ -1436,12 +1768,26 @@
     updateHouseActivity: updateHouseActivity,
     deleteHouseActivity: deleteHouseActivity,
     setSoftwareCategory: setSoftwareCategory,
+    launchersFor: launchersFor,
+    refreshLaunchers: refreshLaunchers,
+    libraryGames: libraryGames,
+    createGame: createGame,
+    updateGame: updateGame,
+    deleteGame: deleteGame,
+    getPcGames: getPcGames,
+    setPcGames: setPcGames,
     listGamingPrices: listGamingPrices,
     createGamingPrice: createGamingPrice,
     updateGamingPrice: updateGamingPrice,
     setGamingPriceStatus: setGamingPriceStatus,
     deleteGamingPrice: deleteGamingPrice,
     lookupGamingPrice: lookupGamingPrice,
+
+    listPricingRules: listPricingRules,
+    createPricingRule: createPricingRule,
+    updatePricingRule: updatePricingRule,
+    deletePricingRule: deletePricingRule,
+    previewRates: previewRates,
 
     // sessions
     loadSessions: loadSessions,
@@ -1452,6 +1798,7 @@
     pauseSession: pauseSession,
     resumeSession: resumeSession,
     extendSession: extendSession,
+    extendSessionBlocks: extendSessionBlocks,
     transferSession: transferSession,
     endSession: endSession,
     cancelSession: cancelSession,
@@ -1475,6 +1822,12 @@
     listAudit: listAudit,
     auditFacets: auditFacets,
     report: reportQuery,
+    listExpenses: listExpenses,
+    expenseCategories: expenseCategories,
+    expenseSummary: expenseSummary,
+    createExpense: createExpense,
+    updateExpense: updateExpense,
+    voidExpense: voidExpense,
     stationPower: stationPower,
     stationPowerMany: stationPowerMany,
 
@@ -1500,6 +1853,8 @@
     getCustomers: getCustomers,
     getCustomer: getCustomer,
     createCustomer: createCustomer,
+    setCustomerTier: setCustomerTier,
+    getCustomerCredit: getCustomerCredit,
     getCustomerWallet: getCustomerWallet,
     getCustomerWalletTransactions: getCustomerWalletTransactions,
     creditWallet: creditWallet,

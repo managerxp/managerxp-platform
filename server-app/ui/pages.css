@@ -144,6 +144,28 @@
    LIVE FLOOR STRIP (dashboard)
    ========================================================================== */
 .floor-strip { display: flex; flex-direction: column; }
+
+/* Type heading inside the strip — PCs, Pool, VR. Quiet by design: it groups
+   the rows without competing with the station names it sits above. */
+.floor-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--s-3);
+  padding: var(--s-3) var(--s-5) var(--s-2);
+  border-bottom: 1px solid var(--line-faint);
+  background: var(--bg-inset);
+}
+.floor-group:not(:first-child) { border-top: 1px solid var(--line); margin-top: var(--s-2); }
+.floor-group-name {
+  font-size: var(--t-xs);
+  font-weight: 650;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-2);
+}
+.floor-group-count { font-size: var(--t-xs); color: var(--text-3); }
+
 .floor-row {
   display: grid;
   grid-template-columns: 118px 1fr auto auto;
@@ -615,6 +637,18 @@
   color: var(--text-3);
 }
 
+/* The ManagerXP mark, quieter than the café's own footer above it. Present
+   on the paper without competing with the line the customer is meant to
+   read. */
+.receipt-powered {
+  padding-top: var(--s-2);
+  text-align: center;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: var(--text-3);
+  opacity: 0.75;
+}
+
 /* Printing: the receipt alone, on white, rather than the whole console. */
 @media print {
   body.printing-receipt * { visibility: hidden; }
@@ -626,6 +660,12 @@
     border: 0;
     background: #fff;
     color: #000;
+  }
+  /* Grey rather than the screen's washed-out token, which prints as near
+     white on a thermal roll and would leave the mark invisible. */
+  body.printing-receipt .receipt-powered {
+    color: #888;
+    opacity: 1;
   }
 }
 
@@ -1321,6 +1361,14 @@
 .rt-line span:last-child { font-variant-numeric: tabular-nums; white-space: nowrap; }
 .rt-total { font-weight: 800; font-size: 14px; margin-top: 5px; }
 .rt-foot { text-align: center; margin-top: 12px; font-size: 11px; color: #444; }
+/* The preview paper is white, so this is a real grey rather than a token. */
+.rt-powered {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  color: #999;
+}
 
 .rt-logo-row { display: flex; gap: var(--s-4); align-items: flex-start; }
 .rt-logo-box {

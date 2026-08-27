@@ -970,6 +970,12 @@
             ? coins(bill.balance_due) + " XP outstanding"
             : UI.esc(id["billing.receipt_footer"] || "Thank you — see you next time")) +
         "</div>" +
+        /* Absent only when the café has explicitly removed it on the Receipt
+           Template page — a café that has never opened that editor still gets
+           the mark, which is why the test is against "false" rather than for
+           "true". */
+        (String(id["billing.receipt_powered_by"]) !== "false"
+          ? '<div class="receipt-powered">Powered by ManagerXP</div>' : "") +
       "</div>";
 
     return UI.modal({

@@ -66,8 +66,49 @@
     return p / row.duration_minutes;
   }
 
+  /*
+   * The same list, priced for this moment.
+   *
+   * `list()` returns the catalogue's base prices. Anywhere a session is about
+   * to be *started*, that is the wrong number to show: a peak or happy-hour
+   * window may be open, and quoting ₹400 while the server charges ₹500 is how
+   * an argument at the counter starts. This merges the server's own rate
+   * preview — computed by the very code that prices the session — onto each
+   * row, so the dropdown and the charge cannot disagree.
+   *
+   * Falls back to the base list if the preview cannot be reached. A café with
+   * no windows configured gets identical numbers either way, so the fallback
+   * is only ever wrong in the case where it is also unavoidable.
+   */
+  function listLive() {
+    if (!Store || !Store.previewRates) return list();
+    return Promise.all([list(), Store.previewRates().catch(function () { return null; })])
+      .then(function (res) {
+        var rows = res[0], preview = res[1];
+        if (!preview) return rows;
+
+        var byId = {};
+        preview.forEach(function (p) { byId[p.gaming_price_id] = p; });
+
+        return rows.map(function (row) {
+          var live = byId[row.price_id];
+          if (!live) return row;
+          return Object.assign({}, row, {
+            base_price: live.base_price,
+            price: live.current_price,       // what this session will actually cost
+            rule_label: live.rule_label,
+            rule_kind: live.rule_kind,
+            changed: live.changed,
+            next_change_time: live.next_change_time,
+            next_price: live.next_price
+          });
+        });
+      });
+  }
+
   global.CXRates = {
     list: list,
+    listLive: listLive,
     money: money,
     durationText: durationText,
     label: label,
