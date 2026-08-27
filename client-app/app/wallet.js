@@ -7,8 +7,21 @@
 (function (global) {
   "use strict";
 
+  /* Corrected below to the console's real address once this station learns it
+     — see preload.js's onBackendBase/getBackendBase and main.js's SET_NAME
+     handler. Every call in this file reads this same binding, so updating it
+     here is enough; nothing needs to be re-created. */
   var API_BASE = "http://localhost:5000";
   var Session = global.CXSession;
+
+  (function watchBackendBase() {
+    var api = global.api || {};
+    // Pulled first: SET_NAME may already have arrived and been missed if this
+    // script loaded after that one push, which a plain event would never
+    // correct for.
+    if (api.getBackendBase) api.getBackendBase(function (base) { if (base) API_BASE = base; });
+    if (api.onBackendBase) api.onBackendBase(function (base) { if (base) API_BASE = base; });
+  })();
 
   var state = {
     balance: null,        // null until loaded

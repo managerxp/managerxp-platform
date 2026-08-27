@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("api", {
   getStatus: (cb) => ipcRenderer.invoke("get-status").then(cb),
   onPcName: (cb) => ipcRenderer.on("pc-name", (_, name) => cb(name)),
   getPcName: (cb) => ipcRenderer.invoke("get-pc-name").then(cb),
+  // Where the backend API lives — corrected from "this machine" to the
+  // console's real address once the station connects to one on another PC.
+  onBackendBase: (cb) => ipcRenderer.on("backend-base", (_, base) => cb(base)),
+  getBackendBase: (cb) => ipcRenderer.invoke("get-backend-base").then(cb),
   hideStatusBar: () => ipcRenderer.send("hide-statusbar"),
   showStatusBar: () => ipcRenderer.send("show-statusbar"),
   onStartTimer: (cb) => ipcRenderer.on("start-timer", (_, data) => cb(data)),

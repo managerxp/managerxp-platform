@@ -79,6 +79,17 @@ let currentSession = null; // Session pushed by the admin console, for display
 let currentGames = [];     // Games this station may offer, pushed by the console
 
 /*
+ * Where the backend API lives.
+ *
+ * Defaults to this station's own machine, which is correct exactly when the
+ * console and the backend also run here — the everyday single-machine dev
+ * setup, unchanged. The console corrects this to its own real address the
+ * moment it connects (see the SET_NAME handler below), which is what makes a
+ * station on a second machine able to reach a backend on the first.
+ */
+let BACKEND_BASE = "http://localhost:5000";
+
+/*
  * Turn a game's launcher config into a concrete way to start it.
  *
  * Prefer the launcher's URL protocol with the game id — the launcher owns the
@@ -514,6 +525,12 @@ function createWindow() {
     return SIM_ID;
   });
 
+  // The portal loads before SET_NAME necessarily arrives, so it pulls the
+  // current address rather than trusting a push it might have missed.
+  ipcMain.handle('get-backend-base', async (event) => {
+    return BACKEND_BASE;
+  });
+
   // IPC handler for getting current connection status
   ipcMain.handle('get-status', async (event) => {
     return currentStatus;
@@ -656,6 +673,7 @@ function createWindow() {
     if (alive(checkoutWin)) { checkoutWin.focus(); return { ok: true, reused: true }; }
 
     checkoutWin = new BrowserWindow({
+      icon: path.join(__dirname, 'Images', 'icon.png'),
       width: 520,
       height: 720,
       parent: alive(win) ? win : undefined,
@@ -694,7 +712,7 @@ function createWindow() {
       if (alive(win)) win.webContents.send('payment:checkout-closed');
     });
 
-    await checkoutWin.loadURL(`http://localhost:5000${checkoutPath}`);
+    await checkoutWin.loadURL(`${BACKEND_BASE}${checkoutPath}`);
     return { ok: true };
   });
 
@@ -702,6 +720,7 @@ function createWindow() {
   // Create main client application window.
   // The customer portal is a full-screen experience — no title bar, no chrome.
   win = new BrowserWindow({
+    icon: path.join(__dirname, 'Images', 'icon.png'),
     fullscreen: true,
     /*
      * Kiosk mode.
@@ -1560,11 +1579,23 @@ function listen() {
       if (msg.type === "SET_NAME") {
         SIM_ID = msg.name;
         log(`PC name set to: ${SIM_ID}`);
-        
+
         // Send PC name to renderer
         sendToWindow(win, "pc-name", SIM_ID);
         sendToWindow(statusBarWin, "pc-name", SIM_ID);
-        
+
+        /* The console's own address, so the renderer's wallet calls and the
+           checkout window reach the backend wherever it actually is rather
+           than this machine. Only acted on when it actually changes something,
+           the same guard used elsewhere for this handshake — the console
+           resends SET_NAME on every reconcile, and there is no reason to
+           re-announce the same address to the renderer each time. */
+        if (msg.apiBase && msg.apiBase !== BACKEND_BASE) {
+          BACKEND_BASE = msg.apiBase;
+          log(`Backend address set to: ${BACKEND_BASE}`);
+          sendToWindow(win, "backend-base", BACKEND_BASE);
+        }
+
         // Register this client with the server using the provided name
         ws.send(JSON.stringify({
           type: "REGISTER",

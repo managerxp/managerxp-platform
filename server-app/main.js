@@ -386,6 +386,39 @@ function getMacAddress() {
   }
 }
 
+/*
+ * The backend this console talks to.
+ *
+ * `Store.API_BASE` is `http://localhost:5000` because the backend runs on the
+ * same machine as this console — true in every deployment so far, so nobody
+ * had to say it out loud. A station is a different machine, so "localhost"
+ * means something different to it: itself, not the backend. It has to be told
+ * the console's real address instead, and the console is the one that knows
+ * it — SET_NAME already introduces this station to the console; this rides
+ * along on the same message rather than inventing a second round trip.
+ *
+ * Same interface-selection rule as getMacAddress, for the same reason: the
+ * first non-internal IPv4 address is the one actually reachable from another
+ * machine on the network.
+ */
+const BACKEND_PORT = 5000;
+function getServerLocalIP() {
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const addr of interfaces[name] || []) {
+        if (addr.family === 'IPv4' && !addr.internal) return addr.address;
+      }
+    }
+  } catch (error) {
+    console.error('Error getting local IP:', error);
+  }
+  return '127.0.0.1';
+}
+function backendBaseUrl() {
+  return `http://${getServerLocalIP()}:${BACKEND_PORT}`;
+}
+
 // Start token receiver HTTP server
 function startTokenServer() {
   const server = http.createServer((req, res) => {
@@ -1882,7 +1915,8 @@ async function heartbeat() {
             log(`[Heartbeat] Connected to ${pcName}`);
             ws.send(JSON.stringify({
               type: "SET_NAME",
-              name: pcName
+              name: pcName,
+              apiBase: backendBaseUrl()
             }));
             setupClientHandlers();
             clientConnections.set(pcName, ws);
@@ -2014,7 +2048,8 @@ function connectToSpecificPC(ip, port, pcName) {
     log(`[Dynamic Connect] Connected to ${pcName}, sending SET_NAME...`);
     ws.send(JSON.stringify({
       type: "SET_NAME",
-      name: pcName
+      name: pcName,
+      apiBase: backendBaseUrl()
     }));
     setupClientHandlers();
     clientConnections.set(pcName, ws);
@@ -2181,7 +2216,8 @@ async function connectToClients() {
       // Send the expected PC name from API to client
       ws.send(JSON.stringify({
         type: "SET_NAME",
-        name: simId
+        name: simId,
+        apiBase: backendBaseUrl()
       }));
       log(`Sent PC name to client: ${simId}`);
       setupClientHandlers();
