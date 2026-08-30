@@ -157,6 +157,27 @@
 }
 .nav-badge-muted { background: rgba(255,255,255,.09); color: var(--text-2); }
 
+/* Topbar notification bell — a corner count on an otherwise ordinary icon
+   button, same look as .nav-badge so a count reads the same wherever it
+   appears. */
+.topbar-bell { position: relative; }
+.topbar-bell-badge {
+  position: absolute;
+  top: 4px; right: 4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 0 0 2px var(--bg-raised);
+}
+
 /* "Not wired up yet" nav entries */
 .nav-item.is-planned { color: var(--text-3); }
 .nav-item.is-planned .nav-icon { color: rgba(111,111,129,.7); }

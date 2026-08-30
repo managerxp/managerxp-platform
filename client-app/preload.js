@@ -10,8 +10,6 @@ contextBridge.exposeInMainWorld("api", {
   // console's real address once the station connects to one on another PC.
   onBackendBase: (cb) => ipcRenderer.on("backend-base", (_, base) => cb(base)),
   getBackendBase: (cb) => ipcRenderer.invoke("get-backend-base").then(cb),
-  hideStatusBar: () => ipcRenderer.send("hide-statusbar"),
-  showStatusBar: () => ipcRenderer.send("show-statusbar"),
   onStartTimer: (cb) => ipcRenderer.on("start-timer", (_, data) => cb(data)),
   onAppLaunching: (cb) => ipcRenderer.on("app-launching", (_, data) => cb(data)),
   onAppLaunchFailed: (cb) => ipcRenderer.on("app-launch-failed", (_, data) => cb(data)),

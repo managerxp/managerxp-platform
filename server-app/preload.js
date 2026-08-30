@@ -55,6 +55,8 @@ contextBridge.exposeInMainWorld("api", {
   onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
   // A station's block ran out with the game still running.
   onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
+  // A self-started session's game failed to launch — nobody is playing it.
+  onStationLaunchFailed: (cb) => ipcRenderer.on("station:launch-failed", (_, d) => cb(d)),
   // A logged-in customer opened the game picker while idle — send this
   // station's games and prices so they can choose without staff.
   onStationStartOptionsRequest: (cb) => ipcRenderer.on("station:start-options-request", (_, d) => cb(d)),

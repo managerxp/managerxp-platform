@@ -235,6 +235,18 @@ function handleStationRequest(msg, ws) {
     });
     return true;
   }
+  /*
+   * The game this station's session just started for could not actually be
+   * launched — no launch configuration, the launcher unreachable, the
+   * executable missing. A session with nobody playing it must not run up a
+   * bill nobody asked for, so this is handed to the renderer the same way a
+   * self-start request is: it holds the session and the token to cancel it.
+   */
+  if (msg.type === "LAUNCH_FAILED") {
+    log(`[Launch] ${pcName} could not start ${msg.appName || "the game"}: ${msg.error || "unknown error"}`);
+    if (win) win.webContents.send("station:launch-failed", { pcName, appName: msg.appName || null, error: msg.error || null });
+    return true;
+  }
   /* A station finished its end-of-session cleanup. */
   if (msg.type === "CLEANUP_DONE") {
     log(`[Cleanup] ${pcName} is clean and ready`);

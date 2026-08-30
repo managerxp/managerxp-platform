@@ -206,6 +206,31 @@
     return card;
   }
 
+  /*
+   * Mount a self-replacing station card.
+   *
+   * stationCard() only builds a snapshot; its own "tick"/"session-tick"
+   * listeners update the numbers in place but never swap the card itself. A
+   * session ending stops those ticks (session.js clears the interval), which
+   * left this card frozen showing the last numbers it drew rather than
+   * falling back to "no session running" — indistinguishable, from the
+   * counter, from the session still charging. Rebuilding on every "session"
+   * event (fired on start, end and cancel alike) is what a fresh screen or a
+   * router change already gets for free; this is the same fix for the one
+   * screen that doesn't remount on its own.
+   */
+  function mountStationCard(container) {
+    var card = stationCard();
+    container.appendChild(card);
+    var off = Session.on("session", function () {
+      if (!card.isConnected) { off(); return; }
+      var fresh = stationCard();
+      card.replaceWith(fresh);
+      card = fresh;
+    });
+    return card;
+  }
+
   /* ==========================================================================
      HOME
      ========================================================================== */
@@ -271,7 +296,7 @@
       split.appendChild(left);
 
       var right = UI.el("div", { class: "col", style: { gap: "var(--s-5)" } });
-      right.appendChild(stationCard());
+      mountStationCard(right);
 
       var quick = UI.el("div", { class: "card card-pad col", style: { gap: "var(--s-3)" } });
       quick.innerHTML = '<div class="session-label" style="margin-bottom:var(--s-2)">Quick actions</div>';
@@ -1674,7 +1699,7 @@
       split.appendChild(col);
 
       var side = UI.el("div", { class: "col", style: { gap: "var(--s-5)" } });
-      side.appendChild(stationCard());
+      mountStationCard(side);
 
       // Wallet summary, straight from the live balance.
       var Wallet = global.CXWallet;

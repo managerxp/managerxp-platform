@@ -807,7 +807,7 @@
 
     var table = UI.el("table", { class: "tbl" });
     table.innerHTML =
-      "<thead><tr><th>Customer</th><th>Station</th><th>Status</th><th>Started</th>" +
+      "<thead><tr><th>Customer</th><th>Station</th><th>Game</th><th>Status</th><th>Started</th>" +
       "<th>Time</th><th class='td-num'>Amount</th><th>Payment</th><th></th></tr></thead>";
     var tbody = UI.el("tbody");
 
@@ -821,6 +821,9 @@
         "<td><strong>" + UI.esc(session.customer_name || "—") + "</strong>" +
           (session.is_guest ? ' <span class="badge badge-plain">Guest</span>' : "") + "</td>" +
         '<td class="mono">' + UI.esc(session.pc_name || "—") + "</td>" +
+        "<td>" + (session.game_name
+          ? UI.esc(session.game_name) + (session.platform ? ' <span class="badge badge-plain">' + UI.esc(session.platform) + "</span>" : "")
+          : '<span class="muted">—</span>') + "</td>" +
         '<td><span class="badge">' + UI.esc(session.status) + "</span></td>" +
         "<td>" + UI.esc(new Date(session.started_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })) + "</td>" +
         '<td class="mono" data-session-time="' + session.session_id + '">' +

@@ -1580,6 +1580,38 @@
     syncConnected();
     setInterval(syncConnected, 10000);
 
+    /*
+     * A customer asked to add coins with cash at their station.
+     *
+     * The Billing Desk's own "Coin requests" tab already lists these, but
+     * only while a staff member happens to have that tab open — its polling
+     * stops the moment they switch away (see billing-desk.js's own header on
+     * why). Whoever is at the till needs to know the moment one comes in, not
+     * the next time they think to check, so this runs for the app's whole
+     * lifetime. Emits "topup:new" once per request the moment it first
+     * appears — never re-announcing one already seen — and "topup-requests"
+     * with the full list on every check, for the topbar bell's running count.
+     * main.js turns both into the actual toast and badge.
+     */
+    var knownTopupIds = null;   // null until the first successful check
+    function checkNewTopups() {
+      if (!can("payments.topup.view")) return;
+      pendingTopups()
+        .then(function (list) {
+          var ids = (list || []).map(function (r) { return r.topup_id; });
+          if (knownTopupIds) {
+            (list || []).forEach(function (r) {
+              if (knownTopupIds.indexOf(r.topup_id) === -1) emit("topup:new", r);
+            });
+          }
+          knownTopupIds = ids;
+          emit("topup-requests", list || []);
+        })
+        .catch(function () { /* next tick tries again; a miss here is not fatal */ });
+    }
+    checkNewTopups();
+    setInterval(checkNewTopups, 15000);
+
     if (api.onDiscoveredPCs) {
       api.onDiscoveredPCs(function (list) {
         var prev = state.discovered.length;
@@ -1677,6 +1709,29 @@
             ? " has run out of time and cannot cover the bill — ask them to top up."
             : " is past its block. Extend or end when they finish."));
         emit("station-overtime", { pcName: pcName, session: session || null, low_balance: !!lowBal });
+      });
+    }
+
+    /*
+     * The game a self-started session was for never actually launched. The
+     * customer never played a second of it, so the session is cancelled —
+     * same as staff cancelling by hand, charges nothing — rather than left
+     * running up a bill against an empty station.
+     */
+    if (api.onStationLaunchFailed) {
+      api.onStationLaunchFailed(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        if (!session) return;    // already ended some other way; nothing to undo
+        var who = session.customer_name || pcName || "The station";
+        cancelSession(session, { reason: "launch_failed" })
+          .then(function () {
+            UIToast("warn", "Session cancelled — game did not start",
+              who + "'s game (" + (data.appName || "the game") + ") could not be launched. Nothing was charged.");
+          })
+          .catch(function (e) {
+            UIToast("error", "Could not cancel the session", e.message || "");
+          });
       });
     }
 

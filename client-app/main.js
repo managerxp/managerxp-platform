@@ -63,7 +63,6 @@ function persistUnlockPin(pin) {
     log(`Could not cache the staff unlock PIN: ${e.message}`);
   }
 }
-let statusBarWin;
 let timerCardWin;
 let wss; // WebSocket server instance (client listens)
 let serverConnection; // Connection from server
@@ -152,12 +151,29 @@ function buildGameLaunch(game) {
  * reached, which is why this lives at module scope rather than nested inside
  * `createWindow` where only the IPC handler could see it.
  */
-function launchGame(game) {
+/*
+ * `isSessionStart` marks the one call site (the launch that fires the moment
+ * a self-started session goes active) where a failure here means nobody is
+ * actually playing what the customer was just charged to start. Only that
+ * call reports the failure up to the console — see the LAUNCH_FAILED send
+ * below — so it can cancel the session. Staff manually replaying a title
+ * mid-session, or free play with no session at all, must not have a launch
+ * hiccup wipe out billing that already happened.
+ */
+function reportLaunchFailedIfSessionStart(game, isSessionStart, error) {
+  if (!isSessionStart || !serverConnection || serverConnection.readyState !== WebSocket.OPEN) return;
+  serverConnection.send(JSON.stringify({ type: 'LAUNCH_FAILED', simId: SIM_ID, appName: game.name, error }));
+}
+
+function launchGame(game, opts) {
   if (!game || typeof game !== 'object') return;
+  const isSessionStart = !!(opts && opts.isSessionStart);
   const plan = buildGameLaunch(game);
   if (!plan) {
     log(`No launch config for ${game.name}`);
-    sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'This game has no launch configuration yet.' });
+    const error = 'This game has no launch configuration yet.';
+    sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+    reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     return;
   }
 
@@ -169,14 +185,18 @@ function launchGame(game) {
     // has accepted the URL, not when the game is up — which is all we need.
     shell.openExternal(plan.url).catch((err) => {
       log(`Launch failed for ${game.name}: ${err.message}`);
-      sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'Could not reach the launcher.' });
+      const error = 'Could not reach the launcher.';
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+      reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     });
   } else if (plan.exe) {
     const cmd = game.launch_arguments ? `"${plan.exe}" ${game.launch_arguments}` : `"${plan.exe}"`;
     const child = exec(cmd, (err) => {
       if (err) {
         log(`Launch failed for ${game.name}: ${err.message}`);
-        sendToWindow(win, 'app-launch-failed', { appName: game.name, error: 'The game could not be started.' });
+        const error = 'The game could not be started.';
+        sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+        reportLaunchFailedIfSessionStart(game, isSessionStart, error);
       }
     });
     // Track the process under the game's name so the existing close path can
@@ -502,42 +522,6 @@ async function reportLaunchers(ws) {
 }
 
 function createWindow() {
-  const { width } = screen.getPrimaryDisplay().workAreaSize;
-  
-  // Create status bar overlay window
-  statusBarWin = new BrowserWindow({
-    width: width,
-    height: 60,
-    x: 0,
-    y: 0,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    resizable: false,
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false
-    }
-  });
-
-  statusBarWin.loadFile("statusbar.html");
-  statusBarWin.setAlwaysOnTop(true, 'screen-saver');
-  
-  // IPC handler for hiding status bar
-  ipcMain.on('hide-statusbar', () => {
-    if (statusBarWin && !statusBarWin.isDestroyed()) {
-      statusBarWin.hide();
-    }
-  });
-  
-  ipcMain.on('show-statusbar', () => {
-    if (statusBarWin && !statusBarWin.isDestroyed()) {
-      statusBarWin.show();
-    }
-  });
-  
   // IPC handler for timer expiry - close the app
   ipcMain.on('timer-expired', (event, appName) => {
     log(`Timer expired for ${appName}, closing application...`);
@@ -1007,7 +991,6 @@ function updateStatus(status) {
 
   if (changed) {
     sendToWindow(win, "status", status);
-    sendToWindow(statusBarWin, "status", status);
   }
   
   // Navigate to welcome page when connected
@@ -1645,7 +1628,6 @@ function listen() {
 
         // Send PC name to renderer
         sendToWindow(win, "pc-name", SIM_ID);
-        sendToWindow(statusBarWin, "pc-name", SIM_ID);
 
         /* The console's own address, so the renderer's wallet calls and the
            checkout window reach the backend wherever it actually is rather
@@ -1742,7 +1724,7 @@ function listen() {
         if (!wasRunning && currentSession && currentSession.status === 'active' && pendingSelfStartGame) {
           const game = pendingSelfStartGame;
           pendingSelfStartGame = null;
-          launchGame(game);
+          launchGame(game, { isSessionStart: true });
         } else if (!currentSession) {
           pendingSelfStartGame = null;
         }

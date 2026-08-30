@@ -25,11 +25,19 @@
     var ring = detail === "full"
       ? '<path id="' + id + 'top" d="M 30 100 A 70 70 0 0 1 170 100" fill="none"/>' +
         '<path id="' + id + 'bot" d="M 34 100 A 66 66 0 0 0 166 100" fill="none"/>' +
-        '<text class="xpc-ring" font-size="15" font-weight="700" letter-spacing="3.4" fill="url(#' + id + 'red)">' +
-          '<textPath href="#' + id + 'top" startOffset="50%" text-anchor="middle">XP COIN</textPath></text>' +
-        '<text class="xpc-ring" font-size="11.5" font-weight="600" letter-spacing="2.6" fill="#7d1524">' +
-          '<textPath href="#' + id + 'bot" startOffset="50%" text-anchor="middle">EARN · REDEEM · GROW</textPath></text>' +
-        '<circle cx="100" cy="100" r="60" fill="none" stroke="#521018" stroke-width="1.4"/>'
+        /* textLength + lengthAdjust pin each string to a fixed arc length
+           regardless of the actual glyph widths a given font/weight/renderer
+           produces — without it, a bold weight (wider glyphs than whatever
+           length "fit" was eyeballed against) runs past the end of its own
+           path and doubles back over itself or the monogram. Chosen shorter
+           than the path's full length so the letters sit centred in the
+           upper/lower arc rather than stretched out to the 3-and-9-o'clock
+           points. */
+        '<text class="xpc-ring" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="15" font-weight="900" fill="url(#' + id + 'red)">' +
+          '<textPath href="#' + id + 'top" startOffset="50%" text-anchor="middle" textLength="128" lengthAdjust="spacingAndGlyphs">XP COIN</textPath></text>' +
+        '<text class="xpc-ring" font-family="Inter, Segoe UI, system-ui, sans-serif" font-size="11.5" font-weight="800" fill="#e0334f">' +
+          '<textPath href="#' + id + 'bot" startOffset="50%" text-anchor="middle" textLength="188" lengthAdjust="spacingAndGlyphs">EARN · REDEEM · GROW</textPath></text>' +
+        '<circle cx="100" cy="100" r="60" fill="none" stroke="#4a3607" stroke-width="1.4"/>'
       : "";
 
     // Tick marks flanking the monogram, as on the reference coin.
@@ -38,7 +46,7 @@
       [-1, 1].forEach(function (dir) {
         for (var i = 0; i < 3; i++) {
           var x = 100 + dir * (46 + i * 6);
-          ticks += '<rect x="' + (x - 1.4) + '" y="92" width="2.8" height="16" rx="1.4" fill="#8d1a2b"/>';
+          ticks += '<rect x="' + (x - 1.4) + '" y="92" width="2.8" height="16" rx="1.4" fill="url(#' + id + 'gold)"/>';
         }
       });
     }
@@ -57,17 +65,25 @@
           '<stop offset="46%" stop-color="#ff1744"/>' +
           '<stop offset="100%" stop-color="#a30c26"/>' +
         "</linearGradient>" +
+        /* Gold — the rim, the monogram and the ticks. Ring lettering ("XP
+           COIN" / "EARN · REDEEM · GROW") stays the red gradient above; the
+           reference coin keeps that contrast, only the metal itself is gold. */
+        '<linearGradient id="' + id + 'gold" x1="0" y1="0" x2="0" y2="1">' +
+          '<stop offset="0%" stop-color="#fff3c4"/>' +
+          '<stop offset="45%" stop-color="#f0b937"/>' +
+          '<stop offset="100%" stop-color="#b5820f"/>' +
+        "</linearGradient>" +
         '<linearGradient id="' + id + 'rim" x1="0" y1="0" x2="1" y2="1">' +
-          '<stop offset="0%" stop-color="#ff4569"/>' +
-          '<stop offset="40%" stop-color="#8c1122"/>' +
-          '<stop offset="100%" stop-color="#ff1744"/>' +
+          '<stop offset="0%" stop-color="#fff6d6"/>' +
+          '<stop offset="40%" stop-color="#c8940f"/>' +
+          '<stop offset="100%" stop-color="#ffe27a"/>' +
         "</linearGradient>" +
       "</defs>" +
 
       // body + rim
       '<circle cx="100" cy="100" r="95" fill="url(#' + id + 'body)"/>' +
       '<circle cx="100" cy="100" r="95" fill="none" stroke="url(#' + id + 'rim)" stroke-width="5"/>' +
-      '<circle cx="100" cy="100" r="86" fill="none" stroke="#3a0b13" stroke-width="1.6"/>' +
+      '<circle cx="100" cy="100" r="86" fill="none" stroke="#4a3607" stroke-width="1.6"/>' +
       '<circle cx="100" cy="100" r="72" fill="#0d0d12" opacity=".55"/>' +
 
       ring + ticks +
@@ -75,8 +91,8 @@
       // XP monogram, with an offset shadow copy for the struck-metal depth
       '<g font-family="Inter, Segoe UI, system-ui, sans-serif" font-weight="900" ' +
          'text-anchor="middle" font-size="72" letter-spacing="-4">' +
-        '<text x="103" y="126" fill="#460910">XP</text>' +
-        '<text x="100" y="123" fill="url(#' + id + 'red)">XP</text>' +
+        '<text x="103" y="126" fill="#3d2c05">XP</text>' +
+        '<text x="100" y="123" fill="url(#' + id + 'gold)">XP</text>' +
       "</g>" +
 
       // top-left specular sweep

@@ -45,6 +45,15 @@
     document.getElementById("userMail").textContent = user ? (user.email || "—") : "Sign in to load your cafe";
   }
 
+  /* The bell and its popup both land here — Billing Desk's own Coin requests
+     tab, opened directly rather than left for staff to find the right tab
+     themselves once they're on the page. */
+  function openCoinRequests() {
+    var billing = global.CXPages && global.CXPages.billing;
+    if (billing && billing.openRequests) billing.openRequests();
+    else Router.go("billing");
+  }
+
   function openAccountMenu() {
     var user = Store.state.user;
     if (!user) { Store.login(); return; }
@@ -151,10 +160,15 @@
     document.getElementById("sidebarToggle").innerHTML = Icon("chevronL", 16);
     var reconnectBtn = document.getElementById("reconnectAllBtn");
     reconnectBtn.innerHTML = Icon("refresh", 16);
+    // The bell already carries a badge span in static markup; prepend the
+    // icon rather than overwrite it with innerHTML.
+    var bellBtn = document.getElementById("notifyBell");
+    if (bellBtn) bellBtn.insertAdjacentHTML("afterbegin", Icon("bell", 16));
 
     document.getElementById("sidebarToggle").addEventListener("click", Router.toggleSidebar);
     document.getElementById("userChip").addEventListener("click", openAccountMenu);
     reconnectBtn.addEventListener("click", function () { reconnectAll(reconnectBtn); });
+    if (bellBtn) bellBtn.addEventListener("click", openCoinRequests);
 
     Store.init();
     startClock();
@@ -189,6 +203,30 @@
     });
     Store.on("timer:expired", function (name) {
       UI.toast({ title: "Time expired on " + name, message: "The application was closed.", status: "warn" });
+    });
+
+    /* The topbar bell's running count — every check, not just new arrivals,
+       so it also drops when a request is approved or rejected from Billing
+       Desk while the bell isn't the thing being looked at. */
+    Store.on("topup-requests", function (list) {
+      var badge = document.getElementById("notifyBellBadge");
+      if (!badge) return;
+      var n = (list || []).length;
+      badge.textContent = n > 99 ? "99+" : String(n);
+      badge.classList.toggle("hidden", !n);
+    });
+
+    /* One customer, one cash request, one popup — clicking it goes straight
+       to the queue rather than making staff go find it themselves. */
+    Store.on("topup:new", function (r) {
+      UI.toast({
+        title: "Coins requested",
+        message: (r.customer_name || "A customer") + " wants to add " +
+          Number(r.coins || 0).toFixed(0) + " XP for ₹" + Number(r.amount || 0).toFixed(0) + " cash.",
+        status: "accent",
+        duration: 12000,
+        action: { label: "Open", onClick: openCoinRequests }
+      });
     });
 
     /*
