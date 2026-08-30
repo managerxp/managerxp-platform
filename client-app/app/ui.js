@@ -82,6 +82,53 @@
       .join("").slice(0, 2) || "?";
   }
 
+  /*
+   * An address as a person would read it.
+   *
+   * `customers.address` is JSONB and has held three different shapes over the
+   * life of the app: a plain string, a `{ value: "..." }` wrapper (what the
+   * server makes of a single-line address typed at sign-up), and a structured
+   * object with line/city/state/country parts. Anything that just prints the
+   * value ends up showing a customer `{"value":"Hyderabad"}` on their own
+   * account page, so every shape is resolved to text here, once.
+   *
+   * Unknown keys are kept rather than dropped — an address with a field this
+   * does not know about should still show that field, not silently lose it —
+   * but ordered so the familiar parts read in the usual order.
+   */
+  var ADDRESS_ORDER = [
+    "line1", "line2", "address", "street", "area", "locality",
+    "city", "district", "state", "region", "postal_code", "postcode", "zip", "country"
+  ];
+
+  function fmtAddress(address) {
+    if (address === null || address === undefined || address === "") return "—";
+    if (typeof address === "string") return address.trim() || "—";
+    if (typeof address !== "object") return String(address);
+
+    if (Array.isArray(address)) {
+      var flat = address.map(fmtAddress).filter(function (p) { return p && p !== "—"; });
+      return flat.length ? flat.join(", ") : "—";
+    }
+
+    /* The single-line wrapper the server produces for a plain string. Unwrapped
+       rather than labelled, because "value" is an implementation detail. */
+    var keys = Object.keys(address);
+    if (keys.length === 1 && keys[0] === "value") return fmtAddress(address.value);
+
+    var known = ADDRESS_ORDER.filter(function (k) { return keys.indexOf(k) !== -1; });
+    var rest = keys.filter(function (k) { return ADDRESS_ORDER.indexOf(k) === -1; }).sort();
+
+    var parts = known.concat(rest).map(function (k) {
+      var v = address[k];
+      if (v === null || v === undefined) return "";
+      if (typeof v === "object") return fmtAddress(v);
+      return String(v).trim();
+    }).filter(function (p) { return p && p !== "—"; });
+
+    return parts.length ? parts.join(", ") : "—";
+  }
+
   /* ==========================================================================
      TOASTS
      ========================================================================== */
@@ -508,6 +555,7 @@
   global.CXUI = {
     $: $, $$: $$, el: el, esc: esc, clear: clear,
     hms: hms, relTime: relTime, fmtDate: fmtDate, initials: initials,
+    fmtAddress: fmtAddress,
     toast: toast, modal: modal, confirm: confirmDialog, drawer: drawer,
     segmented: segmented,
     skeletonCards: skeletonCards, skeletonRows: skeletonRows,

@@ -329,9 +329,13 @@
     launchGame: function (game) { if (api.launchGame) api.launchGame(game); },
     /* Self-service start: ask what's available, then ask to begin one. */
     requestStartOptions: function () { if (api.requestStartOptions) api.requestStartOptions(); },
-    requestStartSession: function (game, gamingPriceId) {
+    requestStartSession: function (game, gamingPriceId, useVenueAccount) {
       state.startFailed = null;
-      if (api.requestStartSession) api.requestStartSession({ game: game, gaming_price_id: gamingPriceId });
+      if (api.requestStartSession) {
+        api.requestStartSession({
+          game: game, gaming_price_id: gamingPriceId, use_venue_account: !!useVenueAccount
+        });
+      }
     },
     sessionClockSeconds: sessionClockSeconds,
     progress: progress,

@@ -91,16 +91,26 @@ let pendingSelfStartGame = null; // The title chosen when self-starting, launche
 let BACKEND_BASE = "http://localhost:5000";
 
 /*
- * One adapter per launcher, each turning a game's master-catalog config into
- * a concrete way to start it — a URL protocol hand-off where the launcher
- * owns the sign-in, or a direct executable where there is no such protocol.
- * `launcher_config` is the field ManagerXP's catalog calls the launcher
- * command/executable a title needs; `app_id` is its store id where one
- * applies (Steam appid, Epic namespace id, etc.).
+ * One adapter per platform, each turning a platform configuration from
+ * ManagerXP's catalog into a concrete way to start the game — a URL protocol
+ * hand-off where the store has one and owns the sign-in, or a direct
+ * executable where it does not.
  *
- * Adding a launcher CafeXP has never seen means adding one entry here — the
- * café side and the master catalog schema need no change, per the
- * modularity the catalog architecture calls for.
+ * The fields come straight off a `game_platforms` row:
+ *   platform          which store this configuration is for
+ *   platform_game_id  its id there (Steam appid, Epic namespace id, …)
+ *   launch_target     the executable/command, for platforms with no protocol
+ *   launch_arguments  appended when launching by executable
+ *
+ * `launch_method` is carried too but is deliberately NOT what dispatches
+ * here: the platform already determines its own protocol, and having two
+ * fields that can disagree about how to start the same game is a bug waiting
+ * to happen. It is stored for display and for a future platform whose launch
+ * genuinely varies per title.
+ *
+ * Adding a store CafeXP has never seen means adding one entry here — the
+ * database, the café side and the session flow need no change at all, which
+ * is the modularity the architecture asks for.
  */
 const LAUNCHER_ADAPTERS = {
   Steam:      { launch: (id) => id && { url: `steam://rungameid/${id}` } },
@@ -114,16 +124,16 @@ const LAUNCHER_ADAPTERS = {
 };
 
 /*
- * Resolve a game to a launch plan. The URL protocol wins when the launcher
- * has one and the title carries an App ID; every launcher — including Riot,
+ * Resolve a game to a launch plan. The store's protocol wins when it has one
+ * and the title carries an id there; every platform — including Riot,
  * Rockstar and Custom, which have no useful public protocol — falls back to
- * running `launcher_config` directly. Returns null when there is nothing to
+ * running `launch_target` directly. Returns null when there is nothing to
  * launch with, so the caller can say so rather than run "".
  */
 function buildGameLaunch(game) {
-  const id = game.app_id ? String(game.app_id).trim() : '';
-  const exe = game.launcher_config ? String(game.launcher_config).trim() : '';
-  const adapter = LAUNCHER_ADAPTERS[game.launcher];
+  const id = game.platform_game_id ? String(game.platform_game_id).trim() : '';
+  const exe = game.launch_target ? String(game.launch_target).trim() : '';
+  const adapter = LAUNCHER_ADAPTERS[game.platform];
   const plan = adapter && adapter.launch(id);
   if (plan) return plan;
   if (exe) return { exe };
@@ -152,7 +162,7 @@ function launchGame(game) {
   }
 
   sendToWindow(win, 'app-launching', { appName: game.name });
-  log(`Launching ${game.name} via ${game.launcher}${plan.url ? ' (protocol)' : ' (exe)'}`);
+  log(`Launching ${game.name} via ${game.platform}${plan.url ? ' (protocol)' : ' (exe)'}`);
 
   if (plan.url) {
     // Protocol hand-off to the launcher. openExternal resolves once the OS
@@ -575,7 +585,7 @@ function createWindow() {
    * server-app's `station:start-request`), the same hand-off the Extend
    * button already relies on.
    */
-  ipcMain.on('request-start-session', (event, { game, gaming_price_id } = {}) => {
+  ipcMain.on('request-start-session', (event, { game, gaming_price_id, use_venue_account } = {}) => {
     if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
       // Remembered whole, not just its id, so it can be launched directly the
       // moment the session goes active — no extra round trip to look it up.
@@ -583,8 +593,11 @@ function createWindow() {
       serverConnection.send(JSON.stringify({
         type: "START_SESSION_REQUEST", simId: SIM_ID,
         customer_id: userInfo && userInfo.customer_id,
-        cafe_game_id: game && game.cafe_game_id || null,
-        gaming_price_id: gaming_price_id || null
+        gaming_price_id: gaming_price_id || null,
+        game_id: (game && game.game_id) || null,
+        // Which store's copy of the game — this station may have more than one.
+        game_platform_id: (game && game.game_platform_id) || null,
+        use_venue_account: !!use_venue_account
       }));
       log("Sent START_SESSION_REQUEST to console");
     } else {

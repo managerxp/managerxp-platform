@@ -868,6 +868,11 @@
      EDIT STATION  (PUT /api/pcs/:id — existing route)
      ========================================================================== */
   function editStation(pc, onSaved) {
+    /* A networked station is one that has an address. A pool table has none,
+       and demanding an IPv4 for it — as this dialog used to — made every
+       non-networked station uneditable. */
+    var networked = !!pc.ip_address;
+
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
       '<div class="field">' +
@@ -875,11 +880,50 @@
         '<input class="input" id="edName" value="' + UI.esc(pc.name) + '" data-autofocus>' +
       "</div>" +
       '<div class="field">' +
-        '<label class="field-label field-req" for="edIp">IP address</label>' +
-        '<input class="input mono" id="edIp" value="' + UI.esc(pc.ip_address || "") + '">' +
+        '<label class="field-label field-req" for="edCategory">Station type</label>' +
+        '<select class="input" id="edCategory"><option value="">— Select type —</option></select>' +
       "</div>" +
+      '<div class="field hidden" id="edCustomWrap">' +
+        '<label class="field-label" for="edCustomType">New type</label>' +
+        '<input class="input" id="edCustomType" placeholder="Bowling">' +
+      "</div>" +
+      (networked
+        ? '<div class="field">' +
+            '<label class="field-label field-req" for="edIp">IP address</label>' +
+            '<input class="input mono" id="edIp" value="' + UI.esc(pc.ip_address) + '">' +
+          "</div>"
+        : "") +
       '<div class="notice" data-status="info">' + Icon("info", 16) +
-        "<div>Port is set when the station is registered and cannot be changed here.</div></div>";
+        "<div>The type decides which prices this station is offered — a PC is " +
+        "only ever shown PC prices." +
+        (networked ? " Port is set when the station is registered and cannot be changed here." : "") +
+        "</div></div>";
+
+    var typeSelect = body.querySelector("#edCategory");
+    var customWrap = body.querySelector("#edCustomWrap");
+    var customInput = body.querySelector("#edCustomType");
+
+    /* The same list the "Add station" dialog offers, from the same helper —
+       the two must not disagree about what this café's types are. */
+    function paintTypes(types) {
+      var known = types.slice();
+      if (pc.category && known.indexOf(pc.category) === -1) known.push(pc.category);
+      typeSelect.innerHTML =
+        '<option value="">— Select type —</option>' +
+        known.sort().map(function (c) {
+          return '<option value="' + UI.esc(c) + '"' +
+            (c === pc.category ? " selected" : "") + ">" + UI.esc(c) + "</option>";
+        }).join("") +
+        '<option value="__other">Other…</option>';
+    }
+    paintTypes(pc.category ? [pc.category] : []);
+    global.CXRates.stationTypes().then(paintTypes);
+
+    typeSelect.addEventListener("change", function () {
+      var other = typeSelect.value === "__other";
+      customWrap.classList.toggle("hidden", !other);
+      if (other) customInput.focus();
+    });
 
     UI.modal({
       title: "Edit station",
@@ -890,18 +934,39 @@
           label: "Save changes", variant: "primary", icon: "check",
           onClick: function (ctx) {
             var name = ctx.body.querySelector("#edName").value.trim();
-            var ip = ctx.body.querySelector("#edIp").value.trim();
-            if (!name || !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)) {
-              Motion.shake(ctx.node);
-              UI.toast.warn("Check the details", "A name and a valid IPv4 address are required.");
+            var ipField = ctx.body.querySelector("#edIp");
+            var ip = ipField ? ipField.value.trim() : null;
+            var type = typeSelect.value === "__other"
+              ? customInput.value.trim()
+              : typeSelect.value;
+
+            if (!name) {
+              Motion.shake(ctx.body.querySelector("#edName"));
+              UI.toast.warn("Name the station");
               return false;
             }
-            return Store.updatePC(pc.pc_id, { name: name, ip_address: ip })
+            if (!type) {
+              Motion.shake(typeSelect.value === "__other" ? customInput : typeSelect);
+              UI.toast.warn("Choose a type", "PS5, Pool, PC — it decides the station's prices.");
+              return false;
+            }
+            if (ipField && !/^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(ip)) {
+              Motion.shake(ipField);
+              UI.toast.warn("Check the address", "A networked station needs a valid IPv4 address.");
+              return false;
+            }
+
+            var payload = { name: name, category: type };
+            if (ipField) payload.ip_address = ip;
+
+            return Store.updatePC(pc.pc_id, payload)
               .then(function () {
-                UI.toast.ok("Station updated", name);
+                UI.toast.ok("Station updated", name + " · " + type);
                 return Store.loadPCs();
               })
               .then(function () { if (onSaved) onSaved(); return true; })
+              /* The server refuses with 409 when the plan's cap for that type
+                 is full — that message already says which, so surface it. */
               .catch(function (e) { UI.toast.error("Update failed", e.message); return false; });
           }
         }

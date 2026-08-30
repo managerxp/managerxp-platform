@@ -37,7 +37,11 @@
           </div>
           <div class="field">
             <label class="field-label" for="phoneNumber">Mobile</label>
-            <input class="input" type="tel" id="phoneNumber" placeholder="9876543210" autocomplete="tel" />
+            <div style="display:flex;gap:8px">
+              <select class="input" id="dialCode" aria-label="Country dialling code" style="flex:0 0 92px"></select>
+              <input class="input" type="tel" id="phoneNumber" placeholder="9876543210" autocomplete="tel"
+                     style="flex:1;min-width:0">
+            </div>
           </div>
         </div>
 
@@ -61,7 +65,31 @@
         </button>
       </form>
 
-      <div class="auth-alt">
+      <!-- Shown once the account is created but not yet usable — see
+           customer.Controller.js's register(), which sends a code instead of
+           a token now. -->
+      <form class="auth-form hidden" id="verifyForm" novalidate>
+        <div class="notice" data-status="online" id="verifyNotice"></div>
+
+        <div class="field">
+          <label class="field-label" for="regOtp">6-digit code</label>
+          <input class="input mono" type="text" id="regOtp" placeholder="000000"
+                 inputmode="numeric" maxlength="6" autocomplete="one-time-code"
+                 style="text-align:center;letter-spacing:0.5em;font-size:18px" />
+        </div>
+
+        <div class="notice hidden" data-status="error" id="verifyError" role="alert"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block" id="verifyBtn">
+          <span class="btn-label" id="verifyText">Verify email</span>
+        </button>
+
+        <button type="button" class="btn btn-ghost btn-sm btn-block" id="resendBtn" style="margin-top:8px">
+          Didn't get a code? Send another
+        </button>
+      </form>
+
+      <div class="auth-alt" id="authAlt">
         Already have an account? <button type="button" id="toLogin">Sign in</button>
         <div style="margin-top:10px">
           <button type="button" id="toWelcome">Back</button>
@@ -85,7 +113,52 @@
       var registerText = document.getElementById("registerText");
       var card = document.getElementById("authCard");
 
+      var verifyForm = document.getElementById("verifyForm");
+      var verifyNotice = document.getElementById("verifyNotice");
+      var regOtp = document.getElementById("regOtp");
+      var verifyError = document.getElementById("verifyError");
+      var verifyBtn = document.getElementById("verifyBtn");
+      var verifyText = document.getElementById("verifyText");
+      var resendBtn = document.getElementById("resendBtn");
+      var authAlt = document.getElementById("authAlt");
+      var dialCode = document.getElementById("dialCode");
+      var registeredEmail = "";
+
       Motion.enter(card, { y: 18, duration: 0.4 });
+
+      /* Same table the website's signup form uses (frontend/src/lib/geo.js)
+         — kept in sync by hand since this is a plain HTML page with no
+         module system, but the numbers themselves rarely change. Stored as
+         "+<dial> <digits>", matching how the website already stores an
+         owner's phone number, so the format is one convention across the
+         whole platform rather than two. */
+      var DIAL_CODES = [
+        ["IN", "91"], ["US", "1"], ["GB", "44"], ["AE", "971"], ["CA", "1"],
+        ["AU", "61"], ["SG", "65"], ["MY", "60"], ["ID", "62"], ["PH", "63"],
+        ["TH", "66"], ["VN", "84"], ["BD", "880"], ["LK", "94"], ["NP", "977"],
+        ["PK", "92"], ["SA", "966"], ["QA", "974"], ["KW", "965"], ["OM", "968"],
+        ["BH", "973"], ["ZA", "27"], ["NG", "234"], ["KE", "254"], ["EG", "20"],
+        ["DE", "49"], ["FR", "33"], ["ES", "34"], ["IT", "39"], ["NL", "31"],
+        ["IE", "353"], ["PT", "351"], ["PL", "48"], ["TR", "90"], ["BR", "55"],
+        ["MX", "52"], ["AR", "54"], ["CL", "56"], ["JP", "81"], ["KR", "82"],
+        ["CN", "86"], ["HK", "852"], ["NZ", "64"], ["CH", "41"], ["SE", "46"],
+        ["NO", "47"], ["DK", "45"]
+      ];
+
+      function flagOf(code) {
+        return String.fromCodePoint(
+          0x1f1e6 + code.charCodeAt(0) - 65,
+          0x1f1e6 + code.charCodeAt(1) - 65
+        );
+      }
+
+      DIAL_CODES.forEach(function (pair) {
+        var opt = document.createElement("option");
+        opt.value = pair[1];
+        opt.textContent = flagOf(pair[0]) + " +" + pair[1];
+        dialCode.appendChild(opt);
+      });
+      dialCode.value = "91"; // India — this café network's default market
 
       /* Defaults to this machine, corrected to the console's real address once
          this station has been told it — see main.js's SET_NAME handler. */
@@ -143,6 +216,10 @@
         if (!isValidPhone(phoneNumber)) { showError("Enter a mobile number with 10–15 digits."); return; }
         if (password.length < 6) { showError("Your password needs at least 6 characters."); return; }
 
+        // Stored as "+<dial> <digits>" — the same format the website's own
+        // signup form saves an owner's phone number in.
+        var fullPhone = "+" + dialCode.value + " " + phoneNumber.replace(/\D/g, "");
+
         busy(true);
         try {
           // Unchanged endpoint and payload shape.
@@ -152,7 +229,7 @@
             body: JSON.stringify({
               customer_name: name,
               email: email,
-              phone_number: phoneNumber,
+              phone_number: fullPhone,
               password: password,
               address: address,
               pc_name: pcName
@@ -166,6 +243,18 @@
             return;
           }
 
+          if (data.data && data.data.verification_required) {
+            registeredEmail = email;
+            verifyNotice.textContent = "We sent a six-digit code to " + email + ". Enter it to finish setting up your account.";
+            form.classList.add("hidden");
+            authAlt.classList.add("hidden");
+            verifyForm.classList.remove("hidden");
+            regOtp.focus();
+            return;
+          }
+
+          // Defensive fallback — the backend always sends a code today, but a
+          // response that somehow skipped it should still land somewhere sane.
           showSuccess("Account created. Taking you to sign in…");
           setTimeout(function () { window.api.navigateTo("login"); }, 1600);
         } catch (error) {
@@ -175,6 +264,66 @@
           busy(false);
         }
       });
+
+      function post(path, body) {
+        return fetch(API_BASE + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok || data.success === false) {
+              throw new Error(data.message || "Something went wrong. Please try again.");
+            }
+            return data;
+          });
+        });
+      }
+
+      function showVerifyError(message) {
+        verifyError.textContent = message;
+        verifyError.classList.remove("hidden");
+        Motion.shake(card);
+      }
+
+      verifyForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        verifyError.classList.add("hidden");
+
+        var code = regOtp.value.trim();
+        if (!/^\d{6}$/.test(code)) { showVerifyError("Enter the six-digit code from your email."); return; }
+
+        verifyBtn.disabled = true;
+        verifyText.textContent = "Verifying…";
+
+        post("/api/customers/verify-email", { email: registeredEmail, code: code })
+          .then(function () {
+            // successMessage lives inside registerForm, which is already
+            // hidden at this point — reusing verifyNotice (still on screen,
+            // inside verifyForm) instead of a message nobody would see.
+            verifyBtn.disabled = true;
+            resendBtn.disabled = true;
+            verifyNotice.textContent = "Email verified. Taking you to sign in…";
+            regOtp.disabled = true;
+            setTimeout(function () { window.api.navigateTo("login"); }, 1400);
+          })
+          .catch(function (err) {
+            showVerifyError(err.message);
+            verifyBtn.disabled = false;
+            verifyText.textContent = "Verify email";
+          });
+      });
+
+      resendBtn.addEventListener("click", function () {
+        verifyError.classList.add("hidden");
+        resendBtn.disabled = true;
+        post("/api/customers/resend-verification", { email: registeredEmail })
+          .then(function () { regOtp.value = ""; regOtp.focus(); })
+          .catch(function (err) { showVerifyError(err.message); })
+          .finally(function () { resendBtn.disabled = false; });
+      });
+
+      regOtp.addEventListener("input", function () { verifyError.classList.add("hidden"); });
     })();
   </script>
 </body>

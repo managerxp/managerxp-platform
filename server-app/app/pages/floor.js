@@ -691,13 +691,9 @@
     }
     paintTypes();
 
-    /* The priced types too, so a station can be created for something the café
-       set a price for before it had any stations of that kind. */
-    global.CXRates.list()
-      .then(function (all) {
-        paintTypes(all.map(function (r) { return r.category; }));
-      })
-      .catch(function () { /* the floor's own types are enough to proceed */ });
+    /* Through the shared helper rather than reading the price master directly,
+       so this list and the one "Edit station" offers cannot drift apart. */
+    global.CXRates.stationTypes().then(paintTypes);
 
     /*
      * Whether a type is networked is remembered from the stations that already

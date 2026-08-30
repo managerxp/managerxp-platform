@@ -106,6 +106,35 @@
       });
   }
 
+  /*
+   * The station types this café actually has.
+   *
+   * Two sources, because either alone is incomplete: the types already on the
+   * floor (so an existing PS5 offers "PS5" even if nobody has priced one yet)
+   * and the types it has priced (so the first pool table can be created before
+   * any pool table exists). Sorted, de-duplicated, never invented — a café
+   * that sells bowling gets Bowling and one that does not, does not.
+   *
+   * Shared rather than rebuilt per dialog: a station's type decides which
+   * prices it is offered, so "add a station" and "edit a station" disagreeing
+   * about the list is how a station ends up filed under a type nothing is
+   * priced for.
+   */
+  function stationTypes() {
+    var seen = {};
+    var pcs = (Store && Store.state && Store.state.pcs) || [];
+    pcs.forEach(function (p) { if (p.category) seen[p.category] = true; });
+
+    return list()
+      .then(function (rows) {
+        rows.forEach(function (r) { if (r.category) seen[r.category] = true; });
+        return Object.keys(seen).sort();
+      })
+      /* The floor's own types are enough to proceed — a café that cannot reach
+         its price master should still be able to file a station. */
+      .catch(function () { return Object.keys(seen).sort(); });
+  }
+
   global.CXRates = {
     list: list,
     listLive: listLive,
@@ -113,6 +142,7 @@
     durationText: durationText,
     label: label,
     billDescription: billDescription,
-    perMinute: perMinute
+    perMinute: perMinute,
+    stationTypes: stationTypes
   };
 })(window);

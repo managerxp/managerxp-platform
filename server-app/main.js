@@ -227,7 +227,11 @@ function handleStationRequest(msg, ws) {
     log(`[Self-start] ${pcName} requested a session (price #${msg.gaming_price_id}, customer #${msg.customer_id})`);
     if (win) win.webContents.send("station:start-request", {
       pcName, customer_id: msg.customer_id || null,
-      cafe_game_id: msg.cafe_game_id || null, gaming_price_id: msg.gaming_price_id || null
+      gaming_price_id: msg.gaming_price_id || null,
+      game_id: msg.game_id || null,
+      game_platform_id: msg.game_platform_id || null,
+      game_account_id: msg.game_account_id || null,
+      use_venue_account: !!msg.use_venue_account
     });
     return true;
   }

@@ -401,8 +401,8 @@
     },
     {
         "name":  "Microsoft Edge",
-        "version":  "151.0.4129.101",
-        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.101\\msedge.exe"
+        "version":  "151.0.4129.107",
+        "launch":  "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\151.0.4129.107\\msedge.exe"
     },
     {
         "name":  "Microsoft Integration Runtime",
@@ -508,6 +508,11 @@
         "name":  "Microsoft Visual C++ 2015-2022 Redistributable (x86) - 14.44.35211",
         "version":  "14.44.35211.0",
         "launch":  "C:\\ProgramData\\Package Cache\\{0b5169e3-39da-4313-808e-1f9c0407f3bf}\\VC_redist.x86.exe"
+    },
+    {
+        "name":  "Microsoft Windows Application Compatibility Fix Database",
+        "version":  null,
+        "launch":  ""
     },
     {
         "name":  "Narrator",

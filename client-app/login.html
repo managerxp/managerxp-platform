@@ -47,7 +47,31 @@
         </button>
       </form>
 
-      <div class="auth-alt">
+      <!-- Shown instead of the ordinary error when the address has never
+           been confirmed — customer.Controller.js's login() answers 403 with
+           verification_required rather than a plain "wrong password". -->
+      <form class="auth-form hidden" id="verifyForm" novalidate>
+        <div class="notice" data-status="online" id="verifyNotice"></div>
+
+        <div class="field">
+          <label class="field-label" for="loginOtp">6-digit code</label>
+          <input class="input mono" type="text" id="loginOtp" placeholder="000000"
+                 inputmode="numeric" maxlength="6" autocomplete="one-time-code"
+                 style="text-align:center;letter-spacing:0.5em;font-size:18px" />
+        </div>
+
+        <div class="notice hidden" data-status="error" id="verifyError" role="alert"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block" id="verifyBtn">
+          <span class="btn-label" id="verifyText">Verify email</span>
+        </button>
+
+        <button type="button" class="btn btn-ghost btn-sm btn-block" id="resendBtn" style="margin-top:8px">
+          Didn't get a code? Send another
+        </button>
+      </form>
+
+      <div class="auth-alt" id="authAlt">
         New to CafeXP? <button type="button" id="toRegister">Create an account</button>
         <div style="margin-top:10px">
           <button type="button" id="toWelcome">Back</button>
@@ -71,6 +95,19 @@
       var loginBtn = document.getElementById("loginBtn");
       var loginText = document.getElementById("loginText");
       var card = document.getElementById("authCard");
+
+      var verifyForm = document.getElementById("verifyForm");
+      var verifyNotice = document.getElementById("verifyNotice");
+      var loginOtp = document.getElementById("loginOtp");
+      var verifyError = document.getElementById("verifyError");
+      var verifyBtn = document.getElementById("verifyBtn");
+      var verifyText = document.getElementById("verifyText");
+      var resendBtn = document.getElementById("resendBtn");
+      var authAlt = document.getElementById("authAlt");
+      /* Held only long enough to retry the sign-in that got refused — never
+         written to disk, and cleared the moment verification succeeds or the
+         person navigates away. */
+      var pendingEmail = "", pendingPassword = "";
 
       Motion.enter(card, { y: 18, duration: 0.4 });
 
@@ -109,6 +146,22 @@
 
       function isValidEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
 
+      /*
+       * The actual sign-in call, pulled out so a successful verification can
+       * walk straight back into it with the password still held from the
+       * attempt that was refused — the person should not have to type it
+       * twice just because their address needed confirming.
+       */
+      function signIn(email, password) {
+        return fetch(API_BASE + "/api/customers/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email, password: password })
+        }).then(function (response) {
+          return response.json().then(function (data) { return { response: response, data: data }; });
+        });
+      }
+
       form.addEventListener("submit", async function (e) {
         e.preventDefault();
         clearError();
@@ -121,16 +174,20 @@
 
         busy(true);
         try {
-          // Unchanged endpoint and payload.
-          var response = await fetch(API_BASE + "/api/customers/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ email: email, password: password })
-          });
-
-          var data = await response.json();
+          var result = await signIn(email, password);
+          var response = result.response, data = result.data;
 
           if (!response.ok || !data.success) {
+            if (data.data && data.data.verification_required) {
+              pendingEmail = email;
+              pendingPassword = password;
+              verifyNotice.textContent = "Enter the six-digit code sent to " + email + " to finish setting up this account.";
+              form.classList.add("hidden");
+              authAlt.classList.add("hidden");
+              verifyForm.classList.remove("hidden");
+              loginOtp.focus();
+              return;
+            }
             showError(data.message || "We couldn't sign you in. Check your details and try again.");
             return;
           }
@@ -154,6 +211,69 @@
       [emailInput, passwordInput].forEach(function (el) {
         el.addEventListener("input", clearError);
       });
+
+      function post(path, body) {
+        return fetch(API_BASE + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok || data.success === false) {
+              throw new Error(data.message || "Something went wrong. Please try again.");
+            }
+            return data;
+          });
+        });
+      }
+
+      function showVerifyError(message) {
+        verifyError.textContent = message;
+        verifyError.classList.remove("hidden");
+        Motion.shake(card);
+      }
+
+      verifyForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        verifyError.classList.add("hidden");
+
+        var code = loginOtp.value.trim();
+        if (!/^\d{6}$/.test(code)) { showVerifyError("Enter the six-digit code from your email."); return; }
+
+        verifyBtn.disabled = true;
+        verifyText.textContent = "Verifying…";
+
+        post("/api/customers/verify-email", { email: pendingEmail, code: code })
+          .then(function () { return signIn(pendingEmail, pendingPassword); })
+          .then(function (result) {
+            if (!result.response.ok || !result.data.success) {
+              throw new Error(result.data.message || "Verified, but could not sign you in. Try again.");
+            }
+            pendingPassword = "";
+            var data = result.data;
+            var token = (data.data && data.data.token) || data.token;
+            var user = data.data && data.data.user;
+            window.api.storeToken(token);
+            window.api.storeUserInfo(user);
+            window.api.navigateTo("userdashboard");
+          })
+          .catch(function (err) {
+            showVerifyError(err.message);
+            verifyBtn.disabled = false;
+            verifyText.textContent = "Verify email";
+          });
+      });
+
+      resendBtn.addEventListener("click", function () {
+        verifyError.classList.add("hidden");
+        resendBtn.disabled = true;
+        post("/api/customers/resend-verification", { email: pendingEmail })
+          .then(function () { loginOtp.value = ""; loginOtp.focus(); })
+          .catch(function (err) { showVerifyError(err.message); })
+          .finally(function () { resendBtn.disabled = false; });
+      });
+
+      loginOtp.addEventListener("input", function () { verifyError.classList.add("hidden"); });
     })();
   </script>
 </body>

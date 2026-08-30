@@ -336,6 +336,22 @@
     var Wallet = global.CXWallet;
     var host = UI.el("div", { class: "col gap-4" });
     var selectedGame = null, selectedPriceId = null, starting = false;
+    /* null until the game's account mode has been answered. Only asked when
+       the café actually offers a choice — a game that is venue-only or
+       own-login-only has one possible answer, so asking would be a step that
+       decides nothing. */
+    var useVenue = null;
+
+    function needsAccountChoice(g) {
+      return !!g && g.account_mode === "CUSTOMER_OR_VENUE";
+    }
+    /* What will actually happen, once the choice (if any) is made. */
+    function resolvedUseVenue(g) {
+      if (!g) return false;
+      if (g.account_mode === "VENUE_ACCOUNT") return true;
+      if (g.account_mode === "CUSTOMER_ACCOUNT") return false;
+      return useVenue === true;
+    }
 
     function priceLabel(p) {
       var length = p.is_unlimited ? "Unlimited" : (
@@ -370,7 +386,10 @@
       host.appendChild(UI.el("div", { class: "shelf-title", text: "1. Choose a game" }));
       var gameGrid = UI.el("div", { class: "col gap-2" });
       games.forEach(function (g) {
-        var chosen = selectedGame && selectedGame.cafe_game_id === g.cafe_game_id;
+        /* Keyed on the PLATFORM, not the game: the same title installed from
+           two stores is two separate things to launch, and picking "F1 25"
+           without saying which copy would leave the launcher guessing. */
+        var chosen = selectedGame && selectedGame.game_platform_id === g.game_platform_id;
         var el = UI.el("button", {
           class: "card card-pad row gap-4",
           style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%" },
@@ -382,15 +401,53 @@
           '<span class="grow" style="min-width:0">' +
             '<span style="display:block;font-size:14px;font-weight:700">' + UI.esc(g.name) + "</span>" +
             '<span class="faint" style="font-size:12px">' +
-              UI.esc([g.category, g.launcher].filter(Boolean).join(" · ")) + "</span>" +
+              UI.esc([g.category, g.platform].filter(Boolean).join(" · ")) + "</span>" +
           "</span>" +
           (chosen ? '<span class="tx-icon" data-status="online" style="flex:0 0 auto">' + Icon("check", 14) + "</span>" : "");
-        el.addEventListener("click", function () { selectedGame = g; render(); });
+        el.addEventListener("click", function () {
+          selectedGame = g;
+          useVenue = null;   // a new game asks its own account question
+          render();
+        });
         gameGrid.appendChild(el);
       });
       host.appendChild(gameGrid);
 
-      host.appendChild(UI.el("div", { class: "shelf-title", text: "2. Choose how long" }));
+      /* ---- 2. How to play it, when the café offers both ways ---- */
+      var step = 2;
+      if (needsAccountChoice(selectedGame)) {
+        host.appendChild(UI.el("div", { class: "shelf-title", text: "2. Choose how you want to play" }));
+        var choices = UI.el("div", { class: "col gap-2" });
+        [
+          [true, "Just play", "Use a venue account", "play"],
+          [false, "Log in", "Use your own account", "customers"]
+        ].forEach(function (c) {
+          var picked = useVenue === c[0];
+          var btn = UI.el("button", {
+            class: "card card-pad row gap-4",
+            style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%" },
+            dataset: picked ? { status: "accent" } : {}
+          });
+          btn.innerHTML =
+            '<span class="tx-icon" style="flex:0 0 auto">' + Icon(c[3], 18) + "</span>" +
+            '<span class="grow" style="min-width:0">' +
+              '<span style="display:block;font-size:14px;font-weight:700">' + c[1] + "</span>" +
+              '<span class="faint" style="font-size:12px">' + c[2] + "</span>" +
+            "</span>" +
+            (picked ? '<span class="tx-icon" data-status="online" style="flex:0 0 auto">' + Icon("check", 14) + "</span>" : "");
+          btn.addEventListener("click", function () { useVenue = c[0]; render(); });
+          choices.appendChild(btn);
+        });
+        host.appendChild(choices);
+        step = 3;
+      } else if (selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT") {
+        var venueNote = UI.el("div", { class: "notice", dataset: { status: "idle" } });
+        venueNote.innerHTML = Icon("info", 16) +
+          "<div>The café provides the account for this game — just pick how long you want to play.</div>";
+        host.appendChild(venueNote);
+      }
+
+      host.appendChild(UI.el("div", { class: "shelf-title", text: step + ". Choose how long" }));
       var priceRow = UI.el("div", { class: "row gap-2 wrap" });
       prices.forEach(function (p) {
         var chip = UI.el("button", {
@@ -430,11 +487,13 @@
         class: "btn btn-primary btn-lg btn-block",
         html: Icon("play", 17) + '<span class="btn-label">' + (starting ? "Starting…" : "Start session") + "</span>"
       });
-      startBtn.disabled = !selectedGame || !selectedPriceId || starting;
+      // A game that offers both account routes cannot start until one is picked.
+      var accountAnswered = !needsAccountChoice(selectedGame) || useVenue !== null;
+      startBtn.disabled = !selectedGame || !selectedPriceId || !accountAnswered || starting;
       startBtn.addEventListener("click", function () {
         starting = true;
         render();
-        Session.requestStartSession(selectedGame, selectedPriceId);
+        Session.requestStartSession(selectedGame, selectedPriceId, resolvedUseVenue(selectedGame));
       });
       host.appendChild(startBtn);
     }
@@ -512,7 +571,7 @@
           '<span class="grow" style="min-width:0">' +
             '<span style="display:block;font-size:15px;font-weight:700">' + UI.esc(g.name) + "</span>" +
             '<span class="faint" style="font-size:12px">' +
-              UI.esc([g.category, g.launcher].filter(Boolean).join(" · ")) + "</span>" +
+              UI.esc([g.category, g.platform].filter(Boolean).join(" · ")) + "</span>" +
           "</span>" +
           '<span class="btn btn-primary btn-sm" style="flex:0 0 auto">' + Icon("play", 14) +
             '<span class="btn-label">Play</span></span>';
@@ -1466,7 +1525,7 @@
             '<div class="kv"><span class="kv-key">Mobile</span><span class="kv-val">' +
               UI.esc(user.phone_number || "—") + "</span></div>" +
             '<div class="kv"><span class="kv-key">Address</span><span class="kv-val">' +
-              UI.esc(typeof user.address === "string" ? user.address : JSON.stringify(user.address || "—")) + "</span></div>" +
+              UI.esc(UI.fmtAddress(user.address)) + "</span></div>" +
             '<div class="kv"><span class="kv-key">Customer ID</span><span class="kv-val mono">#' +
               UI.esc(user.customer_id != null ? user.customer_id : "—") + "</span></div>" +
             '<div class="kv"><span class="kv-key">Member since</span><span class="kv-val">' +

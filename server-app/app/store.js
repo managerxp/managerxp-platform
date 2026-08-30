@@ -852,16 +852,31 @@
     if (!pcId) return api.pushGames(pcName, []).catch(function () {});
     return getPcGames(pcId)
       .then(function (body) {
-        var list = (body.data.games || [])
-          .filter(function (g) { return g.installed && g.enabled; })
-          .map(function (g) {
-            return {
-              cafe_game_id: g.cafe_game_id, game_id: g.game_id, name: g.name, category: g.category,
-              launcher: g.launcher, launch_type: g.launch_type, app_id: g.app_id,
-              launcher_config: g.launcher_config, process_name: g.process_name,
-              launch_arguments: g.launch_arguments, logo_url: g.logo_url
-            };
+        /* One entry per (game, platform installed here) — the same game on
+           both Steam and EA is two launchable things on this station, and
+           the station has to know which one it is starting. */
+        var list = [];
+        (body.data.games || []).forEach(function (g) {
+          if (!g.enabled) return;
+          (g.platforms || []).forEach(function (p) {
+            if (!p.installed) return;
+            list.push({
+              cafe_game_id: g.cafe_game_id,
+              game_id: g.game_id,
+              game_platform_id: p.id,
+              name: g.name,
+              category: g.category,
+              icon_url: g.icon_url,
+              account_mode: g.account_mode,
+              platform: p.platform,
+              platform_game_id: p.platform_game_id,
+              launch_method: p.launch_method,
+              launch_target: p.launch_target,
+              process_name: p.process_name,
+              launch_arguments: p.launch_arguments
+            });
           });
+        });
         return api.pushGames(pcName, list);
       })
       .catch(function (e) { console.warn("[store] games push failed", e); });
@@ -1310,15 +1325,40 @@
   function addGame(gameId) {
     return request("/api/games", { method: "POST", body: JSON.stringify({ game_id: gameId }) });
   }
+  /* enabled / account_mode / price_per_hour — the whole of what a café may
+     decide about a title it has taken from the catalog. */
+  function updateCafeGame(cafeGameId, patch) {
+    return request("/api/games/" + cafeGameId, { method: "PATCH", body: JSON.stringify(patch) });
+  }
   function setGameEnabled(cafeGameId, enabled) {
-    return request("/api/games/" + cafeGameId, { method: "PATCH", body: JSON.stringify({ enabled: enabled }) });
+    return updateCafeGame(cafeGameId, { enabled: enabled });
   }
   function removeGame(cafeGameId) {
     return request("/api/games/" + cafeGameId, { method: "DELETE" });
   }
+
+  /* The venue account pool for one platform of one game — the café's own
+     logins/licences, so a customer can play without an account of their own. */
+  function venueAccounts(platformId) {
+    return request("/api/games/platforms/" + platformId + "/accounts");
+  }
+  function addVenueAccount(platformId, body) {
+    return request("/api/games/platforms/" + platformId + "/accounts",
+      { method: "POST", body: JSON.stringify(body) });
+  }
+  function updateVenueAccount(platformId, accountId, patch) {
+    return request("/api/games/platforms/" + platformId + "/accounts/" + accountId,
+      { method: "PATCH", body: JSON.stringify(patch) });
+  }
+  function removeVenueAccount(platformId, accountId) {
+    return request("/api/games/platforms/" + platformId + "/accounts/" + accountId, { method: "DELETE" });
+  }
+
   function getPcGames(pcId) { return request("/api/games/pc/" + pcId); }
-  function setPcGames(pcId, cafeGameIds) {
-    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ cafe_game_ids: cafeGameIds }) });
+  /* Per PLATFORM now, not per game: a station installs Steam's F1 25 or EA's,
+     and which one it has is exactly what the launcher needs to know. */
+  function setPcGames(pcId, gamePlatformIds) {
+    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ game_platform_ids: gamePlatformIds }) });
   }
 
   function listGamingPrices(params) { return request("/api/gaming-prices" + qs(params)); }
@@ -1656,7 +1696,24 @@
           getPcGames(pc.pc_id).catch(function () { return { data: { games: [] } }; }),
           listGamingPrices({ status: "ACTIVE" }).catch(function () { return { data: [] }; })
         ]).then(function (results) {
-          var games = (results[0].data.games || []).filter(function (g) { return g.installed && g.enabled; });
+          /* Flattened to one entry per (game, platform installed here) — the
+             same shape pushGamesToStation sends, so the customer's picker and
+             the launcher read the same fields either way. */
+          var games = [];
+          (results[0].data.games || []).forEach(function (g) {
+            if (!g.enabled) return;
+            (g.platforms || []).forEach(function (p) {
+              if (!p.installed) return;
+              games.push({
+                cafe_game_id: g.cafe_game_id, game_id: g.game_id, game_platform_id: p.id,
+                name: g.name, category: g.category, icon_url: g.icon_url,
+                account_mode: g.account_mode, platform: p.platform,
+                platform_game_id: p.platform_game_id, launch_method: p.launch_method,
+                launch_target: p.launch_target, process_name: p.process_name,
+                launch_arguments: p.launch_arguments
+              });
+            });
+          });
           var prices = (results[1].data || []).filter(function (p) {
             return !pc.category || !p.category || p.category === pc.category;
           }).map(function (p) {
@@ -1688,6 +1745,13 @@
           pc_id: pc.pc_id,
           customer_id: data.customer_id,
           gaming_price_id: data.gaming_price_id,
+          /* The chosen title, and specifically which platform of it — the
+             backend reserves a venue account against exactly this platform
+             when the game's account mode calls for one. */
+          game_id: data.game_id || null,
+          game_platform_id: data.game_platform_id || null,
+          game_account_id: data.game_account_id || null,
+          use_venue_account: !!data.use_venue_account,
           require_prepaid: true
         }).catch(function (e) { fail(e.message || "Could not start the session"); });
       });
@@ -1839,7 +1903,12 @@
     libraryGames: libraryGames,
     addGame: addGame,
     setGameEnabled: setGameEnabled,
+    updateCafeGame: updateCafeGame,
     removeGame: removeGame,
+    venueAccounts: venueAccounts,
+    addVenueAccount: addVenueAccount,
+    updateVenueAccount: updateVenueAccount,
+    removeVenueAccount: removeVenueAccount,
     getPcGames: getPcGames,
     setPcGames: setPcGames,
     listGamingPrices: listGamingPrices,
