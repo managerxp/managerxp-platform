@@ -45,13 +45,103 @@
     document.getElementById("userMail").textContent = user ? (user.email || "—") : "Sign in to load your cafe";
   }
 
-  /* The bell and its popup both land here — Billing Desk's own Coin requests
-     tab, opened directly rather than left for staff to find the right tab
-     themselves once they're on the page. */
-  function openCoinRequests() {
-    var billing = global.CXPages && global.CXPages.billing;
-    if (billing && billing.openRequests) billing.openRequests();
-    else Router.go("billing");
+  /* ==========================================================================
+     Software updates — a topbar indicator, deliberately separate from the
+     notification bell. A pending coin request or order is this café's own
+     business; an available CafeXP build is ManagerXP's, and the two should
+     never compete for the same badge.
+
+     Visibility only for now: this reports what is available, not whether it
+     is safe to apply — update-schedule.js already carries that policy for
+     when an apply step exists to gate.
+     ========================================================================== */
+  function localVersionSort(v) {
+    var parts = String(v || "0.0.0").replace(/^v/i, "").split(".");
+    var major = parseInt(parts[0], 10) || 0;
+    var minor = parseInt(parts[1], 10) || 0;
+    var patch = parseInt(String(parts[2] || "0").split("-")[0], 10) || 0;
+    return major * 1000000 + minor * 1000 + patch;
+  }
+
+  var updateInfo = { server: null, client: null };
+
+  function paintUpdateButton() {
+    var btn = document.getElementById("updateAvailableBtn");
+    if (!btn) return;
+    var serverUp = updateInfo.server && updateInfo.server.update_available;
+    var clientUp = updateInfo.client && updateInfo.client.update_available;
+    btn.classList.toggle("hidden", !serverUp && !clientUp);
+    btn.setAttribute("data-tip",
+      serverUp && clientUp ? "Console and station updates are available — see Settings"
+      : serverUp ? "A new console version is available — see Settings"
+      : clientUp ? "A newer client version is available for your stations — see Settings"
+      : "");
+  }
+
+  /** Ask the backend what ManagerXP has published, for this console and for
+      whichever connected station is furthest behind. */
+  function checkForSoftwareUpdate() {
+    var getVersion = (global.api && global.api.getAppVersion)
+      ? global.api.getAppVersion() : Promise.resolve("0.0.0");
+
+    getVersion.then(function (v) {
+      return Store.checkUpdate("server", v || "0.0.0");
+    }).then(function (data) {
+      updateInfo.server = data;
+      paintUpdateButton();
+    }).catch(function () { /* offline or not entitled — leave the last known state */ });
+
+    var reported = (Store.state.pcs || [])
+      .map(function (p) { return p.client_version; })
+      .filter(Boolean);
+    if (!reported.length) return;
+    var oldest = reported.sort(function (a, b) { return localVersionSort(a) - localVersionSort(b); })[0];
+
+    Store.checkUpdate("client", oldest)
+      .then(function (data) { updateInfo.client = data; paintUpdateButton(); })
+      .catch(function () {});
+  }
+
+  /*
+   * A short chime for anything the bell announces — a coin request, a new
+   * order, a new booking. Web Audio rather than an asset file, so there is
+   * nothing to bundle or fail to load; the same trick the station's timer
+   * card already uses for its own beeps.
+   */
+  var notifyAudioCtx = null;
+  function notifyBeep() {
+    try {
+      if (!notifyAudioCtx) notifyAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      if (notifyAudioCtx.state === "suspended") notifyAudioCtx.resume();
+      var osc = notifyAudioCtx.createOscillator();
+      var gain = notifyAudioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = 880;
+      gain.gain.value = 0.12;
+      osc.connect(gain);
+      gain.connect(notifyAudioCtx.destination);
+      var now = notifyAudioCtx.currentTime;
+      osc.start(now);
+      // A second, slightly higher note — reads as "ding-ding", not a single flat beep.
+      osc.frequency.setValueAtTime(880, now);
+      osc.frequency.setValueAtTime(1046, now + 0.13);
+      gain.gain.setValueAtTime(gain.gain.value, now + 0.22);
+      gain.gain.linearRampToValueAtTime(0, now + 0.26);
+      osc.stop(now + 0.26);
+    } catch (e) {
+      /* No audio device, or a policy blocking autoplay before any user
+         gesture. The toast and badge still carry the message either way. */
+    }
+  }
+
+  /* The bell and every toast's "Open" land on the same dedicated
+     Notifications page, not inside Billing/F&B's own tabs — staff see coin
+     requests, new orders and new bookings together in one place. */
+  var pendingCoinCount = 0;
+  var pendingOrderCount = 0;
+  var pendingReservationCount = 0;
+  function openNotifications() {
+    Router.go("notifications");
   }
 
   function openAccountMenu() {
@@ -164,11 +254,14 @@
     // icon rather than overwrite it with innerHTML.
     var bellBtn = document.getElementById("notifyBell");
     if (bellBtn) bellBtn.insertAdjacentHTML("afterbegin", Icon("bell", 16));
+    var updateBtn = document.getElementById("updateAvailableBtn");
+    if (updateBtn) updateBtn.insertAdjacentHTML("afterbegin", Icon("refresh", 14));
 
     document.getElementById("sidebarToggle").addEventListener("click", Router.toggleSidebar);
     document.getElementById("userChip").addEventListener("click", openAccountMenu);
     reconnectBtn.addEventListener("click", function () { reconnectAll(reconnectBtn); });
-    if (bellBtn) bellBtn.addEventListener("click", openCoinRequests);
+    if (bellBtn) bellBtn.addEventListener("click", openNotifications);
+    if (updateBtn) updateBtn.addEventListener("click", function () { Router.go("updates"); });
 
     Store.init();
     startClock();
@@ -205,27 +298,70 @@
       UI.toast({ title: "Time expired on " + name, message: "The application was closed.", status: "warn" });
     });
 
-    /* The topbar bell's running count — every check, not just new arrivals,
-       so it also drops when a request is approved or rejected from Billing
-       Desk while the bell isn't the thing being looked at. */
-    Store.on("topup-requests", function (list) {
+    /* The topbar bell's running count — combined across every kind of thing
+       it announces, every check and not just new arrivals, so it also drops
+       when a request is settled from its own page while the bell isn't the
+       thing being looked at. One bell, one number, whatever is behind it. */
+    function paintBellBadge() {
       var badge = document.getElementById("notifyBellBadge");
       if (!badge) return;
-      var n = (list || []).length;
+      var n = pendingCoinCount + pendingOrderCount + pendingReservationCount;
       badge.textContent = n > 99 ? "99+" : String(n);
       badge.classList.toggle("hidden", !n);
+    }
+    Store.on("topup-requests", function (list) {
+      pendingCoinCount = (list || []).length;
+      paintBellBadge();
+    });
+    Store.on("orders-pending", function (list) {
+      pendingOrderCount = (list || []).length;
+      paintBellBadge();
+    });
+    Store.on("reservations-pending", function (list) {
+      pendingReservationCount = (list || []).length;
+      paintBellBadge();
     });
 
-    /* One customer, one cash request, one popup — clicking it goes straight
-       to the queue rather than making staff go find it themselves. */
+    /* One customer, one cash request, one popup — clicking it goes to the
+       Notifications page rather than making staff go find it themselves. */
     Store.on("topup:new", function (r) {
+      notifyBeep();
       UI.toast({
         title: "Coins requested",
         message: (r.customer_name || "A customer") + " wants to add " +
           Number(r.coins || 0).toFixed(0) + " XP for ₹" + Number(r.amount || 0).toFixed(0) + " cash.",
         status: "accent",
         duration: 12000,
-        action: { label: "Open", onClick: openCoinRequests }
+        action: { label: "Open", onClick: openNotifications }
+      });
+    });
+
+    /* Same idea for a fresh food/drink order — placed and not yet even
+       acknowledged. */
+    Store.on("order:new", function (o) {
+      notifyBeep();
+      UI.toast({
+        title: "New order — " + (o.order_number || ("#" + o.order_id)),
+        message: (o.customer_name || "A customer") + (o.pc_name ? " at " + o.pc_name : "") +
+          " ordered ₹" + Number(o.total || 0).toFixed(0) + " worth of food & drink.",
+        status: "accent",
+        duration: 12000,
+        action: { label: "Open", onClick: openNotifications }
+      });
+    });
+
+    /* Same idea again for a new booking — from the café's own public
+       booking link as much as from a staff member typing one in here. */
+    Store.on("reservation:new", function (r) {
+      notifyBeep();
+      UI.toast({
+        title: "New booking",
+        message: (r.customer_name || "A guest") + " booked " +
+          (r.pc_name || (r.category ? "any " + r.category : "a station")) + " for " +
+          new Date(r.start_time).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" }) + ".",
+        status: "accent",
+        duration: 12000,
+        action: { label: "Open", onClick: openNotifications }
       });
     });
 
@@ -257,6 +393,9 @@
         }
       });
     });
+
+    checkForSoftwareUpdate();
+    setInterval(checkForSoftwareUpdate, 30 * 60 * 1000);
 
     renderUser();
     refreshPill();

@@ -7,9 +7,13 @@ const fs = require("fs");
 const http = require("http");
 const telemetry = require("./telemetry");
 
+// .env is optional — a fresh checkout or a machine where it was never copied
+// still runs on the defaults below, exactly as it did before this existed.
+try { process.loadEnvFile(path.join(__dirname, ".env")); } catch (e) { /* no .env on this machine */ }
+
 let SIM_ID = "SIM-01"; // Will be updated by server
-const CLIENT_PORT = 9090; // Port this client listens on
-const SERVER_APP_PORT = 3334; // Server app HTTP port for discovery
+const CLIENT_PORT = Number(process.env.CLIENT_PORT) || 9090; // Port this client listens on
+const SERVER_APP_PORT = Number(process.env.SERVER_APP_PORT) || 3334; // Server app HTTP port for discovery
 let LOCAL_IP = null; // Will be set on startup
 let BROADCAST_INTERVAL = null; // For periodic IP/MAC broadcasts
 let TELEMETRY_INTERVAL = null; // Hardware sampling loop, started once registered
@@ -75,6 +79,11 @@ let userInfo = null; // Store authenticated user profile
 let currentPage = 'welcome'; // Track current page
 let currentStatus = 'DISCONNECTED'; // Track current connection status
 let currentSession = null; // Session pushed by the admin console, for display
+// session_id of the last session that actually got a game running. Compared
+// against currentSession.session_id to tell "nobody has played a second of
+// this session yet" apart from "staff are replaying/switching mid-session" —
+// see reportLaunchFailedIfSessionStart below.
+let sessionGameConfirmed = null;
 let currentGames = [];     // Games this station may offer, pushed by the console
 let pendingSelfStartGame = null; // The title chosen when self-starting, launched once the session actually begins
 
@@ -87,7 +96,7 @@ let pendingSelfStartGame = null; // The title chosen when self-starting, launche
  * moment it connects (see the SET_NAME handler below), which is what makes a
  * station on a second machine able to reach a backend on the first.
  */
-let BACKEND_BASE = "http://localhost:5000";
+let BACKEND_BASE = process.env.BACKEND_BASE || "http://localhost:5000";
 
 /*
  * One adapter per platform, each turning a platform configuration from
@@ -152,22 +161,32 @@ function buildGameLaunch(game) {
  * `createWindow` where only the IPC handler could see it.
  */
 /*
- * `isSessionStart` marks the one call site (the launch that fires the moment
- * a self-started session goes active) where a failure here means nobody is
- * actually playing what the customer was just charged to start. Only that
- * call reports the failure up to the console — see the LAUNCH_FAILED send
- * below — so it can cancel the session. Staff manually replaying a title
- * mid-session, or free play with no session at all, must not have a launch
- * hiccup wipe out billing that already happened.
+ * A failure only reports up to the console — see the LAUNCH_FAILED send below,
+ * which the console reads as "cancel the session" — when nobody has played a
+ * second of the CURRENT session yet. That covers both a self-started session's
+ * very first launch and a staff-started session's first launch, however the
+ * launch was reached. Staff manually replaying a title mid-session (real play
+ * time has already elapsed), or free play with no session at all, must not
+ * have a launch hiccup wipe out billing that already happened.
  */
+function isFirstLaunchForSession() {
+  const sessionId = currentSession && currentSession.session_id;
+  return !!sessionId && sessionGameConfirmed !== sessionId;
+}
+
 function reportLaunchFailedIfSessionStart(game, isSessionStart, error) {
   if (!isSessionStart || !serverConnection || serverConnection.readyState !== WebSocket.OPEN) return;
   serverConnection.send(JSON.stringify({ type: 'LAUNCH_FAILED', simId: SIM_ID, appName: game.name, error }));
 }
 
-function launchGame(game, opts) {
+function markSessionGameConfirmed() {
+  const sessionId = currentSession && currentSession.session_id;
+  if (sessionId) sessionGameConfirmed = sessionId;
+}
+
+function launchGame(game) {
   if (!game || typeof game !== 'object') return;
-  const isSessionStart = !!(opts && opts.isSessionStart);
+  const isSessionStart = isFirstLaunchForSession();
   const plan = buildGameLaunch(game);
   if (!plan) {
     log(`No launch config for ${game.name}`);
@@ -183,7 +202,13 @@ function launchGame(game, opts) {
   if (plan.url) {
     // Protocol hand-off to the launcher. openExternal resolves once the OS
     // has accepted the URL, not when the game is up — which is all we need.
-    shell.openExternal(plan.url).catch((err) => {
+    shell.openExternal(plan.url).then(() => {
+      markSessionGameConfirmed();
+      // Nothing to poll for a protocol hand-off (there is no PID to watch),
+      // so this is the only launched signal it ever gets — without it the
+      // "Getting your game ready…" overlay has nothing to close it.
+      sendToWindow(win, 'app-launched', { appName: game.name });
+    }).catch((err) => {
       log(`Launch failed for ${game.name}: ${err.message}`);
       const error = 'Could not reach the launcher.';
       sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
@@ -202,6 +227,8 @@ function launchGame(game, opts) {
     // Track the process under the game's name so the existing close path can
     // find it, and attach a timer card if the session is timed.
     if (child.pid) {
+      markSessionGameConfirmed();
+      sendToWindow(win, 'app-launched', { appName: game.name });
       const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
       const mins = sessionRemainingMinutes();
       if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins);
@@ -639,6 +666,60 @@ function createWindow() {
   });
 
   ipcMain.handle('get-games', async () => currentGames);
+
+  ipcMain.handle('get-app-version', async () => app.getVersion());
+
+  /*
+   * Which game launchers this station has, and opening one — the customer
+   * side of the same detectLaunchers() the console already uses to badge a
+   * station "Steam ✓ Riot ✓". Opening one just runs its own installer/login
+   * screen; it never touches an account by itself, so there is nothing here
+   * that needs the session-cleanup guardrails a game launch has.
+   */
+  ipcMain.handle('get-launchers', async () => detectLaunchers());
+  ipcMain.handle('open-launcher', async (_, name) => {
+    const launchers = await detectLaunchers();
+    const info = launchers[name];
+    if (!info || !info.installed) return { success: false, error: 'Not installed on this station' };
+    return new Promise((resolve) => {
+      exec(`"${info.path}"`, (err) => resolve({ success: !err, error: err ? err.message : null }));
+    });
+  });
+
+  /*
+   * Volume — real get/set against the default playback device's actual
+   * level, via Windows' Core Audio API (IAudioEndpointVolume). scripts/
+   * volume.ps1 does the work through inline C#/COM interop: no PowerShell
+   * module to install, no native Node addon to compile or code-sign for the
+   * packaged build. See that file's header for why the interface calls live
+   * in compiled C# rather than PowerShell script code.
+   *
+   * Deliberately NOT touching the Windows session itself (no lock-workstation
+   * call anywhere here): this is a public kiosk with no guarantee a customer
+   * or even staff holds the machine's Windows credentials, so anything that
+   * could leave the station stuck at a real OS lock screen is off the table.
+   */
+  const VOLUME_SCRIPT = path.join(__dirname, 'scripts', 'volume.ps1');
+  function runVolumeScript(args) {
+    return new Promise((resolve) => {
+      exec(
+        `powershell -NoProfile -ExecutionPolicy Bypass -File "${VOLUME_SCRIPT}" ${args}`,
+        { windowsHide: true, timeout: 5000 },
+        (err, stdout) => {
+          if (err) return resolve({ success: false, error: err.message });
+          try {
+            const state = JSON.parse(stdout.trim());
+            resolve({ success: true, level: state.level, muted: state.muted });
+          } catch (parseErr) {
+            resolve({ success: false, error: 'Unexpected output: ' + stdout });
+          }
+        }
+      );
+    });
+  }
+  ipcMain.handle('volume:get', async () => runVolumeScript('-Action get'));
+  ipcMain.handle('volume:set', async (_, level) => runVolumeScript(`-Action set -Level ${Number(level) || 0}`));
+  ipcMain.handle('volume:mute-toggle', async () => runVolumeScript('-Action toggle-mute'));
 
   ipcMain.on('launch-game', (event, game) => launchGame(game));
 
@@ -1305,10 +1386,52 @@ function applyKioskCapabilities() {
   }
 }
 
+/*
+ * The Windows-level escape routes `before-input-event` cannot actually stop.
+ *
+ * That listener only sees keys already delivered to this window, and several
+ * of the combinations it tries to block — Alt+Tab above all — are intercepted
+ * by Windows' own shell before any application's window procedure sees them;
+ * calling preventDefault() there does nothing for those specific keys. The
+ * fix is `globalShortcut.register`, which claims a combination system-wide
+ * through the same Win32 RegisterHotKey call a real hotkey utility would use,
+ * so Windows never gets to act on it at all. A no-op handler is the whole
+ * trick: claiming the combination and doing nothing on it *is* "stay on the
+ * kiosk".
+ *
+ * Win+L and Ctrl+Alt+Del are deliberately not attempted here — Windows
+ * reserves both as part of the Secure Attention Sequence and refuses to let
+ * any application, including this one, intercept them. Nothing short of a
+ * Group Policy / Assigned Access configuration on the machine itself can
+ * change that, so claiming success here would be a lie.
+ */
+const KIOSK_ESCAPE_SHORTCUTS = [
+  'Alt+Tab', 'Alt+Escape', 'Control+Escape', 'Control+Shift+Escape',
+  'Super+D', 'Super+E', 'Super+R', 'Super+Tab', 'Super+X'
+];
+let kioskShortcutsClaimed = false;
+
+function syncKioskShortcuts() {
+  if (kioskLocked && !kioskShortcutsClaimed) {
+    KIOSK_ESCAPE_SHORTCUTS.forEach((combo) => {
+      const ok = globalShortcut.register(combo, () => {});
+      if (!ok) log(`[Kiosk] Could not claim ${combo} — another application already holds it.`);
+    });
+    kioskShortcutsClaimed = true;
+  } else if (!kioskLocked && kioskShortcutsClaimed) {
+    /* Targeted, not unregisterAll(): the staff Ctrl+Alt+Shift+Q combo is
+       registered separately for the life of the app and must survive an
+       unlock, since re-locking uses the same keys. */
+    KIOSK_ESCAPE_SHORTCUTS.forEach((combo) => globalShortcut.unregister(combo));
+    kioskShortcutsClaimed = false;
+  }
+}
+
 /* Tell the page whether it is sealed, so the on-screen window controls can
    appear only when they would actually do something. */
 function publishKioskState() {
   applyKioskCapabilities();
+  syncKioskShortcuts();
   sendToWindow(win, 'window:kiosk-state', kioskLocked);
 }
 
@@ -1653,6 +1776,9 @@ function listen() {
            long before the full software inventory arrives. */
         reportLaunchers(ws);
 
+        // This build's own version, for the console's version inventory.
+        ws.send(JSON.stringify({ type: "CLIENT_VERSION", simId: SIM_ID, version: app.getVersion() }));
+
         // Fetch and send installed apps to server
         try {
           log("Fetching installed applications...");
@@ -1724,7 +1850,7 @@ function listen() {
         if (!wasRunning && currentSession && currentSession.status === 'active' && pendingSelfStartGame) {
           const game = pendingSelfStartGame;
           pendingSelfStartGame = null;
-          launchGame(game, { isSessionStart: true });
+          launchGame(game);
         } else if (!currentSession) {
           pendingSelfStartGame = null;
         }
@@ -1961,21 +2087,20 @@ function closeApplication(appName) {
   }
 }
 
-function closeByExecutableName(appPath, appName) {
-  let exeName = appName;
-  
-  // If we have the path, extract the actual executable name
+function deriveExeName(appPath, appName) {
   if (appPath) {
     const pathParts = appPath.split(/[\\/]/);
     const executable = pathParts[pathParts.length - 1];
-    exeName = executable.replace(/\.exe$/i, '');
-    log(`Extracted executable name from path: ${exeName}`);
-  } else {
-    // Try to extract from app name (take first word)
-    exeName = appName.split(' ')[0];
-    log(`Using app name for close: ${exeName}`);
+    return executable.replace(/\.exe$/i, '');
   }
-  
+  // No path on record — take the first word of the display name as a guess.
+  return appName.split(' ')[0];
+}
+
+function closeByExecutableName(appPath, appName) {
+  const exeName = deriveExeName(appPath, appName);
+  log(`Closing by executable name: ${exeName}`);
+
   // Use taskkill for reliable closing
   const command = `taskkill /F /IM "${exeName}.exe" /T`;
   
@@ -2007,6 +2132,34 @@ function closeByExecutableName(appPath, appName) {
     }
   });
 }
+
+/*
+ * Nothing here ever hears about a game closing on its own — a player quitting
+ * normally, a crash, an alt-F4 — because closeApplication() only runs when
+ * something on our side decides to end it. Left unwatched, runningProcesses
+ * and its timer card sit there forever and the portal never learns the
+ * station is free again. Polling by executable name (rather than the PID
+ * exec() handed back) because many launches hand off to a second process —
+ * the PID we have is often already gone the moment the real game starts.
+ */
+function pollRunningProcesses() {
+  runningProcesses.forEach((info, appName) => {
+    const exeName = deriveExeName(info.appPath, appName);
+    exec(`tasklist /FI "IMAGENAME eq ${exeName}.exe" /NH`, (err, stdout) => {
+      if (err) return;   // a failed check must never look like "it closed"
+      const stillRunning = stdout && stdout.toLowerCase().includes(exeName.toLowerCase());
+      if (stillRunning) return;
+
+      log(`${appName} is no longer running (detected by poll)`);
+      const current = runningProcesses.get(appName);
+      if (!current) return;   // already handled by an explicit close in the meantime
+      if (current.timerCardWin && !current.timerCardWin.isDestroyed()) current.timerCardWin.close();
+      runningProcesses.delete(appName);
+      sendToWindow(win, "app-closed", { appName });
+    });
+  });
+}
+setInterval(pollRunningProcesses, 8000);
 
 app.whenReady().then(() => {
   // Get local IP on startup
@@ -2043,6 +2196,12 @@ app.whenReady().then(() => {
      needs to know — including when the window is not up yet. */
   console.log(shortcutNote);
   log(shortcutNote);
+
+  /* kioskLocked defaults to true from module load, before any toggle ever
+     fires — claim the escape-route shortcuts now so a station is sealed
+     from its very first frame, not only after the first PIN interaction. */
+  syncKioskShortcuts();
+
   listen();
   
   // Start broadcasting PC info every 10 seconds

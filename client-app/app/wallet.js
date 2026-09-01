@@ -42,10 +42,14 @@
     packages: [],
     membership: null,
     membershipHistory: [],
+    packageCatalog: [],
+    planCatalog: [],
     entitlementsLoaded: false,
     menu: null,
     menuError: null,
-    orders: []
+    orders: [],
+    reservations: [],
+    bookableCategories: []
   };
 
   var listeners = [];
@@ -190,19 +194,61 @@
       });
   }
 
-  /** The customer's packages and membership. Read-only; staff sell them. */
+  /** The customer's packages and membership, and what they could still buy. */
   function loadEntitlements() {
     var id = customerId();
     if (id == null || !token()) return Promise.resolve();
     return Promise.all([
       request("/api/packages/customer/" + id).then(function (b) { return b.data || []; }).catch(function () { return null; }),
-      request("/api/memberships/customer/" + id).then(function (b) { return b.data; }).catch(function () { return null; })
+      request("/api/memberships/customer/" + id).then(function (b) { return b.data; }).catch(function () { return null; }),
+      request("/api/packages/catalog").then(function (b) { return b.data || []; }).catch(function () { return []; }),
+      request("/api/memberships/plans/catalog").then(function (b) { return b.data || []; }).catch(function () { return []; })
     ]).then(function (res) {
       state.packages = res[0] || [];
       state.membership = res[1] ? res[1].current : null;
       state.membershipHistory = res[1] ? res[1].history : [];
+      state.packageCatalog = res[2] || [];
+      state.planCatalog = res[3] || [];
       state.entitlementsLoaded = true;
       emit();
+    });
+  }
+
+  function postJson(path, payload) {
+    return fetch(API_BASE + path, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + (token() || "")
+      },
+      body: JSON.stringify(payload || {})
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (body) {
+        if (!res.ok) {
+          var err = new Error(body.message || "HTTP " + res.status);
+          err.status = res.status;
+          throw err;
+        }
+        return body;
+      });
+    });
+  }
+
+  /** Buy a package for yourself, paid from your own wallet balance. */
+  function purchasePackage(packageId) {
+    return postJson("/api/packages/" + packageId + "/purchase-self", {}).then(function (body) {
+      load();               // the balance just moved
+      loadEntitlements();   // and so did what's owned / still buyable
+      return body;
+    });
+  }
+
+  /** Subscribe to a membership plan, paid from your own wallet balance. */
+  function subscribeMembership(planId) {
+    return postJson("/api/memberships/plans/" + planId + "/subscribe-self", {}).then(function (body) {
+      load();
+      loadEntitlements();
+      return body;
     });
   }
 
@@ -255,6 +301,47 @@
         loadMenu();
         return body;
       });
+    });
+  }
+
+  /* ==========================================================================
+     RESERVATIONS — booking a station ahead of time
+     ========================================================================== */
+  /** Station types this café has, so a booking form offers real choices. */
+  function loadBookableCategories() {
+    if (!token()) return Promise.resolve([]);
+    return request("/api/reservations/categories")
+      .then(function (body) { state.bookableCategories = body.data || []; emit(); return state.bookableCategories; })
+      .catch(function () { return []; });
+  }
+
+  function loadReservations() {
+    var id = customerId();
+    if (id == null || !token()) return Promise.resolve([]);
+    return request("/api/reservations/customer/" + id)
+      .then(function (body) { state.reservations = body.data || []; emit(); return state.reservations; })
+      .catch(function () { return []; });
+  }
+
+  /** { category | pc_id, start_time, end_time } -> { available, total, booked } or { pc_id, available }. */
+  function checkReservationAvailability(params) {
+    var qs = Object.keys(params).map(function (k) {
+      return encodeURIComponent(k) + "=" + encodeURIComponent(params[k]);
+    }).join("&");
+    return request("/api/reservations/availability?" + qs).then(function (b) { return b.data; });
+  }
+
+  function bookReservation(payload) {
+    return postJson("/api/reservations", payload).then(function (body) {
+      loadReservations();
+      return body;
+    });
+  }
+
+  function cancelReservation(id) {
+    return postJson("/api/reservations/" + id + "/cancel", {}).then(function (body) {
+      loadReservations();
+      return body;
     });
   }
 
@@ -335,6 +422,11 @@
     state: state,
     on: on,
     load: load,
+    apiBase: function () { return API_BASE; },
+    // Generic authenticated GET, for callers that need an endpoint this
+    // module doesn't otherwise wrap (e.g. the Account view's own profile
+    // fetch) without re-deriving the base URL and auth header themselves.
+    request: request,
     topupOptions: topupOptions,
     startTopup: startTopup,
     confirmTopup: confirmTopup,
@@ -342,6 +434,13 @@
     topupHistory: topupHistory,
     loadBills: loadBills,
     loadEntitlements: loadEntitlements,
+    purchasePackage: purchasePackage,
+    subscribeMembership: subscribeMembership,
+    loadBookableCategories: loadBookableCategories,
+    loadReservations: loadReservations,
+    checkReservationAvailability: checkReservationAvailability,
+    bookReservation: bookReservation,
+    cancelReservation: cancelReservation,
     loadMenu: loadMenu,
     loadOrders: loadOrders,
     placeOrder: placeOrder,

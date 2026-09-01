@@ -72,7 +72,11 @@
 
           <span class="clock" id="clock">--:--:--</span>
 
-          <button class="btn btn-ghost btn-icon topbar-bell" id="notifyBell" data-tip="Coin requests waiting" aria-label="Notifications">
+          <button class="btn btn-outline btn-sm hidden" id="updateAvailableBtn" data-tip="A new CafeXP version is available">
+            <span class="btn-label">Update available</span>
+          </button>
+
+          <button class="btn btn-ghost btn-icon topbar-bell" id="notifyBell" data-tip="Notifications" aria-label="Notifications">
             <span class="topbar-bell-badge hidden" id="notifyBellBadge">0</span>
           </button>
 
@@ -110,6 +114,7 @@
   <script src="app/coin.js"></script>
   <script src="app/ui.js"></script>
   <script src="app/store.js"></script>
+  <script src="app/update-schedule.js"></script>
   <script src="app/rates.js"></script>
   <script src="app/router.js"></script>
 
@@ -120,6 +125,7 @@
   <script src="app/pages/session-master.js"></script>
   <script src="app/pages/gaming-prices.js"></script>
   <script src="app/pages/game-library.js"></script>
+  <script src="app/pages/game-credentials.js"></script>
   <script src="app/pages/pricing-windows.js"></script>
   <script src="app/pages/billing.js"></script>
   <script src="app/pages/counter.js"></script>
@@ -127,11 +133,14 @@
   <script src="app/pages/receipt-template.js"></script>
   <script src="app/pages/discounts.js"></script>
   <script src="app/pages/payments.js"></script>
+  <script src="app/pages/expenses.js"></script>
   <script src="app/pages/packages.js"></script>
   <script src="app/pages/fnb.js"></script>
+  <script src="app/pages/notifications.js"></script>
   <script src="app/pages/staff.js"></script>
   <script src="app/pages/dashboard.js"></script>
   <script src="app/pages/floor.js"></script>
+  <script src="app/pages/reservations.js"></script>
   <script src="app/pages/station-panel.js"></script>
   <script src="app/pages/games.js"></script>
   <script src="app/pages/devices.js"></script>
@@ -142,6 +151,7 @@
   <script src="app/pages/audit.js"></script>
   <script src="app/pages/logs.js"></script>
   <script src="app/pages/plan.js"></script>
+  <script src="app/pages/updates.js"></script>
   <script src="app/pages/settings.js"></script>
 
   <script src="app/main.js"></script>

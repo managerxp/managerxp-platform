@@ -17,15 +17,8 @@
     { id: "business", label: "Business" },
     { id: "stations", label: "Stations" },
     { id: "gaming",   label: "Gaming" },
-    { id: "expenses", label: "Expenses" },
     { id: "system",   label: "System" }
   ];
-
-  // Cached across tab switches so flipping away and back does not mean
-  // waiting on the network again for a list that has not changed.
-  var expRows = null;
-  var expCategories = [];
-  var expSummary = null;
 
   /* ==========================================================================
      BUSINESS
@@ -181,255 +174,6 @@
   }
 
   /* ==========================================================================
-     EXPENSES
-     What the café spends, so a report can compare it against what it takes
-     in. Category is free text with suggestions from what this café has
-     already used — the same choice made for gaming and station categories —
-     because the list of things a café spends against (Salary, Rent, Stock,
-     Maintenance…) is its own and differs café to café.
-     ========================================================================== */
-  function money(v) {
-    var n = Number(v || 0);
-    try {
-      return new Intl.NumberFormat("en-IN", {
-        minimumFractionDigits: Math.round(n * 100) % 100 === 0 ? 0 : 2,
-        maximumFractionDigits: 2
-      }).format(n);
-    } catch (e) { return n.toFixed(2); }
-  }
-
-  function expenseDialog(existing) {
-    var isEdit = !!existing;
-    var body = UI.el("div", { class: "col gap-4" });
-    body.innerHTML =
-      '<div class="field"><label class="field-label field-req" for="expCategory">Category</label>' +
-        '<input class="input" id="expCategory" list="expCategoryList" maxlength="60" ' +
-          'placeholder="Salary" value="' + UI.esc(existing ? existing.category : "") + '" data-autofocus>' +
-        '<datalist id="expCategoryList">' +
-          expCategories.map(function (c) {
-            return '<option value="' + UI.esc(c.category) + '"></option>';
-          }).join("") +
-        "</datalist></div>" +
-      '<div class="grid grid-2" style="gap:var(--s-3)">' +
-        '<div class="field"><label class="field-label field-req" for="expAmount">Amount</label>' +
-          '<input class="input" id="expAmount" type="number" min="0.01" step="0.01" ' +
-            'value="' + UI.esc(existing ? existing.amount : "") + '" placeholder="8000"></div>' +
-        '<div class="field"><label class="field-label" for="expDate">Date</label>' +
-          '<input class="input" id="expDate" type="date" value="' +
-            (existing ? String(existing.expense_date).slice(0, 10)
-                      : new Date().toISOString().slice(0, 10)) + '" max="' +
-            new Date().toISOString().slice(0, 10) + '"></div>' +
-      "</div>" +
-      '<div class="field"><label class="field-label" for="expNote">Description</label>' +
-        '<input class="input" id="expNote" maxlength="255" placeholder="What this was for" ' +
-          'value="' + UI.esc(existing ? (existing.description || "") : "") + '"></div>';
-
-    return UI.modal({
-      title: isEdit ? "Edit expense" : "Log an expense",
-      description: isEdit ? existing.category : "Salaries, stock, rent — anything the café pays out.",
-      body: body,
-      actions: [
-        { label: "Cancel", variant: "ghost" },
-        {
-          label: isEdit ? "Save changes" : "Log expense", variant: "primary", icon: "check",
-          onClick: function (ctx) {
-            var category = ctx.body.querySelector("#expCategory").value.trim();
-            var amount = Number(ctx.body.querySelector("#expAmount").value);
-            var date = ctx.body.querySelector("#expDate").value;
-            var note = ctx.body.querySelector("#expNote").value.trim();
-
-            if (!category) {
-              Motion.shake(ctx.body.querySelector("#expCategory"));
-              UI.toast.warn("A category is required");
-              return false;
-            }
-            if (!Number.isFinite(amount) || amount <= 0) {
-              Motion.shake(ctx.body.querySelector("#expAmount"));
-              UI.toast.warn("Enter an amount greater than zero");
-              return false;
-            }
-
-            var payload = { category: category, amount: amount, expense_date: date, description: note || null };
-            var call = isEdit ? Store.updateExpense(existing.expense_id, payload) : Store.createExpense(payload);
-
-            return call
-              .then(function (r) {
-                UI.toast.ok(isEdit ? "Expense updated" : "Expense logged",
-                  r.data.category + " — " + money(r.data.amount) + " XP");
-                expRows = null; // force a refetch so the list and summary agree
-                render();
-                return true;
-              })
-              .catch(function (err) {
-                UI.toast.error("Could not save", err.message);
-                return false;
-              });
-          }
-        }
-      ]
-    });
-  }
-
-  function voidExpenseDialog(row) {
-    var body = UI.el("div", { class: "col gap-4" });
-    body.innerHTML =
-      '<div class="col">' +
-        '<div class="kv"><span class="kv-key">Category</span><span class="kv-val">' + UI.esc(row.category) + "</span></div>" +
-        '<div class="kv"><span class="kv-key">Amount</span><span class="kv-val">' + money(row.amount) + " XP</span></div>" +
-        (row.description
-          ? '<div class="kv"><span class="kv-key">Note</span><span class="kv-val">' + UI.esc(row.description) + "</span></div>"
-          : "") +
-      "</div>" +
-      '<div class="field"><label class="field-label" for="expVoidReason">Reason</label>' +
-        '<input class="input" id="expVoidReason" maxlength="255" placeholder="Entered twice" data-autofocus></div>';
-
-    return UI.modal({
-      title: "Void this expense?",
-      description: "Kept on record as voided — never deleted — so the books never have a gap.",
-      body: body,
-      actions: [
-        { label: "Keep it", variant: "ghost" },
-        {
-          label: "Void expense", variant: "danger", icon: "close",
-          onClick: function (ctx) {
-            return Store.voidExpense(row.expense_id, ctx.body.querySelector("#expVoidReason").value.trim())
-              .then(function () {
-                UI.toast.ok("Expense voided");
-                expRows = null;
-                render();
-                return true;
-              })
-              .catch(function (err) {
-                UI.toast.error("Could not void", err.message);
-                return false;
-              });
-          }
-        }
-      ]
-    });
-  }
-
-  function expensesPane() {
-    var pane = UI.el("div", { class: "col gap-4" });
-
-    var summaryCard = UI.el("div", { class: "card" });
-    summaryCard.innerHTML = '<div class="card-body row gap-6" id="expSummaryBody"></div>';
-    pane.appendChild(summaryCard);
-
-    var card = UI.el("div", { class: "card" });
-    card.innerHTML =
-      '<div class="card-head"><h2>Expenses</h2>' +
-        '<button class="btn btn-primary btn-sm" id="expAdd">' + Icon("plus", 14) +
-        '<span class="btn-label">Add expense</span></button></div>' +
-      '<div class="card-body-flush" id="expBody"></div>';
-    pane.appendChild(card);
-
-    function paintSummary() {
-      var host = pane.querySelector("#expSummaryBody");
-      if (!host || !expSummary) return;
-      var top = expSummary.by_category[0];
-      host.innerHTML =
-        '<div><div class="faint" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">Last 30 days</div>' +
-          '<div style="font-size:22px;font-weight:750">' + money(expSummary.total) + " XP</div></div>" +
-        '<div><div class="faint" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">Entries</div>' +
-          '<div style="font-size:22px;font-weight:750">' + expSummary.count + "</div></div>" +
-        (top
-          ? '<div><div class="faint" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">Top category</div>' +
-            '<div style="font-size:22px;font-weight:750">' + UI.esc(top.category) + '</div>' +
-            '<div class="faint" style="font-size:11px">' + money(top.amount) + " XP</div></div>"
-          : "") +
-        '<div class="faint" style="align-self:center;font-size:12px">' +
-          'See it against revenue under <strong>Reports → Finance</strong>.</div>';
-    }
-
-    function paintTable() {
-      var host = pane.querySelector("#expBody");
-      if (!host) return;
-      UI.clear(host);
-
-      if (!expRows.length) {
-        host.appendChild(UI.emptyState({
-          icon: "billing", title: "No expenses logged",
-          text: "Salaries, stock, rent — log what the café pays out here.",
-          actions: [{ label: "Add expense", icon: "plus", variant: "primary", onClick: function () {
-            expenseDialog();
-          } }]
-        }));
-        return;
-      }
-
-      var wrap = UI.el("div", { class: "table-wrap" });
-      var table = UI.el("table", { class: "tbl" });
-      table.innerHTML = "<thead><tr><th>Date</th><th>Category</th><th>Note</th>" +
-        '<th class="td-num">Amount</th><th>Status</th><th></th></tr></thead>';
-      var tbody = UI.el("tbody");
-
-      expRows.forEach(function (row) {
-        var voided = row.status === "VOID";
-        var tr = UI.el("tr", { style: voided ? "opacity:.55" : "" });
-        tr.innerHTML =
-          '<td class="mono faint" style="font-size:12px">' + UI.esc(String(row.expense_date).slice(0, 10)) + "</td>" +
-          "<td><strong>" + UI.esc(row.category) + "</strong></td>" +
-          '<td class="faint" style="font-size:12px">' + UI.esc(row.description || "—") + "</td>" +
-          '<td class="td-num" style="font-weight:700">' + money(row.amount) + "</td>" +
-          '<td><span class="badge" data-status="' + (voided ? "offline" : "online") + '">' +
-            (voided ? "Voided" : "Active") + "</span></td>" +
-          '<td class="td-actions"></td>';
-
-        if (!voided) {
-          var actions = tr.querySelector(".td-actions");
-          var edit = UI.el("button", {
-            class: "btn btn-outline btn-sm btn-icon", html: Icon("edit", 13), "data-tip": "Edit"
-          });
-          edit.addEventListener("click", function () { expenseDialog(row); });
-          var voidBtn = UI.el("button", {
-            class: "btn btn-ghost btn-sm btn-icon", html: Icon("close", 13), "data-tip": "Void"
-          });
-          voidBtn.addEventListener("click", function () { voidExpenseDialog(row); });
-          actions.appendChild(edit);
-          actions.appendChild(voidBtn);
-        }
-        tbody.appendChild(tr);
-      });
-
-      table.appendChild(tbody);
-      wrap.appendChild(table);
-      host.appendChild(wrap);
-    }
-
-    function loadAndPaint() {
-      var host = pane.querySelector("#expBody");
-      if (host) host.appendChild(UI.skeletonCards ? UI.skeletonCards(3, "44px") : UI.el("div"));
-      Promise.all([
-        Store.listExpenses({ limit: 100 }),
-        Store.expenseCategories(),
-        Store.expenseSummary()
-      ]).then(function (res) {
-        expRows = res[0].data || [];
-        expCategories = res[1] || [];
-        expSummary = res[2];
-        paintSummary();
-        paintTable();
-      }).catch(function (err) {
-        UI.clear(pane.querySelector("#expBody"));
-        pane.querySelector("#expBody").appendChild(UI.emptyState({
-          icon: "alert", status: "offline", title: "Could not load expenses", text: err.message
-        }));
-      });
-    }
-
-    setTimeout(function () {
-      var addBtn = pane.querySelector("#expAdd");
-      if (addBtn) addBtn.addEventListener("click", function () { expenseDialog(); });
-
-      if (expRows) { paintSummary(); paintTable(); }
-      else loadAndPaint();
-    }, 0);
-
-    return pane;
-  }
-
-  /* ==========================================================================
      SYSTEM
      ========================================================================== */
   function systemPane() {
@@ -493,6 +237,28 @@
           "Treat it like a key to the shop, and change it when staff leave.</div></div>" +
       "</div>";
 
+    /* ---- start-of-session buffer ----
+       Free minutes at the start of every session for the game or launcher to
+       load. The countdown holds at its starting value and nothing is billed
+       until this elapses — a session ended inside it costs nothing at all.
+       Per café; five minutes if never set. */
+    var buffer = UI.el("div", { class: "card" });
+    buffer.innerHTML =
+      '<div class="card-head"><h2>Before a session starts</h2></div>' +
+      '<div class="card-body col gap-3">' +
+        '<div class="field">' +
+          '<label class="field-label" for="setGraceMinutes">Buffer time (minutes)</label>' +
+          '<div class="row gap-2" style="align-items:center">' +
+            '<input class="input" id="setGraceMinutes" type="number" min="0" max="30" step="1" ' +
+              'style="max-width:100px">' +
+            '<button class="btn btn-primary btn-sm" type="button" id="setGraceSave">Save</button>' +
+          "</div>" +
+          '<div class="field-hint">If a game takes time to load, the timer holds at its starting ' +
+            'value for this long before it starts counting and billing the customer. Set to 0 to bill ' +
+            'from the moment a session starts.</div>' +
+        "</div>" +
+      "</div>";
+
     /* ---- end-of-session cleanup ----
        What a station does the moment a session ends. The launcher sign-outs
        are the reason this exists: without them the next customer sits down at
@@ -534,8 +300,40 @@
 
     pane.appendChild(card);
     pane.appendChild(prefs);
+    pane.appendChild(buffer);
     pane.appendChild(cleanup);
     pane.appendChild(kiosk);
+
+    setTimeout(function () {
+      var graceInput = buffer.querySelector("#setGraceMinutes");
+      var graceSave = buffer.querySelector("#setGraceSave");
+      if (!graceInput) return;
+
+      Store.getSettings("session").then(function (rows) {
+        var row = (rows || []).filter(function (r) { return r.setting_key === "session.grace_minutes"; })[0];
+        if (document.body.contains(graceInput)) {
+          graceInput.value = row && row.setting_value !== null ? row.setting_value : "5";
+        }
+      }).catch(function () {});
+
+      graceSave.addEventListener("click", function () {
+        var minutes = Number(graceInput.value);
+        if (!Number.isFinite(minutes) || minutes < 0) {
+          Motion.shake(graceInput);
+          UI.toast.warn("Enter zero or more minutes");
+          return;
+        }
+        UI.withBusy(graceSave, function () {
+          return Store.setSetting("session.grace_minutes", minutes)
+            .then(function () {
+              UI.toast.ok("Buffer time saved",
+                minutes > 0 ? "New sessions get " + minutes + " free minute" + (minutes === 1 ? "" : "s") + " to load."
+                            : "New sessions bill from the moment they start.");
+            })
+            .catch(function (e) { UI.toast.error("Could not save", e.message); });
+        });
+      });
+    }, 0);
 
     setTimeout(function () {
       var saveBtn = cleanup.querySelector("#clSave");
@@ -670,7 +468,7 @@
 
   var PANES = {
     business: businessPane, stations: stationsPane, gaming: gamingPane,
-    expenses: expensesPane, system: systemPane
+    system: systemPane
   };
 
   /*
@@ -692,7 +490,7 @@
     return [
       tab,
       (Store.state.pcs || []).map(function (p) {
-        return [p.pc_id, p.name, p.ip_address || "", p.category || "", Store.pcStatus(p)].join(":");
+        return [p.pc_id, p.name, p.ip_address || "", p.category || "", Store.pcStatus(p), p.client_version || ""].join(":");
       }).join(";"),
       Store.state.user ? [Store.state.user.id || "", Store.state.user.email || ""].join(":") : ""
     ].join("|");

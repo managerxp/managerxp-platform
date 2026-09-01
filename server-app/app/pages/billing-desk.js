@@ -28,9 +28,6 @@
   var current = null;        // id of the mounted sub-view
   var pendingTimer = null;
   var pendingCount = 0;
-  // Which sub-tab to open on the next mount — the notification bell sets
-  // this before navigating here, then it resets to the normal default.
-  var initialTab = "till";
 
   var TABS = [
     { id: "till",     label: "Till",          icon: "billing",  view: "_till",
@@ -306,26 +303,12 @@
         b.addEventListener("click", function () { show(b.dataset.tab); });
       });
 
-      show(initialTab);
-      initialTab = "till";
+      show("till");
 
       /* The queue is polled regardless of which tab is open: a cashier working
          the till needs to see a request arrive without going to look for it. */
       loadRequests(true);
       pendingTimer = setInterval(function () { loadRequests(true); }, 15000);
-    },
-
-    /* Jump straight to Coin requests — from the notification bell, from
-       anywhere. Already on this page: just switch tabs, since the router's
-       own go() no-ops when asked to navigate to where you already are.
-       Elsewhere: set what the next mount should open on and navigate. */
-    openRequests: function () {
-      if (global.CXRouter && global.CXRouter.current && global.CXRouter.current() === "billing") {
-        show("requests");
-      } else {
-        initialTab = "requests";
-        if (global.CXRouter) global.CXRouter.go("billing");
-      }
     },
 
     unmount: function () {

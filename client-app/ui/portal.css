@@ -121,39 +121,39 @@
 }
 .nav-wordmark span { color: var(--accent); }
 
-.nav-links { display: flex; align-items: center; gap: var(--s-1); }
+/* A rounded pill strip — tighter than the old rectangular tabs so the full
+   set of labels has a real chance of fitting before nav-fit.js has to start
+   hiding them (see the data-fit steps below, still the fallback for whatever
+   this spacing alone cannot save). */
+.nav-links { display: flex; align-items: center; gap: 2px; background: var(--bg-inset); padding: 3px; border-radius: var(--r-pill); }
 .nav-link {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--s-2);
-  height: 40px;
-  padding: 0 var(--s-4);
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--s-3);
   border: 0;
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   background: transparent;
   color: var(--text-2);
-  font-size: var(--t-body);
+  font-size: 14px;
   font-weight: 600;
   letter-spacing: -0.01em;
   white-space: nowrap;
   transition: color var(--dur-fast) var(--ease-out), background var(--dur-fast) var(--ease-out);
 }
-.nav-link svg { width: 17px; height: 17px; flex: none; opacity: 0.75; }
-.nav-link[aria-current="page"] svg { opacity: 1; color: var(--accent); }
+.nav-link svg { width: 15px; height: 15px; flex: none; opacity: 0.75; }
+.nav-link[aria-current="page"] svg { opacity: 1; color: var(--text); }
 .nav-link:hover { color: var(--text); background: rgba(255,255,255,.05); }
-.nav-link[aria-current="page"] { color: var(--text); }
-.nav-link[aria-current="page"]::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 2px;
-  transform: translateX(-50%);
-  width: 20px; height: 2px;
-  border-radius: 2px;
+/* A filled pill, not an underline — the active tab reads at a glance even
+   when the icon disappears at a tighter nav-fit step. */
+.nav-link[aria-current="page"] {
+  color: var(--text);
   background: var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow);
+  box-shadow: 0 2px 12px var(--accent-glow);
 }
+.nav-link[aria-current="page"]:hover { background: var(--accent-hot); }
 .nav-link .nav-dot {
   position: absolute;
   top: 7px; right: 9px;
@@ -331,6 +331,170 @@
   transition: color var(--dur-fast) var(--ease-out);
 }
 .shelf-more:hover { color: var(--accent-hot); }
+
+/* ==========================================================================
+   GAME TILES — the self-service start picker's "choose a game" grid.
+   Poster-style cards with real cover art when the catalogue has it, falling
+   back to the initials avatar otherwise — never a broken image.
+   ========================================================================== */
+.game-tile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s-4);
+}
+.game-tile {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  border: 2px solid transparent;
+  border-radius: var(--r-lg);
+  overflow: hidden;
+  background: var(--bg-raised);
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+              box-shadow var(--dur-fast) var(--ease-out);
+}
+.game-tile:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+.game-tile[data-status="accent"] { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.game-tile-art {
+  position: absolute; inset: 0;
+  background-size: cover;
+  background-position: center;
+}
+.game-tile-art-fallback {
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-raised-2);
+}
+.game-tile-shade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 45%, rgba(0,0,0,.85) 100%);
+}
+.game-tile-check {
+  position: absolute; top: var(--s-2); right: var(--s-2);
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: var(--shadow-1);
+}
+.game-tile-label {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: var(--s-3);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.game-tile-name {
+  font-size: 14px; font-weight: 750; color: #fff;
+  letter-spacing: -0.01em;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.game-tile-meta { font-size: 11px; color: rgba(255,255,255,.65); }
+
+/* ==========================================================================
+   LAUNCHER TILES — the Apps page's "access your own games" grid.
+   ========================================================================== */
+.launcher-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--s-4);
+}
+.launcher-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-5) var(--s-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  background: var(--bg-raised);
+  cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), border-color var(--dur-fast) var(--ease-out),
+              background var(--dur-fast) var(--ease-out);
+}
+.launcher-tile:hover:not(:disabled) { transform: translateY(-2px); border-color: var(--accent-line); background: var(--bg-raised-2); }
+.launcher-tile:disabled { cursor: not-allowed; opacity: 0.5; }
+.launcher-tile-icon {
+  width: 48px; height: 48px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--r-md);
+  background: var(--bg-raised-2);
+  color: var(--text-2);
+}
+.launcher-tile-name { font-size: 14px; font-weight: 700; }
+.launcher-tile-status { font-size: 11px; color: var(--text-3); }
+.launcher-tile[data-status="idle"] .launcher-tile-status { color: var(--text-3); }
+
+/* ==========================================================================
+   VOLUME — a small popover anchored to the button, not a modal (see
+   openVolumeMenu). Sized and positioned like the Windows flyout it mirrors:
+   fixed, top/left set in JS, no scrim behind it.
+   ========================================================================== */
+.volume-popover {
+  position: fixed;
+  z-index: 900;
+  width: 240px;
+  padding: var(--s-4);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3);
+}
+.volume-row { display: flex; align-items: center; gap: var(--s-3); }
+.volume-mute-btn {
+  flex: none;
+  width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border: 0;
+  border-radius: 50%;
+  background: var(--bg-raised-2);
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.volume-mute-btn:hover { background: var(--bg-hover); }
+.volume-pct {
+  flex: none;
+  width: 40px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: var(--t-sm);
+  font-weight: 650;
+  color: var(--text-2);
+}
+.volume-slider {
+  flex: 1 1 auto;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 2px;
+  /* The filled portion left of the thumb is drawn by the browser reading
+     these two colors off the track background — no JS needed to keep it
+     in sync with the value as long as .value stays current, which paint()
+     above already guarantees. */
+  background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--_v, 0%), var(--bg-raised-2) var(--_v, 0%), var(--bg-raised-2) 100%);
+  outline: none;
+  cursor: pointer;
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+  margin-top: 0;
+}
+.volume-slider::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border: 0;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: var(--shadow-1);
+  cursor: pointer;
+}
+.volume-slider::-moz-range-progress { background: var(--accent); height: 4px; border-radius: 2px; }
+.volume-slider::-moz-range-track { background: var(--bg-raised-2); height: 4px; border-radius: 2px; }
 
 .shelf-rail {
   display: grid;

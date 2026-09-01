@@ -12,79 +12,95 @@
      `planned: true` marks a section with no backend behind it yet — the page
      explains exactly what is missing rather than showing invented data.
 
-     `feature` names the entitlement that grants the section. ManagerXP decides
-     what a café's package includes; this file only knows which nav entry maps
-     to which feature key. There is deliberately no `if (plan === 'basic')`
-     anywhere in this application, and there must never be one — a new module
-     should become visible by being switched on in ManagerXP, with no build.
+     `feature` names the entitlement that grants the section — what the
+     café's ManagerXP subscription includes. `permission` names what the
+     signed-in staff member's ROLE grants — set by the café owner in Staff →
+     Roles, using the exact same permission keys that page already lets them
+     toggle. The two are independent axes and both must pass: a café can be
+     entitled to Billing and still keep it out of a cashier's sidebar, and a
+     role can be trusted with Billing on a café that has not bought it —
+     either gate alone hiding the entry is enough.
 
-     An entry with no `feature` is structural and always shown. Discovery,
-     Server Log and Settings are how a café is set up and how it is repaired
-     when something is wrong; hiding them behind a subscription state would
-     mean the only screens that could explain a problem disappear exactly when
-     the problem starts. */
+     There is deliberately no `if (plan === 'basic')` or `if (role ===
+     'cashier')` anywhere in this application, and there must never be one —
+     a new module should become visible by being switched on in ManagerXP or
+     granted in Roles, with no build.
+
+     An entry with no `feature` is exempt from the subscription check —
+     Settings, Subscription and Updates must survive a lapsed plan, since
+     they are how a café reads why and fixes it. An entry with no
+     `permission` is exempt from the role check instead — Dashboard and
+     Notifications are what every signed-in person needs regardless of what
+     they are trusted to change. Most entries carry both. */
   var NAV = [
     {
       group: "Operations",
       items: [
         { id: "dashboard", label: "Dashboard", icon: "dashboard", feature: "DASHBOARD" },
-        { id: "floor",     label: "Floor",     icon: "floor",     feature: "FLOOR" },
-        { id: "sessions",  label: "Sessions",  icon: "sessions",  feature: "SESSION_MANAGEMENT" },
-        { id: "customers", label: "Customers", icon: "customers", feature: "CUSTOMERS" },
-        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING" }
+        { id: "notifications", label: "Notifications", icon: "bell" },
+        { id: "floor",     label: "Floor",     icon: "floor",     feature: "FLOOR",             permission: "floor.view" },
+        { id: "sessions",  label: "Sessions",  icon: "sessions",  feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
+        { id: "customers", label: "Customers", icon: "customers", feature: "CUSTOMERS",          permission: "customers.view" },
+        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING",            permission: "billing.counter" }
       ]
     },
     {
       group: "Catalogue",
       items: [
-        { id: "games",       label: "Games",       icon: "games",     feature: "SESSION_MANAGEMENT" },
-        { id: "game-library", label: "Game Library", icon: "games",   feature: "SESSION_MANAGEMENT" },
-        { id: "fnb",         label: "F&B",         icon: "fnb",       feature: "FNB" },
-        { id: "inventory",   label: "Inventory",   icon: "inventory", feature: "INVENTORY" },
-        { id: "session-master", label: "Session Master", icon: "clock",   feature: "SESSION_MANAGEMENT" },
-        { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT" },
-        { id: "pricing-windows", label: "Peak & Happy Hours", icon: "clock", feature: "SESSION_MANAGEMENT" },
-        { id: "packages",    label: "Packages",    icon: "packages",   feature: "PRODUCTS" },
-        { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP" },
-        { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING" },
-        { id: "reservations",label: "Reservations",icon: "reservations", planned: true }
+        { id: "games",       label: "Games",       icon: "games",     feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
+        { id: "game-library", label: "Game Library", icon: "games",   feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
+        { id: "credentials", label: "Game Credentials", icon: "settings", feature: "SESSION_MANAGEMENT", permission: "games.credentials" },
+        { id: "fnb",         label: "F&B",         icon: "fnb",       feature: "FNB",       permission: "products.view" },
+        { id: "inventory",   label: "Inventory",   icon: "inventory", feature: "INVENTORY", permission: "inventory.adjust" },
+        { id: "session-master", label: "Session Master", icon: "clock",   feature: "SESSION_MANAGEMENT", permission: "sessions.manage" },
+        { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
+        { id: "pricing-windows", label: "Peak & Happy Hours", icon: "clock", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
+        { id: "packages",    label: "Packages",    icon: "packages",   feature: "PRODUCTS",    permission: "packages.manage" },
+        { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP",  permission: "packages.manage" },
+        { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING",      permission: "discounts.manage" },
+        { id: "reservations",label: "Reservations",icon: "reservations", feature: "RESERVATIONS", permission: "sessions.view" }
       ]
     },
     {
       group: "Infrastructure",
       items: [
-        { id: "devices",   label: "Devices",   icon: "devices",   feature: "PC_CONTROL" },
-        { id: "discovery", label: "Discovery", icon: "radar" },
-        { id: "telemetry", label: "Telemetry", icon: "telemetry", feature: "PC_CONTROL" },
-        { id: "logs",      label: "Server Log", icon: "logs" }
+        { id: "devices",   label: "Devices",   icon: "devices",   feature: "PC_CONTROL", permission: "station.power" },
+        { id: "discovery", label: "Discovery", icon: "radar",                            permission: "floor.discovery" },
+        { id: "telemetry", label: "Telemetry", icon: "telemetry", feature: "PC_CONTROL", permission: "telemetry.view" },
+        { id: "logs",      label: "Server Log", icon: "logs",                            permission: "system.logs" }
       ]
     },
     {
       group: "Business",
       items: [
-        { id: "ai",       label: "CafeXP AI", icon: "sparkle",  feature: "AI" },
-        { id: "reports",  label: "Reports",  icon: "reports",   feature: "REPORTS" },
-        { id: "payments", label: "Payments", icon: "billing",   feature: "BILLING" },
-        { id: "staff",    label: "Staff",    icon: "staff",     feature: "STAFF" },
-        { id: "audit",    label: "Audit Log", icon: "audit" }
+        { id: "ai",       label: "CafeXP AI", icon: "sparkle",  feature: "AI",      permission: "ai.ask" },
+        { id: "reports",  label: "Reports",  icon: "reports",   feature: "REPORTS", permission: "reports.view" },
+        { id: "payments", label: "Payments", icon: "billing",   feature: "BILLING", permission: ["payments.gateway.view", "payments.topup.view"] },
+        { id: "expenses", label: "Expenses", icon: "billing",                       permission: "expenses.view" },
+        { id: "staff",    label: "Staff",    icon: "staff",     feature: "STAFF",   permission: "staff.view" },
+        { id: "audit",    label: "Audit Log", icon: "audit",                        permission: "audit.view" }
       ]
     },
     {
       /* Configuration, gathered in one place. Receipt Template moved out of
          Operations and Subscription out of Business: neither is something a
          member of staff does during a shift, and hunting for the receipt
-         layout among the day's tills is how it stays unconfigured.
+         layout among the day's tills is how it stays unconfigured. Updates
+         belongs here for the same reason — it is about this installation,
+         not a task done mid-shift.
 
          They stay separate nav entries rather than becoming tabs inside the
          Settings page, because Receipt Template is gated on BILLING while
-         Settings is deliberately ungated — the sidebar is where entitlements
-         are applied, so folding one into the other would quietly drop its
-         gate and show the page to a café that has not paid for it. */
+         Settings and Updates are deliberately ungated — the sidebar is where
+         entitlements are applied, so folding one into the other would
+         quietly drop its gate and show the page to a café that has not paid
+         for it. */
       group: "Settings",
       items: [
-        { id: "settings", label: "Settings", icon: "settings" },
-        { id: "receipt-template", label: "Receipt Template", icon: "edit", feature: "BILLING" },
-        { id: "plan",     label: "Subscription", icon: "plan" }
+        { id: "settings", label: "Settings", icon: "settings",                    permission: "settings.view" },
+        { id: "receipt-template", label: "Receipt Template", icon: "edit", feature: "BILLING", permission: "settings.manage" },
+        { id: "plan",     label: "Subscription", icon: "plan",                    permission: "settings.view" },
+        { id: "updates",  label: "Updates", icon: "refresh",                      permission: "settings.view" }
       ]
     }
   ];
@@ -105,16 +121,36 @@
     return !f || f.enabled !== false;
   }
 
+  /* Store.can() itself already resolves to true for an owner token and for
+     "not yet known" (permissions load a moment after the sidebar first
+     paints, same reasoning as entitlements above) — this is just the nav
+     item's opt-out for the entries every signed-in person needs regardless
+     of role. An array means "any one of these" — Payments covers gateway
+     config and top-up review, two different keys the owner may grant
+     independently, and either is reason enough to show the door to it. */
+  function permissionAllowed(item) {
+    if (!item.permission) return true;
+    if (!Store || !Store.can) return true;
+    var keys = Array.isArray(item.permission) ? item.permission : [item.permission];
+    return keys.some(function (key) { return Store.can(key); });
+  }
+
+  /* Nav *visibility* is a role question now, not a subscription one — see
+     go() for where a feature the plan doesn't include actually takes effect.
+     A café should be able to see Reservations exists and what it costs to
+     add, the same way a locked door still has a sign on it; a cashier a
+     role never trusted with Staff should not see there is a door at all. */
   function visibleNav() {
     return NAV.map(function (group) {
       return {
         group: group.group,
-        items: group.items.filter(featureAllowed)
+        items: group.items.filter(permissionAllowed)
       };
     }).filter(function (group) { return group.items.length > 0; });
   }
 
   var current = null;
+  var currentLocked = false;   // true when `current` shows the upsell, not the real page
   var host = null;
   var navButtons = {};
   var navToken = 0;      // guards against a slow exit animation mounting a stale view
@@ -170,6 +206,29 @@
      is one CafeXP application, not one per package.
      ========================================================================== */
 
+  /** Force the page on screen to be re-evaluated against the current
+      answers — used when a lock state might have flipped under it, since
+      go()'s own guard otherwise ignores a repeat navigation to the same id. */
+  function refreshCurrentPage() {
+    if (!current) return;
+    var id = current;
+    current = null;
+    go(id);
+  }
+
+  /* Permission loss still evicts — a role that no longer trusts someone with
+     Staff means the page is not merely locked-with-a-price-tag, it should
+     not be reachable at all, so this moves them off it rather than showing
+     an upsell for something not for sale to their role in the first place. */
+  function leaveHiddenPage(reasonSuffix) {
+    if (!current || !flat[current] || permissionAllowed(flat[current])) return;
+    var fallback = visibleNav()[0] && visibleNav()[0].items[0];
+    if (!fallback) return;
+    UI.toast.warn(flat[current].label + " " + reasonSuffix);
+    current = null;                 // force the swap; go() ignores a repeat
+    go(fallback.id);
+  }
+
   /**
    * Take a fresh entitlement set and rebuild the sidebar around it.
    *
@@ -180,27 +239,32 @@
    * be the worst possible failure mode.
    */
   function applyEntitlements(payload) {
+    var wasAllowed = current && flat[current] ? featureAllowed(flat[current]) : null;
+
     if (!payload || payload.resolved === false || !payload.features) {
       entitlements = null;
-      renderSidebar();
-      return;
+    } else {
+      entitlements = payload.features;
     }
-
-    entitlements = payload.features;
     renderSidebar();
 
-    /* If the open page has just been switched off, move rather than leaving
-       staff looking at a screen they are no longer entitled to. */
-    if (current && flat[current] && !featureAllowed(flat[current])) {
-      var fallback = visibleNav()[0] && visibleNav()[0].items[0];
-      if (fallback) {
-        UI.toast.warn(
-          flat[current].label + " is not included in this subscription any more"
-        );
-        current = null;                 // force the swap; go() ignores a repeat
-        go(fallback.id);
-      }
+    /* Nav visibility no longer depends on this, so a routine 15-minute
+       recheck that changes nothing about the plan must not disturb whoever
+       is mid-task on the page they're already looking at — only flip the
+       view if that page's own lock state actually changed. */
+    if (current && flat[current] && featureAllowed(flat[current]) !== wasAllowed) {
+      refreshCurrentPage();
     }
+  }
+
+  /** Re-render around whatever Store.can() answers now. Fires once
+      permissions first resolve after sign-in, and again on Store's periodic
+      re-check below — a café owner editing a role in Staff → Roles reaches
+      whoever is already signed in with it within that interval, not only on
+      their next login. */
+  function applyPermissions() {
+    renderSidebar();
+    leaveHiddenPage("is not part of your role any more");
   }
 
   /** Ask the backend what this café is entitled to, and apply the answer. */
@@ -214,6 +278,72 @@
         console.warn("[entitlements] check failed, keeping current navigation:", err && err.message);
         return null;
       });
+  }
+
+  /* ==========================================================================
+     UPSELL — the screen a feature-gated page shows instead of itself.
+
+     Every add-on ManagerXP sells is fetched once and cached (see
+     Store.listAddonCatalog), so this can name a price rather than just
+     saying a feature is missing. If the catalogue has not landed yet when a
+     locked page is first opened, it fetches once and repaints in place —
+     the alternative, blocking navigation on that request, would make an
+     ordinary click feel like it hung.
+     ========================================================================== */
+  var addonCatalog = null;
+
+  function refreshAddonCatalog() {
+    if (!Store || !Store.listAddonCatalog) return Promise.resolve(null);
+    return Store.listAddonCatalog().then(function (list) {
+      addonCatalog = list;
+      return list;
+    }).catch(function () { return null; });
+  }
+
+  /** The first published add-on that would switch this feature on, if any. */
+  function addonForFeature(featureKey) {
+    if (!addonCatalog) return null;
+    for (var i = 0; i < addonCatalog.length; i++) {
+      var grants = addonCatalog[i].features || [];
+      for (var j = 0; j < grants.length; j++) {
+        if (grants[j].feature_key === featureKey) return addonCatalog[i];
+      }
+    }
+    return null;
+  }
+
+  function formatPrice(addon) {
+    var n = Number(addon.price) || 0;
+    var whole = Math.round(n * 100) % 100 === 0;
+    return (whole ? String(Math.round(n)) : n.toFixed(2)) + " " + (addon.currency || "INR");
+  }
+
+  function renderLockedFeature(container, item) {
+    var addon = addonForFeature(item.feature);
+    container.innerHTML =
+      '<div class="page">' +
+        '<div class="page-head"><div>' +
+          '<div class="page-title">' + UI.esc(item.label) + "</div>" +
+          '<div class="page-sub">Not included in your current plan</div>' +
+        "</div></div>" +
+        '<div class="card card-pad" style="max-width:560px">' +
+          '<div class="notice" data-status="warning">' + Icon("alert", 18) +
+            "<div>" + UI.esc(item.label) + " is not part of your café's current CafeXP subscription.</div></div>" +
+          (addon
+            ? '<div class="col" style="margin-top:var(--s-4)">' +
+                '<div class="kv"><span class="kv-key">Available as</span><span class="kv-val">' + UI.esc(addon.name) + "</span></div>" +
+                '<div class="kv"><span class="kv-key">Price</span><span class="kv-val">' + UI.esc(formatPrice(addon)) +
+                  ' <span class="faint">/ ' + UI.esc(addon.billing_period || "monthly") + "</span></span></div>" +
+                (addon.description
+                  ? '<div class="faint" style="font-size:13px;margin-top:var(--s-2)">' + UI.esc(addon.description) + "</div>"
+                  : "") +
+              "</div>"
+            : "") +
+          '<div class="faint" style="margin-top:var(--s-4);font-size:13px;line-height:1.6">' +
+            "Contact ManagerXP to add this to your plan." +
+          "</div>" +
+        "</div>" +
+      "</div>";
   }
 
   /** Show a count pill on a nav entry (e.g. discovered PCs waiting). */
@@ -237,8 +367,15 @@
     if (!page) { UI.toast.warn("Unknown page", id); return; }
     if (current === id) return;
 
+    var item = flat[id];
+    // A feature the plan doesn't include shows the upsell instead of the
+    // real page — never mounted, so nothing on it fetches data or runs.
+    var locked = !!item && !featureAllowed(item);
+
     var previous = current;
+    var previousLocked = currentLocked;
     current = id;
+    currentLocked = locked;
     var token = ++navToken;
 
     Object.keys(navButtons).forEach(function (key) {
@@ -248,14 +385,15 @@
 
     var titleEl = document.getElementById("topbarTitle");
     var crumbEl = document.getElementById("topbarCrumb");
-    if (titleEl) titleEl.textContent = page.title || flat[id].label;
-    if (crumbEl) crumbEl.textContent = page.subtitle || "";
+    if (titleEl) titleEl.textContent = (item && item.label) || page.title || (item ? item.label : id);
+    if (crumbEl) crumbEl.textContent = locked ? "" : (page.subtitle || "");
 
     var tools = document.getElementById("topbarPageTools");
     if (tools) UI.clear(tools);
 
-    // Tear down the previous page so intervals/subscriptions don't leak.
-    if (previous && global.CXPages[previous] && global.CXPages[previous].unmount) {
+    // Tear down the previous page so intervals/subscriptions don't leak —
+    // only if it was ever actually mounted; a locked page never was.
+    if (previous && !previousLocked && global.CXPages[previous] && global.CXPages[previous].unmount) {
       try { global.CXPages[previous].unmount(); } catch (e) { console.error(e); }
     }
 
@@ -266,12 +404,22 @@
       if (token !== navToken) return;      // a newer navigation already won
       UI.clear(host);
       host.appendChild(incoming);
-      try {
-        page.mount(incoming, { tools: tools });
-      } catch (e) {
-        console.error("[router] mount failed for " + id, e);
-        UI.clear(incoming);
-        incoming.appendChild(UI.errorState("This page failed to render: " + e.message));
+      if (locked) {
+        renderLockedFeature(incoming, item);
+        if (!addonCatalog) {
+          refreshAddonCatalog().then(function () {
+            // Only repaint if this is still the page on screen.
+            if (token === navToken) renderLockedFeature(incoming, item);
+          });
+        }
+      } else {
+        try {
+          page.mount(incoming, { tools: tools });
+        } catch (e) {
+          console.error("[router] mount failed for " + id, e);
+          UI.clear(incoming);
+          incoming.appendChild(UI.errorState("This page failed to render: " + e.message));
+        }
       }
       Motion.enter(incoming, { y: 10, duration: 0.24 });
       var scroller = document.getElementById("pageScroll");
@@ -333,6 +481,15 @@
        without anyone restarting the application. */
     refreshEntitlements();
     setInterval(refreshEntitlements, 15 * 60 * 1000);
+    refreshAddonCatalog();   // best-effort; a locked page fetches again if this missed
+
+    /* Permissions load asynchronously too (see Store.init's onUserUpdated
+       handler) and the sidebar must narrow the moment they land, not stay on
+       "show everything" for the rest of the session. Re-checked on the same
+       schedule as entitlements so a role edited in Staff → Roles reaches
+       whoever is already signed in with it. */
+    if (Store && Store.on) Store.on("permissions", applyPermissions);
+    if (Store && Store.loadPermissions) setInterval(Store.loadPermissions, 15 * 60 * 1000);
 
     // Keyboard: Ctrl+B collapse, Ctrl+1..4 jump to the main operational pages.
     var quick = ["dashboard", "floor", "games", "devices"];

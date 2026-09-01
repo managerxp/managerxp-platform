@@ -10,6 +10,14 @@
   var UI = global.CXUI, Store = global.CXStore, Icon = global.CXIcon, Motion = global.CXMotion;
   global.CXPages = global.CXPages || {};
 
+  /* Uploaded images are stored as a relative /uploads/... path; a few older
+     rows may still hold a full external URL from before this had an upload
+     button. Only the relative kind needs the API host prefixed. */
+  function imageSrc(url) {
+    if (!url) return null;
+    return /^https?:\/\//i.test(url) ? url : Store.API_BASE + url;
+  }
+
   function coins(value) {
     var n = Number(value || 0);
     var whole = Math.round(n * 100) % 100 === 0;
@@ -44,6 +52,8 @@
   function productForm(existing, onSaved) {
     var isEdit = !!existing;
     var body = UI.el("div", { class: "col gap-4" });
+    var imageUrl = existing && existing.image_url ? existing.image_url : null;
+    var uploading = false;
 
     body.innerHTML =
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
@@ -65,9 +75,19 @@
       '<div class="field"><label class="field-label" for="prDesc">Description</label>' +
         '<input class="input" id="prDesc" placeholder="What the customer sees" value="' +
           UI.esc(existing && existing.description ? existing.description : "") + '"></div>' +
-      '<div class="field"><label class="field-label" for="prImage">Image URL</label>' +
-        '<input class="input" id="prImage" placeholder="https://…" value="' +
-          UI.esc(existing && existing.image_url ? existing.image_url : "") + '"></div>' +
+      '<div class="field"><label class="field-label">Image</label>' +
+        '<div class="row gap-3" style="align-items:center">' +
+          '<div id="prImageBox" style="width:56px;height:56px;border-radius:10px;overflow:hidden;background:var(--bg-inset);flex:0 0 auto;display:flex;align-items:center;justify-content:center">' +
+            (existing && existing.image_url
+              ? '<img src="' + UI.esc(imageSrc(existing.image_url)) + '" style="width:100%;height:100%;object-fit:cover">'
+              : Icon("fnb", 20)) +
+          "</div>" +
+          '<input type="file" id="prImageFile" accept="image/png,image/jpeg,image/webp" class="hidden">' +
+          '<button type="button" class="btn btn-outline btn-sm" id="prImagePick">Choose image</button>' +
+          '<button type="button" class="btn btn-ghost btn-sm" id="prImageClear"' +
+            (existing && existing.image_url ? "" : " disabled") + '>Remove</button>' +
+        "</div>" +
+        '<div class="field-hint">PNG, JPEG or WebP. Square photos crop best.</div></div>' +
       '<div class="grid grid-3" style="gap:var(--s-3)">' +
         '<div class="field"><label class="field-label field-req" for="prPrice">Price (XP)</label>' +
           '<input class="input" id="prPrice" type="number" min="0" step="0.01" value="' +
@@ -112,7 +132,7 @@
               sku: ctx.body.querySelector("#prSku").value.trim() || null,
               category_id: ctx.body.querySelector("#prCategory").value || null,
               description: ctx.body.querySelector("#prDesc").value.trim() || null,
-              image_url: ctx.body.querySelector("#prImage").value.trim() || null,
+              image_url: imageUrl,
               price: Number(ctx.body.querySelector("#prPrice").value),
               cost_price: ctx.body.querySelector("#prCost").value === ""
                 ? null : Number(ctx.body.querySelector("#prCost").value),
@@ -127,6 +147,10 @@
             if (!payload.product_name || !Number.isFinite(payload.price) || payload.price < 0) {
               Motion.shake(ctx.node);
               UI.toast.warn("A name and a price of zero or more are required");
+              return false;
+            }
+            if (uploading) {
+              UI.toast.warn("Still uploading the image", "Give it a moment and try again.");
               return false;
             }
 
@@ -152,6 +176,36 @@
     function syncTrack() { stockFields.classList.toggle("hidden", !track.checked); }
     track.addEventListener("change", syncTrack);
     syncTrack();
+
+    // Image: pick a file, upload it right away, keep just the URL for submit.
+    var imageBox = body.querySelector("#prImageBox");
+    var imageFile = body.querySelector("#prImageFile");
+    var imageClear = body.querySelector("#prImageClear");
+    body.querySelector("#prImagePick").addEventListener("click", function () { imageFile.click(); });
+    imageClear.addEventListener("click", function () {
+      imageUrl = null;
+      imageBox.innerHTML = Icon("fnb", 20);
+      imageClear.disabled = true;
+    });
+    imageFile.addEventListener("change", function () {
+      var f = imageFile.files && imageFile.files[0];
+      if (!f) return;
+      uploading = true;
+      imageBox.innerHTML = '<div class="spinner"></div>';
+      Store.uploadProductImage(f)
+        .then(function (url) {
+          imageUrl = url;
+          imageBox.innerHTML = '<img src="' + UI.esc(imageSrc(url)) + '" style="width:100%;height:100%;object-fit:cover">';
+          imageClear.disabled = false;
+        })
+        .catch(function (e) {
+          UI.toast.error("Could not upload that image", e.message);
+          imageBox.innerHTML = imageUrl
+            ? '<img src="' + UI.esc(imageSrc(imageUrl)) + '" style="width:100%;height:100%;object-fit:cover">'
+            : Icon("fnb", 20);
+        })
+        .then(function () { uploading = false; imageFile.value = ""; });
+    });
 
     return dialog;
   }
@@ -317,8 +371,9 @@
       var tr = UI.el("tr", { dataset: { status: STOCK_TONE[p.stock_state] || "idle" } });
       tr.innerHTML =
         '<td><div class="row gap-3">' +
-          '<span class="sw-icon" style="width:34px;height:34px"' +
-            (p.image_url ? ' style="background-image:url(' + UI.esc(p.image_url) + ');background-size:cover"' : "") + ">" +
+          '<span class="sw-icon" style="width:34px;height:34px' +
+            (p.image_url ? ";background-image:url(" + UI.esc(imageSrc(p.image_url)) + ");background-size:cover" : "") +
+            '">' +
             (p.image_url ? "" : UI.esc(p.product_name.charAt(0).toUpperCase())) + "</span>" +
           "<div><strong>" + UI.esc(p.product_name) + "</strong>" +
             (p.sku ? '<div class="faint mono" style="font-size:10px">' + UI.esc(p.sku) + "</div>" : "") +

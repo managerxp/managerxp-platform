@@ -223,6 +223,17 @@
       });
     }
 
+    /* The game is confirmed up (a real PID, or the OS accepted a protocol
+       hand-off) — the "Getting your game ready…" overlay has served its
+       purpose. Separate from "play" below: an untimed session never gets a
+       launch timer, so "play" alone left this overlay stuck up forever. */
+    if (api.onAppLaunched) {
+      api.onAppLaunched(function () {
+        state.launching = null;
+        emit("launched", {});
+      });
+    }
+
     if (api.onAppLaunchFailed) {
       api.onAppLaunchFailed(function (data) {
         state.launching = null;
@@ -232,6 +243,7 @@
 
     if (api.onAppClosed) {
       api.onAppClosed(function (data) {
+        state.launching = null;
         endPlay((data && data.appName) || null);
       });
     }
@@ -258,7 +270,16 @@
 
       if (previous > WARN_AT && remaining <= WARN_AT) emit("warning", state.play);
       if (previous > CRITICAL_AT && remaining <= CRITICAL_AT) emit("critical", state.play);
-      if (remaining === 0) endPlay(state.play.appName);
+
+      // The block ran out. Matching the timer card: the game is never closed
+      // for this on its own — the player keeps going, the console is told the
+      // station is over its block, and something else (the app actually
+      // closing, or staff/the player stopping it) ends the session.
+      if (remaining === 0 && !state.play.overtime) {
+        state.play.overtime = true;
+        emit("overtime", state.play);
+        if (api.sessionOvertime) api.sessionOvertime(state.play.appName);
+      }
     }, 500);
   }
 

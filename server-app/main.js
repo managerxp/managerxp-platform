@@ -7,6 +7,10 @@ const os = require("os");
 const dgram = require("dgram");   // Wake-on-LAN magic packets
 const authContext = require("./authContext");
 
+// .env is optional — a fresh checkout or a machine where it was never copied
+// still runs on the defaults below, exactly as it did before this existed.
+try { process.loadEnvFile(path.join(__dirname, ".env")); } catch (e) { /* no .env on this machine */ }
+
 let win;
 let tokenServer; // HTTP token server instance
 let clientConnections = new Map(); // simId -> ws connection to client
@@ -263,6 +267,16 @@ function handleStationRequest(msg, ws) {
     if (win) win.webContents.send("station:launchers", { pcName, launchers });
     return true;
   }
+  /* A station reporting its own CafeXP Client build, sent unprompted on
+     connect. Handed to the renderer rather than pushed to the backend from
+     here — the renderer already holds this café's staff token and the pc_id
+     each station maps to, and this console has neither. */
+  if (msg.type === "CLIENT_VERSION") {
+    const version = String(msg.version || "").slice(0, 32);
+    log(`[Update] ${pcName} is running client ${version}`);
+    if (win) win.webContents.send("station:client-version", { pcName, version });
+    return true;
+  }
   return false;
 }
 
@@ -433,7 +447,9 @@ function getMacAddress() {
  * first non-internal IPv4 address is the one actually reachable from another
  * machine on the network.
  */
-const BACKEND_PORT = 5000;
+const BACKEND_PORT = Number(process.env.BACKEND_PORT) || 5000;
+const BACKEND_LOCAL = `http://localhost:${BACKEND_PORT}`;
+const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
     const interfaces = os.networkInterfaces();
@@ -499,7 +515,7 @@ function startTokenServer() {
                 if (authState && authState.token) {
                   console.log(`[PC Auto-Update] Checking if MAC ${mac_address} exists in database...`);
                   
-                  const checkResponse = await fetch('http://localhost:5000/api/pcs/check-exists', {
+                  const checkResponse = await fetch(`${BACKEND_LOCAL}/api/pcs/check-exists`, {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -685,8 +701,8 @@ function startTokenServer() {
   });
   
   tokenServer = server;
-  server.listen(3334, () => {
-    console.log('Token receiver server listening on port 3334 with CORS enabled');
+  server.listen(TOKEN_SERVER_PORT, () => {
+    console.log(`Token receiver server listening on port ${TOKEN_SERVER_PORT} with CORS enabled`);
   });
 }
 
@@ -839,7 +855,7 @@ async function flushTelemetry() {
 
   const batch = telemetryQueue.splice(0, TELEMETRY_QUEUE_MAX);
   try {
-    const response = await fetch("http://localhost:5000/api/telemetry", {
+    const response = await fetch(`${BACKEND_LOCAL}/api/telemetry`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify({ samples: batch })
@@ -894,6 +910,15 @@ function requestTelemetry(pcName) {
 // Register all IPC handlers (call only once)
 function registerIPCHandlers() {
   if (handlersRegistered) return;
+
+  /* Synchronous on purpose: the renderer's Store needs this before its first
+     API call, which can happen before any async IPC round trip would have
+     resolved. preload.js reads it once, at script-evaluation time, and hands
+     the renderer a plain string — not a promise it would have to thread
+     through every caller of Store.request(). */
+  ipcMain.on("system:get-backend-local-sync", (event) => {
+    event.returnValue = BACKEND_LOCAL;
+  });
 
   /** The live wall reads from this process; history comes from the backend. */
   ipcMain.handle("telemetry:get-latest", async () => ({
@@ -1190,7 +1215,7 @@ function registerIPCHandlers() {
         return { success: false, error: 'Not authenticated', data: [] };
       }
 
-      const response = await fetch(`http://localhost:5000/api/pc-software/pc/${pcId}`, {
+      const response = await fetch(`${BACKEND_LOCAL}/api/pc-software/pc/${pcId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -1450,7 +1475,7 @@ function registerIPCHandlers() {
         return { success: false, data: [], error: "NO_CAFE" };
       }
 
-      const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {
+      const response = await fetch(`${BACKEND_LOCAL}/api/pcs/cafe/${cafeId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -1499,6 +1524,9 @@ function registerIPCHandlers() {
   ipcMain.on("auth:open-web-app-signup", (event) => {
     shell.openExternal('http://localhost:5173/signup');
   });
+
+  // This console's own build, read from package.json via Electron.
+  ipcMain.handle("system:get-app-version", async () => app.getVersion());
 
   // Get system MAC address
   ipcMain.handle("system:get-mac-address", async (event) => {
@@ -1660,7 +1688,7 @@ async function fetchStaffUnlockPin() {
   try {
     const token = authContext.getToken();
     if (!token) return null;
-    const res = await fetch('http://localhost:5000/api/settings?category=client', {
+    const res = await fetch(`${BACKEND_LOCAL}/api/settings?category=client`, {
       headers: { Authorization: `Bearer ${token}` }
     });
     if (!res.ok) return null;
@@ -1696,7 +1724,7 @@ async function fetchClientsFromAPI() {
       return [];
     }
 
-    const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {
+    const response = await fetch(`${BACKEND_LOCAL}/api/pcs/cafe/${cafeId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',

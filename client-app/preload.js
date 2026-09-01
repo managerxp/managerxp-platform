@@ -6,12 +6,23 @@ contextBridge.exposeInMainWorld("api", {
   getStatus: (cb) => ipcRenderer.invoke("get-status").then(cb),
   onPcName: (cb) => ipcRenderer.on("pc-name", (_, name) => cb(name)),
   getPcName: (cb) => ipcRenderer.invoke("get-pc-name").then(cb),
+  getAppVersion: (cb) => ipcRenderer.invoke("get-app-version").then(cb),
+
+  // Volume — real level + mute state, from the actual Windows device.
+  volumeGet: () => ipcRenderer.invoke("volume:get"),
+  volumeSet: (level) => ipcRenderer.invoke("volume:set", level),
+  volumeMuteToggle: () => ipcRenderer.invoke("volume:mute-toggle"),
+
+  // Which game launchers this station has, and opening one.
+  getLaunchers: (cb) => ipcRenderer.invoke("get-launchers").then(cb),
+  openLauncher: (name) => ipcRenderer.invoke("open-launcher", name),
   // Where the backend API lives — corrected from "this machine" to the
   // console's real address once the station connects to one on another PC.
   onBackendBase: (cb) => ipcRenderer.on("backend-base", (_, base) => cb(base)),
   getBackendBase: (cb) => ipcRenderer.invoke("get-backend-base").then(cb),
   onStartTimer: (cb) => ipcRenderer.on("start-timer", (_, data) => cb(data)),
   onAppLaunching: (cb) => ipcRenderer.on("app-launching", (_, data) => cb(data)),
+  onAppLaunched: (cb) => ipcRenderer.on("app-launched", (_, data) => cb(data)),
   onAppLaunchFailed: (cb) => ipcRenderer.on("app-launch-failed", (_, data) => cb(data)),
   onAppClosed: (cb) => ipcRenderer.on("app-closed", (_, data) => cb(data)),
   onSessionState: (cb) => ipcRenderer.on("session-state", (_, data) => cb(data)),

@@ -113,20 +113,6 @@
       needs: "membership plans, customer_memberships and a wallet ledger",
       today: "Note: /api/subscriptions is the cafe's own licence to run CafeXP, not a customer membership. That licence is shown on the Subscription page."
     },
-    reservations: {
-      title: "Reservations",
-      subtitle: "Bookings and check-ins",
-      icon: "reservations",
-      lede: "Upcoming bookings by station and time slot, with check-in and no-show handling.",
-      features: [
-        ["Today & upcoming", "Timeline of booked slots"],
-        ["Station / zone", "Reserve a specific machine or any in a zone"],
-        ["Check-in", "Convert a booking into a live session"],
-        ["Cancellation", "Cancel or mark as a no-show"]
-      ],
-      needs: "a reservations table and routes",
-      today: "Nothing in the platform records bookings yet."
-    },
     staff: {
       title: "Staff",
       subtitle: "Team, roles and shifts",

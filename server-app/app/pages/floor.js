@@ -305,6 +305,7 @@
         '<div class="station-timer" data-session-timer="' + UI.esc(pc.name) + '">' +
           SessionUI.displayTime(session) + "</div>" +
         '<div class="station-subline">' +
+          (session.game_name ? UI.esc(session.game_name) + " · " : "") +
           (session.status === "paused" ? "Paused" : SessionUI.timeLabel(session)) +
           " · " + SessionUI.coins(session.running_amount) + " XP" +
         "</div>";

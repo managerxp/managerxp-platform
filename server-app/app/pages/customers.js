@@ -48,6 +48,15 @@
     }
   }
 
+  /** Total time actually played, across every ended session. */
+  function playTime(seconds) {
+    var s = Number(seconds) || 0;
+    if (s <= 0) return "None yet";
+    var hrs = Math.floor(s / 3600);
+    var mins = Math.round((s % 3600) / 60);
+    return hrs > 0 ? (hrs + "h " + mins + "m") : (mins + "m");
+  }
+
   var CATEGORY_LABEL = {
     topup: "Coins added", food: "Food & drink", gaming: "Gaming time",
     shop: "Shop purchase", refund: "Refund", bonus: "Bonus",
@@ -435,6 +444,8 @@
             UI.esc(current.customer_id) + "</span></div>" +
           '<div class="kv"><span class="kv-key">Joined</span><span class="kv-val">' +
             UI.esc(UI.fmtDate(current.created_at)) + "</span></div>" +
+          '<div class="kv"><span class="kv-key">Hours played</span><span class="kv-val">' +
+            UI.esc(playTime(current.total_play_seconds)) + "</span></div>" +
         "</div>";
       wrap.appendChild(profile);
 

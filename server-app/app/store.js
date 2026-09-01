@@ -9,8 +9,11 @@
 (function (global) {
   "use strict";
 
-  var API_BASE = "http://localhost:5000";       // unchanged: backend origin
   var api = global.api || {};                    // preload bridge
+  // preload.js resolves this synchronously from main.js's BACKEND_PORT
+  // (.env, default 5000) before this script runs; the literal is only what
+  // a bridge-less context (a stray browser tab) falls back to.
+  var API_BASE = api.backendLocal || "http://localhost:5000";
 
   /** Call an IPC bridge method, failing softly if the bridge is unavailable. */
   function bridge(name) {
@@ -139,6 +142,42 @@
 
         return cached.data;
       });
+  }
+
+  /* Every add-on ManagerXP currently sells — what the "not included in your
+     plan" screens name a price from. Cached for the session; the catalogue
+     changes rarely enough that re-fetching on every locked page would be
+     wasted network for no real freshness gain. */
+  var addonCatalogCache = null;
+  function listAddonCatalog() {
+    if (addonCatalogCache) return Promise.resolve(addonCatalogCache);
+    return request("/api/subscriptions/addons/catalog").then(function (body) {
+      addonCatalogCache = body.data || [];
+      return addonCatalogCache;
+    });
+  }
+
+  /* ==========================================================================
+     SOFTWARE UPDATES
+
+     Visibility only, for now: what ManagerXP has published, and whether this
+     console (or any of its stations) is behind it. Nothing here downloads or
+     installs anything — see update-schedule.js for the policy that will decide
+     *when* an apply step is allowed to run, once there is one.
+     ========================================================================== */
+  /** Ask the backend whether a newer build exists for this component. */
+  function checkUpdate(component, currentVersion) {
+    var qs = "?component=" + encodeURIComponent(component) +
+      "&current_version=" + encodeURIComponent(currentVersion || "0.0.0");
+    return request("/api/updates/mine" + qs).then(function (d) { return d.data; });
+  }
+
+  /** Tell the backend which client build a station just reported. */
+  function reportStationVersion(pcId, version) {
+    return request("/api/pcs/" + pcId + "/client-version", {
+      method: "POST",
+      body: JSON.stringify({ version: version })
+    });
   }
 
   /* ==========================================================================
@@ -1076,6 +1115,15 @@
   function updateProduct(id, body) {
     return request("/api/products/" + id, { method: "PUT", body: JSON.stringify(body) });
   }
+  /* Standalone from any product id — a new product doesn't have one yet.
+     Upload the file first, get a URL back, include it in the create/update
+     payload like any other field. */
+  function uploadProductImage(file) {
+    var body = new FormData();
+    body.append("image", file);
+    return request("/api/products/upload-image", { method: "POST", body: body })
+      .then(function (r) { return r.data.image_url; });
+  }
   function setProductAvailability(id, available) {
     return request("/api/products/" + id + "/availability", {
       method: "PATCH", body: JSON.stringify({ is_available: available })
@@ -1401,6 +1449,33 @@
   }
 
   /* ==========================================================================
+     RESERVATIONS — booking a station ahead of time
+     ========================================================================== */
+  function listReservations(params) { return request("/api/reservations" + qs(params)); }
+  /* This café's own opening/closing time, so the booking calendar can scope
+     its grid to when the place is actually open. */
+  function getReservationHours() {
+    return request("/api/reservations/hours").then(function (r) { return r.data; });
+  }
+  function checkReservationAvailability(params) {
+    return request("/api/reservations/availability" + qs(params)).then(function (r) { return r.data; });
+  }
+  function createReservation(body) {
+    return request("/api/reservations", { method: "POST", body: JSON.stringify(body) });
+  }
+  function cancelReservation(id, reason) {
+    return request("/api/reservations/" + id + "/cancel", {
+      method: "POST", body: JSON.stringify(reason ? { reason: reason } : {})
+    });
+  }
+  function checkInReservation(id) {
+    return request("/api/reservations/" + id + "/check-in", { method: "POST", body: "{}" });
+  }
+  function markReservationNoShow(id) {
+    return request("/api/reservations/" + id + "/no-show", { method: "POST", body: "{}" });
+  }
+
+  /* ==========================================================================
      CONNECTION CONTROL
      ========================================================================== */
   function connectToPC(ip, port, pcName) { return bridge("connectToPC", ip, port, pcName); }
@@ -1612,6 +1687,65 @@
     checkNewTopups();
     setInterval(checkNewTopups, 15000);
 
+    /*
+     * A customer placed a food/drink order at their station.
+     *
+     * Same gap, same fix as coin requests just above: the F&B page's own
+     * "Order queue" tab already polls, but only while someone has that page
+     * open, and its count there is every order still in the pipeline, not
+     * specifically the ones nobody has looked at yet. This polls for PLACED
+     * — the moment before anyone has even acknowledged it — for the app's
+     * whole lifetime, and emits the same two-event shape ("order:new" once
+     * per order, "orders-pending" with the full list) so main.js can handle
+     * both this and coin requests through one bell.
+     */
+    var knownOrderIds = null;
+    function checkNewOrders() {
+      listOrders({ status: "PLACED" })
+        .then(function (r) {
+          var list = r.data || [];
+          var ids = list.map(function (o) { return o.order_id; });
+          if (knownOrderIds) {
+            list.forEach(function (o) {
+              if (knownOrderIds.indexOf(o.order_id) === -1) emit("order:new", o);
+            });
+          }
+          knownOrderIds = ids;
+          emit("orders-pending", list);
+        })
+        .catch(function () { /* next tick tries again */ });
+    }
+    checkNewOrders();
+    setInterval(checkNewOrders, 15000);
+
+    /*
+     * New bookings — from the café's own public booking link as much as from
+     * a staff member typing one in here, since either way nobody has seen it
+     * yet. Looks ahead a week rather than just today, so a booking made for
+     * next weekend still surfaces the moment it lands instead of waiting
+     * until its own day arrives.
+     */
+    var knownReservationIds = null;
+    function checkNewReservations() {
+      var from = new Date();
+      var to = new Date(from.getTime() + 7 * 24 * 60 * 60000);
+      listReservations({ status: "CONFIRMED", from: from.toISOString(), to: to.toISOString() })
+        .then(function (r) {
+          var list = r.data || [];
+          var ids = list.map(function (x) { return x.reservation_id; });
+          if (knownReservationIds) {
+            list.forEach(function (x) {
+              if (knownReservationIds.indexOf(x.reservation_id) === -1) emit("reservation:new", x);
+            });
+          }
+          knownReservationIds = ids;
+          emit("reservations-pending", list);
+        })
+        .catch(function () { /* next tick tries again */ });
+    }
+    checkNewReservations();
+    setInterval(checkNewReservations, 15000);
+
     if (api.onDiscoveredPCs) {
       api.onDiscoveredPCs(function (list) {
         var prev = state.discovered.length;
@@ -1662,6 +1796,23 @@
         if (!d || !d.pcName) return;
         state.launchers[d.pcName] = d.launchers || {};
         emit("launchers", state.launchers);
+      });
+    }
+
+    /* A station reported its own CafeXP Client build. Relayed to the backend
+       from here rather than from main.js, which holds neither this café's
+       staff token nor the pc_id a station name maps to. */
+    if (api.onStationClientVersion) {
+      api.onStationClientVersion(function (d) {
+        var pc = d && d.pcName && getPC(d.pcName);
+        if (!pc || !d.version) return;
+        reportStationVersion(pc.pc_id, d.version)
+          .then(function () {
+            pc.client_version = d.version;
+            pc.client_version_seen_at = new Date().toISOString();
+            emit("pcs", state.pcs);
+          })
+          .catch(function () { /* advisory only — a missed report costs nothing but a stale row */ });
       });
     }
 
@@ -1749,7 +1900,11 @@
         if (!pc) return;
         Promise.all([
           getPcGames(pc.pc_id).catch(function () { return { data: { games: [] } }; }),
-          listGamingPrices({ status: "ACTIVE" }).catch(function () { return { data: [] }; })
+          /* The current, peak/happy-hour-adjusted rate — not the flat catalogue
+             price. A customer choosing at 7pm during a peak window must see
+             the same number they are about to be charged, not the base rate
+             a pricing rule is quietly about to mark up. */
+          previewRates().catch(function () { return []; })
         ]).then(function (results) {
           /* Flattened to one entry per (game, platform installed here) — the
              same shape pushGamesToStation sends, so the customer's picker and
@@ -1769,12 +1924,13 @@
               });
             });
           });
-          var prices = (results[1].data || []).filter(function (p) {
+          var prices = (results[1] || []).filter(function (p) {
             return !pc.category || !p.category || p.category === pc.category;
           }).map(function (p) {
             return {
-              price_id: p.price_id, session_name: p.session_name,
-              duration_minutes: p.duration_minutes, is_unlimited: p.is_unlimited, price: p.price
+              price_id: p.gaming_price_id, session_name: p.session_name,
+              duration_minutes: p.duration_minutes, is_unlimited: p.is_unlimited,
+              price: p.current_price
             };
           });
           if (api.pushStartOptions) api.pushStartOptions(pcName, games, prices);
@@ -1857,6 +2013,11 @@
 
     // what ManagerXP says this café's subscription includes
     getEntitlements: getEntitlements,
+    listAddonCatalog: listAddonCatalog,
+
+    // software updates — visibility only
+    checkUpdate: checkUpdate,
+    reportStationVersion: reportStationVersion,
 
     // derived
     pcStatus: pcStatus,
@@ -1887,6 +2048,7 @@
     listProducts: listProducts,
     createProduct: createProduct,
     updateProduct: updateProduct,
+    uploadProductImage: uploadProductImage,
     setProductAvailability: setProductAvailability,
     deleteProduct: deleteProduct,
     adjustStock: adjustStock,
@@ -1978,6 +2140,13 @@
     updatePricingRule: updatePricingRule,
     deletePricingRule: deletePricingRule,
     previewRates: previewRates,
+    listReservations: listReservations,
+    getReservationHours: getReservationHours,
+    checkReservationAvailability: checkReservationAvailability,
+    createReservation: createReservation,
+    cancelReservation: cancelReservation,
+    checkInReservation: checkInReservation,
+    markReservationNoShow: markReservationNoShow,
 
     // sessions
     loadSessions: loadSessions,

@@ -12,6 +12,17 @@
   var UI = global.CXUI, Icon = global.CXIcon, Motion = global.CXMotion, Session = global.CXSession;
   global.CXViews = {};
 
+  /* Uploaded product images are a relative /uploads/... path from the café's
+     own backend; a few older rows may still hold a full external URL from
+     before there was an upload button. Only the relative kind needs the
+     backend's own host prefixed. */
+  function imageSrc(url) {
+    if (!url) return null;
+    if (/^https?:\/\//i.test(url)) return url;
+    var base = global.CXWallet && global.CXWallet.apiBase ? global.CXWallet.apiBase() : "";
+    return base + url;
+  }
+
   /* ==========================================================================
      SHARED PIECES
      ========================================================================== */
@@ -175,7 +186,7 @@
             '<div style="font-size:var(--t-h2);font-weight:720;letter-spacing:-.02em;margin-top:6px" class="truncate">' +
               UI.esc(play.appName) + "</div>" +
             '<div class="muted" style="font-size:var(--t-sm);margin-top:var(--s-3);line-height:1.55">' +
-              "Your game closes automatically when the timer reaches zero." +
+              "Play continues after the timer reaches zero — staff will settle the extra time." +
             "</div>" +
           "</div>" +
         "</div>";
@@ -409,26 +420,30 @@
       }
 
       host.appendChild(UI.el("div", { class: "shelf-title", text: "1. Choose a game" }));
-      var gameGrid = UI.el("div", { class: "col gap-2" });
+      var gameGrid = UI.el("div", { class: "game-tile-grid" });
       games.forEach(function (g) {
         /* Keyed on the PLATFORM, not the game: the same title installed from
            two stores is two separate things to launch, and picking "F1 25"
            without saying which copy would leave the launcher guessing. */
         var chosen = selectedGame && selectedGame.game_platform_id === g.game_platform_id;
+        var art = imageSrc(g.icon_url);
         var el = UI.el("button", {
-          class: "card card-pad row gap-4",
-          style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%" },
+          class: "game-tile",
           dataset: chosen ? { status: "accent" } : {}
         });
         el.innerHTML =
-          '<span class="avatar" style="width:40px;height:40px;font-size:14px;flex:0 0 auto">' +
-            UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) + "</span>" +
-          '<span class="grow" style="min-width:0">' +
-            '<span style="display:block;font-size:14px;font-weight:700">' + UI.esc(g.name) + "</span>" +
-            '<span class="faint" style="font-size:12px">' +
-              UI.esc([g.category, g.platform].filter(Boolean).join(" · ")) + "</span>" +
-          "</span>" +
-          (chosen ? '<span class="tx-icon" data-status="online" style="flex:0 0 auto">' + Icon("check", 14) + "</span>" : "");
+          (art
+            ? '<span class="game-tile-art" style="background-image:url(\'' + UI.esc(art) + "')\"></span>"
+            : '<span class="game-tile-art game-tile-art-fallback">' +
+                '<span class="avatar" style="width:44px;height:44px;font-size:15px">' +
+                  UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) +
+                "</span></span>") +
+          '<span class="game-tile-shade"></span>' +
+          (chosen ? '<span class="game-tile-check" data-status="online">' + Icon("check", 13) + "</span>" : "") +
+          '<span class="game-tile-label">' +
+            '<span class="game-tile-name">' + UI.esc(g.name) + "</span>" +
+            '<span class="game-tile-meta">' + UI.esc([g.category, g.platform].filter(Boolean).join(" · ")) + "</span>" +
+          "</span>";
         el.addEventListener("click", function () {
           selectedGame = g;
           useVenue = null;   // a new game asks its own account question
@@ -775,7 +790,7 @@
           var card = UI.el("div", { class: "product" });
           card.innerHTML =
             '<div class="product-art"' +
-              (product.image_url ? ' style="background-image:url(' + UI.esc(product.image_url) + ')"' : "") + ">" +
+              (product.image_url ? ' style="background-image:url(' + UI.esc(imageSrc(product.image_url)) + ')"' : "") + ">" +
               (product.stock_state === "low"
                 ? '<span class="badge" data-status="warning" style="position:absolute;top:10px;left:10px">Only ' +
                   product.stock_quantity + " left</span>"
@@ -1043,6 +1058,84 @@
   };
 
   /* ==========================================================================
+     APPS
+     "Access your own games" — sign in to your own launcher on this station.
+     Real, not a placeholder: it asks the same detectLaunchers() the café
+     console already uses to badge a station "Steam ✓ Riot ✓", and opening a
+     tile actually launches it. Every launcher the station knows how to
+     detect is shown, not just the four brands a competitor happened to
+     screenshot — an installed one you'd otherwise never notice is still
+     worth surfacing.
+     ========================================================================== */
+  global.CXViews.apps = {
+    label: "Apps",
+    icon: "panel",
+    title: "Apps",
+    mount: function (root) {
+      var view = UI.el("div", { class: "view" });
+      view.innerHTML =
+        '<div class="view-head"><div>' +
+          '<div class="view-title">Access your own games</div>' +
+          '<div class="view-sub">Sign in to your own Steam, Epic, Battle.net or other account on this station.</div>' +
+        "</div></div>";
+
+      var grid = UI.el("div", { class: "launcher-grid" });
+      view.appendChild(grid);
+      root.appendChild(view);
+      Motion.enter(view, { y: 14 });
+
+      if (!global.api || !global.api.getLaunchers) {
+        grid.appendChild(awaiting({
+          icon: "panel",
+          title: "Not available on this build",
+          text: "This station's client needs updating before launcher access works here."
+        }));
+        return;
+      }
+
+      grid.appendChild(UI.skeletonCards ? UI.skeletonCards(4, "120px") : UI.el("div"));
+
+      global.api.getLaunchers(function (launchers) {
+        UI.clear(grid);
+        var names = Object.keys(launchers || {});
+        if (!names.length) {
+          grid.appendChild(awaiting({
+            icon: "panel", title: "No launchers found",
+            text: "Ask a staff member to install a game launcher on this station."
+          }));
+          return;
+        }
+
+        names.forEach(function (name) {
+          var info = launchers[name] || {};
+          var tile = UI.el("button", {
+            class: "launcher-tile",
+            dataset: info.installed ? {} : { status: "idle" }
+          });
+          tile.disabled = !info.installed;
+          tile.innerHTML =
+            '<span class="launcher-tile-icon">' + Icon("panel", 26) + "</span>" +
+            '<span class="launcher-tile-name">' + UI.esc(name) + "</span>" +
+            '<span class="launcher-tile-status">' + (info.installed ? "Ready" : "Not installed") + "</span>";
+
+          if (info.installed) {
+            tile.addEventListener("click", function () {
+              tile.disabled = true;
+              global.api.openLauncher(name).then(function (r) {
+                tile.disabled = false;
+                if (!r || !r.success) {
+                  UI.toast({ title: "Couldn't open " + name, message: (r && r.error) || undefined, status: "error" });
+                }
+              });
+            });
+          }
+          grid.appendChild(tile);
+        });
+      });
+    }
+  };
+
+  /* ==========================================================================
      SHOP
      ========================================================================== */
   global.CXViews.shop = {
@@ -1073,20 +1166,20 @@
      REWARDS
      ========================================================================== */
   global.CXViews.rewards = {
-    label: "Rewards",
+    label: "Prize Vault",
     icon: "plan",
-    title: "Rewards",
+    title: "Prize Vault",
     mount: function (root) {
       var view = UI.el("div", { class: "view" });
       view.innerHTML =
         '<div class="view-head"><div>' +
-          '<div class="view-title">Rewards</div>' +
+          '<div class="view-title">Prize Vault</div>' +
           '<div class="view-sub">Earn as you play.</div>' +
         "</div></div>";
 
       view.appendChild(awaiting({
         icon: "plan",
-        title: "Rewards haven't launched yet",
+        title: "The Prize Vault hasn't launched yet",
         text: "Points for time played and money spent, free hours and credit to redeem — all of it lands here once your café turns it on.",
         note: "Requires a loyalty ledger on the server. Nothing in the platform counts points today, so there is no balance to show you."
       }));
@@ -1128,42 +1221,84 @@
       var host = view.querySelector("#pkgHost");
       host.appendChild(UI.skeletonCards(3, "150px"));
 
+      function buy(p, btn) {
+        UI.confirm({
+          title: "Buy " + p.package_name + "?",
+          message: Wallet.money(p.price) + " comes out of your wallet balance right now, for " +
+            unitLabel(p.package_type, p.total_units) + ".",
+          confirmLabel: "Buy — " + Wallet.money(p.price),
+          variant: "primary"
+        }).then(function (ok) {
+          if (!ok) return;
+          btn.disabled = true;
+          Wallet.purchasePackage(p.package_id)
+            .then(function () { UI.toast({ title: "Package bought", message: p.package_name, status: "ok" }); })
+            .catch(function (e) {
+              btn.disabled = false;
+              UI.toast({ title: "Could not buy that package", message: e.message, status: "error" });
+            });
+        });
+      }
+
       function paint(s) {
         UI.clear(host);
         var active = s.packages.filter(function (p) { return p.status === "ACTIVE"; });
         var past = s.packages.filter(function (p) { return p.status !== "ACTIVE"; });
 
-        if (!s.packages.length) {
-          host.appendChild(UI.emptyState({
-            icon: "packages",
-            title: "No packages yet",
-            text: "Ask a staff member about prepaid bundles — they work out cheaper than paying per hour."
-          }));
-          return;
+        if (active.length) {
+          var grid = UI.el("div", { class: "grid-products" });
+          active.forEach(function (p) {
+            var pct = p.total_units > 0 ? (p.remaining_units / p.total_units) * 100 : 0;
+            var card = UI.el("div", { class: "card card-pad col gap-3", dataset: { status: "online" } });
+            card.innerHTML =
+              '<div class="row-between" style="align-items:flex-start">' +
+                "<div><div class='session-label'>" + UI.esc(p.package_type) + "</div>" +
+                  '<div style="font-size:18px;font-weight:750;margin-top:2px">' + UI.esc(p.package_name) + "</div></div>" +
+                '<span class="badge" data-status="online">Active</span>' +
+              "</div>" +
+              '<div style="font-size:30px;font-weight:800;letter-spacing:-.02em">' +
+                UI.esc(unitLabel(p.package_type, p.remaining_units)) +
+                '<span style="font-size:13px;color:var(--text-3);font-weight:600"> left</span></div>' +
+              '<div class="meter meter-lg" data-status="online"><div class="meter-fill" style="width:' + pct + '%"></div></div>' +
+              '<div class="row-between" style="font-size:11px;color:var(--text-3)">' +
+                "<span>of " + UI.esc(unitLabel(p.package_type, p.total_units)) + "</span>" +
+                "<span>" + (p.expires_at ? "Expires " + UI.esc(UI.fmtDate(p.expires_at)) : "No expiry") + "</span>" +
+              "</div>";
+            grid.appendChild(card);
+          });
+          host.appendChild(grid);
+          Motion.stagger(grid.children, { step: 0.04, y: 12 });
         }
 
-        var grid = UI.el("div", { class: "grid-products" });
-        active.forEach(function (p) {
-          var pct = p.total_units > 0 ? (p.remaining_units / p.total_units) * 100 : 0;
-          var card = UI.el("div", { class: "card card-pad col gap-3", dataset: { status: "online" } });
-          card.innerHTML =
-            '<div class="row-between" style="align-items:flex-start">' +
+        var catalog = s.packageCatalog || [];
+        var shelf = UI.el("section", { style: { marginTop: active.length ? "var(--s-10)" : "0" } });
+        shelf.innerHTML = '<div class="shelf-title" style="margin-bottom:var(--s-4)">Buy a package</div>';
+        if (!catalog.length) {
+          shelf.appendChild(UI.emptyState({
+            icon: "packages",
+            title: "Nothing on sale right now",
+            text: "Ask a staff member about prepaid bundles — they work out cheaper than paying per hour."
+          }));
+        } else {
+          var buyGrid = UI.el("div", { class: "grid-products" });
+          catalog.forEach(function (p) {
+            var card = UI.el("div", { class: "card card-pad col gap-3" });
+            card.innerHTML =
               "<div><div class='session-label'>" + UI.esc(p.package_type) + "</div>" +
-                '<div style="font-size:18px;font-weight:750;margin-top:2px">' + UI.esc(p.package_name) + "</div></div>" +
-              '<span class="badge" data-status="online">Active</span>' +
-            "</div>" +
-            '<div style="font-size:30px;font-weight:800;letter-spacing:-.02em">' +
-              UI.esc(unitLabel(p.package_type, p.remaining_units)) +
-              '<span style="font-size:13px;color:var(--text-3);font-weight:600"> left</span></div>' +
-            '<div class="meter meter-lg" data-status="online"><div class="meter-fill" style="width:' + pct + '%"></div></div>' +
-            '<div class="row-between" style="font-size:11px;color:var(--text-3)">' +
-              "<span>of " + UI.esc(unitLabel(p.package_type, p.total_units)) + "</span>" +
-              "<span>" + (p.expires_at ? "Expires " + UI.esc(UI.fmtDate(p.expires_at)) : "No expiry") + "</span>" +
-            "</div>";
-          grid.appendChild(card);
-        });
-        host.appendChild(grid);
-        Motion.stagger(grid.children, { step: 0.04, y: 12 });
+                '<div style="font-size:16px;font-weight:750;margin-top:2px">' + UI.esc(p.package_name) + "</div>" +
+                (p.description ? '<div class="faint" style="font-size:12px;margin-top:2px">' + UI.esc(p.description) + "</div>" : "") +
+              "</div>" +
+              '<div style="font-size:22px;font-weight:800;letter-spacing:-.02em">' + UI.esc(Wallet.money(p.price)) + "</div>" +
+              '<div class="faint" style="font-size:12px">' + UI.esc(unitLabel(p.package_type, p.total_units)) +
+                (p.validity_days ? " · valid " + p.validity_days + " days" : "") + "</div>";
+            var btn = UI.el("button", { class: "btn btn-primary btn-block", text: "Buy" });
+            btn.addEventListener("click", function () { buy(p, btn); });
+            card.appendChild(btn);
+            buyGrid.appendChild(card);
+          });
+          shelf.appendChild(buyGrid);
+        }
+        host.appendChild(shelf);
 
         if (past.length) {
           var hist = UI.el("section", { style: { marginTop: "var(--s-10)" } });
@@ -1192,6 +1327,176 @@
     }
   };
 
+  /* ==========================================================================
+     RESERVATIONS  (live, from /api/reservations)
+     ========================================================================== */
+  var RES_STATUS_LABEL = {
+    CONFIRMED: "Confirmed", CHECKED_IN: "Checked in", CANCELLED: "Cancelled",
+    NO_SHOW: "No-show", COMPLETED: "Completed"
+  };
+  var RES_STATUS_TONE = {
+    CONFIRMED: "accent", CHECKED_IN: "online", CANCELLED: "idle", NO_SHOW: "error", COMPLETED: "idle"
+  };
+
+  function fmtWhen(iso) {
+    var d = new Date(iso);
+    if (isNaN(d)) return "—";
+    return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " · " +
+      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  global.CXViews.reservations = {
+    label: "Book",
+    icon: "reservations",
+    title: "Reservations",
+    mount: function (root) {
+      var Wallet = global.CXWallet;
+      var view = UI.el("div", { class: "view" });
+      view.innerHTML =
+        '<div class="view-head"><div>' +
+          '<div class="view-title">Reservations</div>' +
+          '<div class="view-sub">Book a station ahead of time, or manage what you\'ve already booked.</div>' +
+        "</div></div>" +
+        '<div class="card card-pad col gap-3" id="resForm">' +
+          '<div class="shelf-title">Book a station</div>' +
+          '<div class="grid grid-2" style="gap:var(--s-3)">' +
+            '<div class="field"><label class="field-label" for="resCategory">Station type</label>' +
+              '<select class="select" id="resCategory"></select></div>' +
+            '<div class="field"><label class="field-label" for="resDate">Date</label>' +
+              '<input class="input" id="resDate" type="date"></div>' +
+          "</div>" +
+          '<div class="grid grid-2" style="gap:var(--s-3)">' +
+            '<div class="field"><label class="field-label" for="resTime">Start time</label>' +
+              '<input class="input" id="resTime" type="time"></div>' +
+            '<div class="field"><label class="field-label" for="resDuration">Duration</label>' +
+              '<select class="select" id="resDuration">' +
+                [[30, "30 min"], [60, "1 hr"], [90, "1.5 hr"], [120, "2 hr"]].map(function (d) {
+                  return '<option value="' + d[0] + '"' + (d[0] === 60 ? " selected" : "") + ">" + d[1] + "</option>";
+                }).join("") +
+              "</select></div>" +
+          "</div>" +
+          '<div class="notice hidden" id="resAvail"></div>' +
+          '<button class="btn btn-primary btn-block" id="resBook">Book this slot</button>' +
+        "</div>" +
+        '<div id="resListHost" style="margin-top:var(--s-8)"></div>';
+      root.appendChild(view);
+
+      var catSelect = view.querySelector("#resCategory");
+      var dateInput = view.querySelector("#resDate");
+      var timeInput = view.querySelector("#resTime");
+      var durationSelect = view.querySelector("#resDuration");
+      var availBox = view.querySelector("#resAvail");
+      var bookBtn = view.querySelector("#resBook");
+      var listHost = view.querySelector("#resListHost");
+
+      var now = new Date();
+      now.setMinutes(now.getMinutes() < 30 ? 30 : 60, 0, 0);
+      dateInput.value = now.toISOString().slice(0, 10);
+      timeInput.value = now.toTimeString().slice(0, 5);
+
+      function currentWindow() {
+        var start = new Date(dateInput.value + "T" + timeInput.value);
+        var end = new Date(start.getTime() + Number(durationSelect.value) * 60000);
+        return { start: start, end: end };
+      }
+
+      function checkAvail() {
+        if (!catSelect.value || !dateInput.value || !timeInput.value) { availBox.classList.add("hidden"); return; }
+        var w = currentWindow();
+        Wallet.checkReservationAvailability({
+          category: catSelect.value, start_time: w.start.toISOString(), end_time: w.end.toISOString()
+        }).then(function (d) {
+          availBox.classList.remove("hidden");
+          availBox.setAttribute("data-status", d.available ? "online" : "error");
+          availBox.innerHTML = Icon(d.available ? "check" : "alert", 16) +
+            "<div>" + (d.available
+              ? (d.total - d.booked) + " of " + d.total + " " + UI.esc(d.category) + " free then."
+              : "No " + UI.esc(d.category) + " stations free at that time.") + "</div>";
+          bookBtn.disabled = !d.available;
+        }).catch(function () { availBox.classList.add("hidden"); });
+      }
+      [catSelect, dateInput, timeInput, durationSelect].forEach(function (el) {
+        el.addEventListener("change", checkAvail);
+      });
+
+      bookBtn.addEventListener("click", function () {
+        var w = currentWindow();
+        bookBtn.disabled = true;
+        Wallet.bookReservation({
+          category: catSelect.value, start_time: w.start.toISOString(), end_time: w.end.toISOString()
+        }).then(function () {
+          UI.toast({ title: "Booked", message: catSelect.value + " on " + fmtWhen(w.start.toISOString()), status: "ok" });
+          checkAvail();
+        }).catch(function (e) {
+          bookBtn.disabled = false;
+          UI.toast({ title: "Could not book that", message: e.message, status: "error" });
+        });
+      });
+
+      function renderList(s) {
+        UI.clear(listHost);
+        var list = s.reservations || [];
+        listHost.appendChild(UI.el("div", { class: "shelf-title", style: { marginBottom: "var(--s-4)" }, text: "Your bookings" }));
+        if (!list.length) {
+          listHost.appendChild(UI.emptyState({
+            icon: "reservations", title: "Nothing booked yet",
+            text: "Book a station above and it will show up here."
+          }));
+          return;
+        }
+        var wrap = UI.el("div", { class: "card card-body-flush" });
+        list.forEach(function (r) {
+          var row = UI.el("div", {
+            class: "kv", style: { padding: "12px var(--s-5)", borderBottom: "1px solid var(--line-faint)", alignItems: "flex-start" }
+          });
+          row.innerHTML =
+            "<span><span style='font-size:13px;font-weight:600;display:block'>" +
+              UI.esc(r.pc_name || (r.category ? "Any " + r.category : "")) + "</span>" +
+              "<span class='faint' style='font-size:11px'>" + UI.esc(fmtWhen(r.start_time)) + "</span></span>";
+          var right = UI.el("span", { class: "row gap-2", style: { alignItems: "center" } });
+          right.innerHTML = '<span class="badge" data-status="' + (RES_STATUS_TONE[r.status] || "idle") + '">' +
+            (RES_STATUS_LABEL[r.status] || r.status) + "</span>";
+          if (r.status === "CONFIRMED") {
+            var cancelBtn = UI.el("button", { class: "btn btn-ghost btn-sm", html: Icon("close", 13) });
+            cancelBtn.title = "Cancel";
+            cancelBtn.addEventListener("click", function () {
+              UI.confirm({
+                title: "Cancel this booking?", message: "The station is freed for that time.",
+                confirmLabel: "Cancel booking", variant: "danger"
+              }).then(function (ok) {
+                if (!ok) return;
+                Wallet.cancelReservation(r.reservation_id)
+                  .then(function () { UI.toast({ title: "Booking cancelled", status: "ok" }); })
+                  .catch(function (e) { UI.toast({ title: "Could not cancel", message: e.message, status: "error" }); });
+              });
+            });
+            right.appendChild(cancelBtn);
+          }
+          row.appendChild(right);
+          wrap.appendChild(row);
+        });
+        listHost.appendChild(wrap);
+      }
+
+      var off = Wallet.on(function (s) { if (view.isConnected) renderList(s); else off(); });
+      Wallet.loadBookableCategories().then(function (cats) {
+        if (!view.isConnected) return;
+        if (!cats.length) {
+          catSelect.innerHTML = '<option value="">No station types set up</option>';
+          bookBtn.disabled = true;
+          return;
+        }
+        catSelect.innerHTML = cats.map(function (c) {
+          return '<option value="' + UI.esc(c.category) + '">' + UI.esc(c.category) + "</option>";
+        }).join("");
+        checkAvail();
+      });
+      if (Wallet.state.reservations.length) renderList(Wallet.state);
+      Wallet.loadReservations();
+      Motion.enter(view, { y: 14 });
+    }
+  };
+
   global.CXViews.membership = {
     label: "Membership",
     icon: "membership",
@@ -1210,6 +1515,64 @@
       var host = view.querySelector("#memHost");
       host.appendChild(UI.skeletonRows(4));
 
+      function subscribe(plan, btn) {
+        UI.confirm({
+          title: "Subscribe to " + plan.plan_name + "?",
+          message: Wallet.money(plan.price) + " comes out of your wallet balance right now." +
+            (Wallet.state.membership ? " Your current membership ends immediately." : ""),
+          confirmLabel: "Subscribe — " + Wallet.money(plan.price),
+          variant: "primary"
+        }).then(function (ok) {
+          if (!ok) return;
+          btn.disabled = true;
+          Wallet.subscribeMembership(plan.plan_id)
+            .then(function () { UI.toast({ title: "Membership active", message: plan.plan_name, status: "ok" }); })
+            .catch(function (e) {
+              btn.disabled = false;
+              UI.toast({ title: "Could not subscribe", message: e.message, status: "error" });
+            });
+        });
+      }
+
+      function paintPlans(s) {
+        var plans = s.planCatalog || [];
+        var shelf = UI.el("section", { style: { marginTop: s.membership ? "var(--s-8)" : "var(--s-5)" } });
+        shelf.innerHTML = '<div class="shelf-title" style="margin-bottom:var(--s-4)">' +
+          (s.membership ? "Switch plan" : "Available plans") + "</div>";
+        if (!plans.length) {
+          shelf.appendChild(UI.emptyState({
+            icon: "membership", title: "No plans on sale right now",
+            text: "Ask a staff member about membership — tiers come with a standing discount on gaming."
+          }));
+          host.appendChild(shelf);
+          return;
+        }
+        var grid = UI.el("div", { class: "grid-products" });
+        plans.forEach(function (plan) {
+          var isCurrent = s.membership && s.membership.plan_id === plan.plan_id;
+          var card = UI.el("div", { class: "card card-pad col gap-3" });
+          card.innerHTML =
+            "<div><div class='session-label'>" + UI.esc(plan.tier) + "</div>" +
+              '<div style="font-size:18px;font-weight:750;margin-top:2px">' + UI.esc(plan.plan_name) + "</div>" +
+              (plan.description ? '<div class="faint" style="font-size:12px;margin-top:2px">' + UI.esc(plan.description) + "</div>" : "") +
+            "</div>" +
+            '<div style="font-size:24px;font-weight:800;letter-spacing:-.02em">' + UI.esc(Wallet.money(plan.price)) +
+              '<span style="font-size:12px;color:var(--text-3);font-weight:600"> / ' + plan.duration_days + " days</span></div>" +
+            (plan.discount_percent ? '<div class="faint" style="font-size:12px">' + plan.discount_percent + "% off gaming</div>" : "");
+          if (isCurrent) {
+            card.innerHTML += '<span class="badge" data-status="online" style="align-self:flex-start">Current plan</span>';
+          } else {
+            var btn = UI.el("button", { class: "btn btn-primary btn-block", text: "Subscribe" });
+            btn.addEventListener("click", function () { subscribe(plan, btn); });
+            card.appendChild(btn);
+          }
+          grid.appendChild(card);
+        });
+        shelf.appendChild(grid);
+        host.appendChild(shelf);
+        Motion.stagger(grid.children, { step: 0.04, y: 12 });
+      }
+
       function paint(s) {
         UI.clear(host);
         var m = s.membership;
@@ -1220,6 +1583,7 @@
             title: "You're not a member yet",
             text: "Ask a staff member about membership — tiers come with a standing discount on gaming and a joining bonus."
           }));
+          paintPlans(s);
           return;
         }
 
@@ -1252,6 +1616,8 @@
           host.appendChild(perks);
           Motion.stagger(perks.querySelectorAll("li"), { step: 0.04, y: 8 });
         }
+
+        paintPlans(s);
       }
 
       var off = Wallet.on(function (s) {
@@ -1555,6 +1921,7 @@
               UI.esc(user.customer_id != null ? user.customer_id : "—") + "</span></div>" +
             '<div class="kv"><span class="kv-key">Member since</span><span class="kv-val">' +
               UI.esc(user.created_at ? UI.fmtDate(user.created_at) : "—") + "</span></div>" +
+            '<div class="kv"><span class="kv-key">Hours played</span><span class="kv-val" id="acctHoursPlayed">—</span></div>' +
           "</div>" +
         "</div>" +
         '<div class="card-foot row gap-2">' +
@@ -1741,6 +2108,21 @@
           confirmLabel: "Sign out",
           variant: "danger"
         }).then(function (ok) { if (ok) Session.signOut(); });
+      });
+
+      /* Total time actually played, across every ended session — live from
+         the server, not the login-time snapshot cached in Session.state.user
+         (which predates most of that play and never gets refreshed). */
+      Wallet.request("/api/customers/me").then(function (body) {
+        var el = profile.querySelector("#acctHoursPlayed");
+        var seconds = Number(body && body.data && body.data.total_play_seconds) || 0;
+        if (!el || !el.isConnected) return;
+        var hrs = Math.floor(seconds / 3600);
+        var mins = Math.round((seconds % 3600) / 60);
+        el.textContent = hrs > 0 ? (hrs + "h " + mins + "m") : (mins + "m");
+      }).catch(function () {
+        var el = profile.querySelector("#acctHoursPlayed");
+        if (el && el.isConnected) el.textContent = "—";
       });
 
       Motion.stagger([col, side], { step: 0.06, y: 16 });

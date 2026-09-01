@@ -21,7 +21,8 @@
 
   var CATEGORY_LABEL = {
     floor: "Floor", sessions: "Sessions", customers: "Customers", wallet: "Wallet",
-    billing: "Billing", catalogue: "Catalogue", orders: "Orders", staff: "Staff", system: "System"
+    billing: "Billing", catalogue: "Catalogue", orders: "Orders", staff: "Staff", system: "System",
+    expenses: "Expenses"
   };
 
   function load() {

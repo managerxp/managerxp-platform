@@ -10,7 +10,11 @@
   var UI = global.CXUI, Icon = global.CXIcon, Motion = global.CXMotion,
       Session = global.CXSession, Views = global.CXViews;
 
-  var ORDER = ["home", "games", "packages", "membership", "food", "shop", "rewards", "account"];
+  /* No "account" entry here — the avatar chip in the corner already opens
+     the account quick-menu (and from there, the full Account page), so a
+     second text tab to the same place would only cost width the labels
+     below need to stay readable. */
+  var ORDER = ["home", "games", "apps", "packages", "membership", "food", "shop", "rewards"];
   var current = null;
   var navToken = 0;
   var host = null;
@@ -47,6 +51,8 @@
   function go(id) {
     var view = Views[id];
     if (!view || current === id) return;
+
+    closeVolumePopover();   // a leftover popover from the previous page reads as a bug
 
     var previous = current;
     current = id;
@@ -356,13 +362,193 @@
   }
 
   /* ==========================================================================
+     VOLUME
+
+     A small popover anchored to the volume button — not a modal. A modal's
+     scrim covers the whole kiosk screen for a control someone taps for two
+     seconds; this behaves like the Windows flyout it's modelled on instead:
+     appears under the button, closes on an outside click, Escape, or hitting
+     the button again.
+
+     The slider itself is a single row against this station's actual Windows
+     volume — the same number the OS's own flyout shows, read and set through
+     main.js's volume.ps1 (Core Audio API via COM interop, no module install,
+     no native addon).
+     ========================================================================== */
+  var volumePopover = null;
+
+  function closeVolumePopover() {
+    if (!volumePopover) return;
+    var p = volumePopover;
+    volumePopover = null;
+    document.removeEventListener("mousedown", p.onOutside, true);
+    document.removeEventListener("keydown", p.onKey, true);
+    if (p.node.parentNode) p.node.parentNode.removeChild(p.node);
+  }
+
+  function openVolumeMenu() {
+    // A second click on the button while it's open should close it, not
+    // stack a duplicate popover on top.
+    if (volumePopover) { closeVolumePopover(); return; }
+
+    if (!global.api || !global.api.volumeGet) {
+      explainChip("Volume", "This station's build does not support volume control yet.");
+      return;
+    }
+
+    var btn = document.getElementById("volumeBtn");
+    var panel = UI.el("div", { class: "volume-popover", role: "dialog", "aria-label": "Volume" });
+    panel.innerHTML =
+      '<div class="volume-row">' +
+        '<button class="volume-mute-btn" id="volMuteBtn" data-tip="Mute" aria-label="Mute or unmute"></button>' +
+        '<input type="range" class="volume-slider" id="volSlider" min="0" max="100" step="1" value="0">' +
+        '<span class="volume-pct" id="volPct">—</span>' +
+      "</div>";
+    document.body.appendChild(panel);
+
+    // Hangs below the button, right-edge aligned to it — same corner logic
+    // as the Windows flyout relative to its tray icon.
+    var btnRect = btn.getBoundingClientRect();
+    var panelRect = panel.getBoundingClientRect();
+    panel.style.top = (btnRect.bottom + 8) + "px";
+    panel.style.left = Math.max(8, Math.min(
+      btnRect.right - panelRect.width,
+      document.documentElement.clientWidth - panelRect.width - 8
+    )) + "px";
+    Motion.animate(panel, { opacity: [0, 1] }, { duration: 0.14, easing: Motion.EASE.out });
+
+    var muteBtn = panel.querySelector("#volMuteBtn");
+    var slider = panel.querySelector("#volSlider");
+    var pct = panel.querySelector("#volPct");
+
+    // The filled portion of the track left of the thumb is a gradient read
+    // off this custom property (see portal.css) — Chromium's <input
+    // type=range> has no built-in fill, unlike Firefox's ::-moz-range-progress.
+    function paintFill(level) { slider.style.setProperty("--_v", level + "%"); }
+
+    function paint(level, muted) {
+      slider.value = level;
+      paintFill(level);
+      pct.textContent = level + "%";
+      muteBtn.innerHTML = Icon((muted || level === 0) ? "volumeMute" : "volume", 18);
+      muteBtn.setAttribute("data-tip", muted ? "Unmute" : "Mute");
+    }
+
+    global.api.volumeGet().then(function (r) {
+      if (r && r.success) paint(r.level, r.muted);
+      else UI.toast({ title: "Couldn't read the volume", status: "error", duration: 3000 });
+    });
+
+    // Dragging fires input continuously; each call spawns a PowerShell
+    // process, so this collapses a fast drag into the last value rather
+    // than one process per pixel. The fill and percentage still track every
+    // tick — only the actual OS call is debounced.
+    var setTimer = null;
+    slider.addEventListener("input", function () {
+      var level = Number(slider.value);
+      paintFill(level);
+      pct.textContent = level + "%";
+      clearTimeout(setTimer);
+      setTimer = setTimeout(function () {
+        global.api.volumeSet(level).then(function (r) {
+          if (!r || !r.success) UI.toast({ title: "Couldn't change the volume", status: "error", duration: 3000 });
+          else paint(r.level, r.muted);
+        });
+      }, 80);
+    });
+
+    muteBtn.addEventListener("click", function () {
+      global.api.volumeMuteToggle().then(function (r) {
+        if (r && r.success) paint(r.level, r.muted);
+        else UI.toast({ title: "Couldn't change the volume", status: "error", duration: 3000 });
+      });
+    });
+
+    function onOutside(e) { if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) closeVolumePopover(); }
+    function onKey(e) { if (e.key === "Escape") closeVolumePopover(); }
+    // Capture phase, and deferred a tick: the click that opened this popover
+    // is still bubbling when this listener attaches, and without the delay
+    // it would immediately count as the "outside" click that closes it.
+    setTimeout(function () {
+      document.addEventListener("mousedown", onOutside, true);
+      document.addEventListener("keydown", onKey, true);
+    }, 0);
+
+    volumePopover = { node: panel, onOutside: onOutside, onKey: onKey };
+  }
+
+  /* ==========================================================================
+     ACCOUNT MENU
+     A quick-glance card reached from the avatar chip — balance and session at
+     a glance, then the three things someone reaches for without wanting the
+     full Account page: their wallet, their profile, or the door.
+     ========================================================================== */
+  function openAccountMenu() {
+    var user = Session.state.user;
+    var Wallet = global.CXWallet;
+    var balanceLine = (Wallet.state.error || Wallet.state.balance === null)
+      ? "—" : Wallet.amount(Wallet.state.balance);
+    var sessionValue = document.getElementById("sessionChipValue").textContent;
+
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="row gap-3" style="align-items:center">' +
+        '<span class="avatar-orb" style="width:48px;height:48px;font-size:17px">' +
+          UI.esc(UI.initials(Session.displayName())) + "</span>" +
+        '<div class="grow" style="min-width:0">' +
+          '<div style="font-weight:700;font-size:15px">' + UI.esc(Session.displayName()) + "</div>" +
+          '<div class="muted truncate" style="font-size:12px">' + UI.esc((user && user.email) || "") + "</div>" +
+        "</div>" +
+      "</div>" +
+      '<div class="row gap-6" style="padding:var(--s-3) 0;border-top:1px solid var(--line-faint);border-bottom:1px solid var(--line-faint)">' +
+        '<div><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">Balance</div>' +
+          '<div style="font-size:16px;font-weight:700">' + balanceLine + "</div></div>" +
+        '<div><div class="muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">Session</div>' +
+          '<div style="font-size:16px;font-weight:700">' + UI.esc(sessionValue) + "</div></div>" +
+      "</div>" +
+      '<div class="muted mono" style="font-size:11px;text-align:center">' +
+        UI.esc(Session.state.pcName || "This station") +
+        (global.__cxAppVersion ? " · v" + UI.esc(global.__cxAppVersion) : "") +
+      "</div>";
+
+    UI.modal({
+      title: "Account",
+      body: body,
+      actions: [
+        { label: "Wallet", variant: "outline", icon: "billing", onClick: function () { go("wallet"); } },
+        { label: "My account", variant: "outline", icon: "customers", onClick: function () { go("account"); } },
+        {
+          label: "Log out", variant: "danger", icon: "logout",
+          onClick: function () {
+            return UI.confirm({
+              title: "Sign out?",
+              message: "You'll need to sign in again to see your account and wallet.",
+              confirmLabel: "Sign out",
+              variant: "danger"
+            }).then(function (ok) {
+              if (ok) Session.signOut();
+              return ok;
+            });
+          }
+        }
+      ]
+    });
+  }
+
+  /* ==========================================================================
      BOOT
      ========================================================================== */
   function boot() {
     host = document.getElementById("viewHost");
 
     document.getElementById("notifyBtn").innerHTML = Icon("bell", 18);
+    document.getElementById("helpBtn").innerHTML = Icon("help", 18);
+    document.getElementById("volumeBtn").innerHTML = Icon("volume", 18);
     document.getElementById("walletChipCoin").innerHTML = global.CXCoin(22, { detail: "plain" });
+
+    if (global.api && global.api.getAppVersion) {
+      global.api.getAppVersion(function (v) { global.__cxAppVersion = v; });
+    }
 
     Session.init();
     buildNav();
@@ -425,6 +611,14 @@
     });
     Session.on("tick", paintChips);
     Session.on("launching", function (info) { showLaunching(info.appName); });
+    /* Confirms the game is actually up. An untimed session never fires "play"
+       (no launch timer exists for it), so without this the overlay above
+       would never close for anyone on open-ended time. */
+    Session.on("launched", function () {
+      hideLaunching();
+      paintChips();
+      refreshCurrentView();
+    });
     Session.on("launch-failed", function (info) {
       hideLaunching();
       UI.toast({
@@ -440,6 +634,9 @@
     Session.on("critical", function () {
       UI.toast({ title: "5 minutes left", message: "Time to wrap up — save your progress.", status: "error", duration: 9000 });
     });
+    Session.on("overtime", function () {
+      UI.toast({ title: "Time's up", message: "Keep playing — staff have been told and will settle the extra time.", status: "error", duration: 9000 });
+    });
     Session.on("play-ended", function (info) {
       hideLaunching();
       paintChips();
@@ -454,7 +651,7 @@
           play.appName,
           Session.clock(play.remaining) + " left of your " + Session.clock(play.totalSeconds) +
           " session on " + (Session.state.pcName || "this station") +
-          ". The game closes automatically when the time runs out."
+          ". Play continues after that — staff will settle the extra time."
         );
         return;
       }
@@ -480,7 +677,16 @@
       );
     });
 
-    document.getElementById("accountBtn").addEventListener("click", function () { go("account"); });
+    document.getElementById("helpBtn").addEventListener("click", function () {
+      explainChip(
+        "Help",
+        "Need a hand? Flag down a staff member at the counter — they can see this station and your session from their side."
+      );
+    });
+
+    document.getElementById("volumeBtn").addEventListener("click", openVolumeMenu);
+
+    document.getElementById("accountBtn").addEventListener("click", openAccountMenu);
 
     // If the portal loads while already offline, start the grace period now
     // rather than waiting for a transition that has already happened.

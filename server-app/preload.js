@@ -92,6 +92,16 @@ contextBridge.exposeInMainWorld("api", {
   
   // System info
   getMacAddress: () => ipcRenderer.invoke("system:get-mac-address"),
+  getAppVersion: () => ipcRenderer.invoke("system:get-app-version"),
+
+  /* Read once, synchronously, before the page's own scripts run — Store.js
+     needs this to build its API base at module-load time, not after an
+     async round trip resolves. Reflects BACKEND_PORT from this install's
+     .env, defaulting to 5000. */
+  backendLocal: ipcRenderer.sendSync("system:get-backend-local-sync"),
+
+  // A station reported its own CafeXP Client build on connect.
+  onStationClientVersion: (cb) => ipcRenderer.on("station:client-version", (_, d) => cb(d)),
 
   // Custom window controls
   windowMinimize: () => ipcRenderer.send("window:minimize"),
