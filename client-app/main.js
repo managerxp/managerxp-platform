@@ -1155,15 +1155,51 @@ function broadcastPCInfo() {
     });
 
     req.on('error', (error) => {
-      log(`⚠ Broadcast error: ${error.message}`);
+      // Expected on a real café floor: the console almost never runs on this
+      // same machine, so nothing is listening on localhost:SERVER_APP_PORT.
+      // That is not fatal — reportMacToBackend() below is the path that
+      // actually reaches the console in that layout.
+      log(`⚠ Local discovery relay unreachable (expected on a separate console machine): ${error.message}`);
     });
 
     req.setTimeout(3000);
     req.write(payload);
     req.end();
+
+    reportMacToBackend(localIP, macAddress);
   } catch (error) {
     log(`Error broadcasting PC info: ${error.message}`);
   }
+}
+
+/*
+ * Tell the backend directly that this MAC is now at this IP.
+ *
+ * The local relay above only ever reaches the console when both apps happen
+ * to share a machine — never true on a real floor, where every station is
+ * its own PC. BACKEND_BASE is the address that already carries every other
+ * live request this app makes (wallet, session, checkout), corrected to the
+ * console's real LAN address via SET_NAME the moment this station first
+ * connects — so it is reachable long before a same-machine relay ever would
+ * be. /api/pcs/check-exists needs no auth and is exactly the endpoint that
+ * updates a known MAC's IP in the database, which is the actual fix for a
+ * station whose DHCP lease changed since it last registered.
+ */
+function reportMacToBackend(localIP, macAddress) {
+  fetch(`${BACKEND_BASE}/api/pcs/check-exists`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ip_address: localIP, mac_address: macAddress })
+  })
+    .then((res) => res.json())
+    .then((result) => {
+      if (result && result.ip_updated) {
+        log(`✓ Backend IP auto-update confirmed for MAC ${macAddress} → ${localIP}`);
+      }
+    })
+    .catch((error) => {
+      log(`⚠ Backend IP auto-update failed: ${error.message}`);
+    });
 }
 
 // Get the MAC address of the system
