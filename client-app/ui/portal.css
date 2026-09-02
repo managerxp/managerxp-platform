@@ -1264,6 +1264,8 @@
   text-align: center;
 }
 .launch-inner { max-width: 520px; padding: var(--s-8); }
+.launch-close { position: absolute; top: var(--s-6); right: var(--s-6); color: var(--text-2); }
+.launch-close:hover { color: var(--text); }
 .launch-art {
   width: 168px;
   aspect-ratio: 3/4;

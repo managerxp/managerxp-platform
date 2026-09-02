@@ -282,6 +282,10 @@
     var pc = Store.getPC(pcName);
     if (!pc) { UI.toast.warn("Station not found", pcName); return; }
 
+    // Opening this station's own panel is staff actually looking at it —
+    // the call for help has done its job.
+    Store.clearHelpRequest(pcName);
+
     var panel = UI.drawer({ head: "", body: "", onClose: function () { unsubscribe(); } });
     var offs = [];
     function unsubscribe() { offs.forEach(function (f) { f(); }); offs = []; }

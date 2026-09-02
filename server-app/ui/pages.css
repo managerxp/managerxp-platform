@@ -125,6 +125,12 @@
 .station-quick .btn { height: 24px; width: 24px; padding: 0; }
 .station-quick .btn svg { width: 13px; height: 13px; }
 
+/* A customer tapped "Call staff" — stays until someone opens this station. */
+.station[data-help="1"] {
+  border-color: var(--warn-line);
+  box-shadow: 0 0 0 3px var(--warn-soft);
+}
+
 /* Unregistered / discovered station variant */
 .station.is-discovered {
   border-style: dashed;

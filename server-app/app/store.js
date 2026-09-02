@@ -41,6 +41,7 @@
     subscription: null,         // row from /api/subscriptions/cafe/:id
     running: {},                // pcName -> { appName, appPath, remaining, totalSeconds } (launch timer)
     sessions: {},               // pcName -> live session from /api/sessions
+    helpRequests: {},           // pcName -> { at } — customer tapped Call staff, cleared once staff open that station
     launchers: {},              // pcName -> { Steam: {installed, path}, ... } reported by the station
     me: null,                   // signed-in principal from /api/staff/me
     permissions: null,          // permission keys, or null for full access
@@ -748,6 +749,13 @@
   }
 
   function sessionFor(pcName) { return state.sessions[pcName] || null; }
+
+  /** A staff member has opened this station — the call for help has been seen. */
+  function clearHelpRequest(pcName) {
+    if (!pcName || !state.helpRequests[pcName]) return;
+    delete state.helpRequests[pcName];
+    emit("help-requests", state.helpRequests);
+  }
 
   /**
    * Keep the admin's picture in step with the backend even when another
@@ -1864,6 +1872,27 @@
     }
 
     /*
+     * A customer tapped "Call staff" on the Help menu at their station. There
+     * may or may not be a session running — a station stuck before one even
+     * starts still needs a person, so this never depends on state.sessions.
+     *
+     * Emits only, same division of labour as topup/order/reservation above:
+     * this layer tracks what's outstanding, main.js decides how loudly to
+     * say so (bell badge, toast, beep) and notifications.js lists it.
+     */
+    if (api.onStationCallStaff) {
+      api.onStationCallStaff(function (data) {
+        var pcName = data && data.pcName;
+        if (!pcName) return;
+        var session = state.sessions[pcName];
+        var who = (session && session.customer_name) || pcName;
+        state.helpRequests[pcName] = { at: Date.now(), who: who };
+        emit("help-requests", state.helpRequests);
+        emit("help-request:new", { pcName: pcName, who: who });
+      });
+    }
+
+    /*
      * The game a self-started session was for never actually launched. The
      * customer never played a second of it, so the session is cancelled —
      * same as staff cancelling by hand, charges nothing — rather than left
@@ -2152,6 +2181,7 @@
     loadSessions: loadSessions,
     listSessions: listSessions,
     sessionFor: sessionFor,
+    clearHelpRequest: clearHelpRequest,
     sessionDefaults: sessionDefaults,
     startSession: startSession,
     pauseSession: pauseSession,

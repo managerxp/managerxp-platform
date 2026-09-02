@@ -26,7 +26,9 @@ const extendBtnEl = document.getElementById("extendBtn");
 let remainingSeconds = 0;
 let totalSeconds = 0;
 let timerInterval = null;
+let bufferTimeout = null;
 let currentAppName = "";
+let loading = false;
 
 /* Thresholds the card's states and beeps key off. Warning at five minutes,
    the same figure the portal and the server use. */
@@ -68,6 +70,14 @@ function beep(frequency, durationMs, volume) {
 function warningBeep() { beep(880, 180, 0.10); }
 function overtimeBeep() { beep(660, 160, 0.12); setTimeout(function () { beep(660, 160, 0.12); }, 220); }
 
+/* Most games show no on-screen session clock at all — this card matches
+   that by default and only earns its place on screen once time is actually
+   running out, or once the player has reason to look (extending, overtime). */
+function setVisible(shouldShow) {
+  if (shouldShow && window.api.showTimerCard) window.api.showTimerCard();
+  else if (!shouldShow && window.api.hideTimerCard) window.api.hideTimerCard();
+}
+
 window.api.onStartTimer((data) => {
   currentAppName = data.appName;
   remainingSeconds = data.minutes * 60;
@@ -79,11 +89,29 @@ window.api.onStartTimer((data) => {
   appNameEl.title = currentAppName;
   timerCardEl.classList.add("glow");
   hideExtend();
+  // A session shorter than the warning window starts already "ending soon".
+  setVisible(remainingSeconds <= WARN_AT);
 
   if (timerInterval) clearInterval(timerInterval);
+  if (bufferTimeout) clearTimeout(bufferTimeout);
 
+  const bufferMs = Math.max(0, Number(data.bufferSeconds) || 0) * 1000;
+  loading = bufferMs > 0;
   updateDisplay();
-  timerInterval = setInterval(tick, 1000);
+
+  /* The café's own load buffer — the block a game gets to actually start
+     before its clock counts against the customer. Held at the full amount
+     and visibly "Loading" rather than ticking, so a slow launch doesn't eat
+     into play time before the player has even seen their game. */
+  if (loading) {
+    bufferTimeout = setTimeout(() => {
+      loading = false;
+      updateDisplay();
+      timerInterval = setInterval(tick, 1000);
+    }, bufferMs);
+  } else {
+    timerInterval = setInterval(tick, 1000);
+  }
 });
 
 /* The console added another block. Grow the clock in place rather than
@@ -97,7 +125,11 @@ if (window.api.onExtendTimer) {
     overtime = false;
     warnedAt = remainingSeconds <= WARN_AT;   // don't re-beep if still low
     timerCardEl.classList.add("glow");
-    if (!timerInterval) timerInterval = setInterval(tick, 1000);
+    // Bought back out of "ending soon" — no more reason to be on screen.
+    setVisible(warnedAt);
+    // Still inside the load buffer — leave it held; the buffer's own timeout
+    // starts the interval once it ends, against the now-larger total.
+    if (!timerInterval && !loading) timerInterval = setInterval(tick, 1000);
     updateDisplay();
   });
 }
@@ -116,6 +148,7 @@ function tick() {
 
   if (!warnedAt && remainingSeconds <= WARN_AT && remainingSeconds > 0) {
     warnedAt = true;
+    setVisible(true);
     warningBeep();
     showExtend();
   }
@@ -182,9 +215,11 @@ function updateDisplay() {
   else if (remainingSeconds <= 60) state = "expired";
   else if (remainingSeconds <= WARN_AT) state = "warning";
 
-  timerCardEl.setAttribute("data-status", state);
+  timerCardEl.setAttribute("data-status", loading ? "gaming" : state);
 
-  if (overtime) {
+  if (loading) {
+    timerLabelEl.textContent = "Loading…";
+  } else if (overtime) {
     timerLabelEl.textContent = "Over · tap to extend";
   } else if (remainingSeconds > 0) {
     timerLabelEl.textContent = state === "expired" ? "Ending · extend?" : "Remaining";

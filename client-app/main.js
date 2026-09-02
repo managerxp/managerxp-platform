@@ -71,6 +71,7 @@ let timerCardWin;
 let wss; // WebSocket server instance (client listens)
 let serverConnection; // Connection from server
 let runningProcesses = new Map(); // appName -> { pid, appPath, timerCardWin }
+let cancelledLaunches = new Set(); // appName -> customer closed the loading screen before a PID existed yet
 let cachedApps = null; // Cache for installed apps
 let lastAppsCacheTime = 0;
 const APPS_CACHE_DURATION = 5000; // Cache for 5 seconds to avoid duplicate PowerShell calls
@@ -186,6 +187,8 @@ function markSessionGameConfirmed() {
 
 function launchGame(game) {
   if (!game || typeof game !== 'object') return;
+  // A fresh attempt at the same title supersedes any earlier cancel.
+  cancelledLaunches.delete(game.name);
   const isSessionStart = isFirstLaunchForSession();
   const plan = buildGameLaunch(game);
   if (!plan) {
@@ -227,11 +230,19 @@ function launchGame(game) {
     // Track the process under the game's name so the existing close path can
     // find it, and attach a timer card if the session is timed.
     if (child.pid) {
+      if (cancelledLaunches.delete(game.name)) {
+        // The customer closed the loading screen before this PID existed —
+        // it just arrived too late to catch. Kill it rather than leave it
+        // running unseen, with no timer card and nothing tracking it.
+        log(`${game.name} launched after being cancelled — closing it`);
+        exec(`taskkill /F /PID ${child.pid} /T`, { windowsHide: true, timeout: 10000 });
+        return;
+      }
       markSessionGameConfirmed();
       sendToWindow(win, 'app-launched', { appName: game.name });
       const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
       const mins = sessionRemainingMinutes();
-      if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins);
+      if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins, sessionBufferRemainingSeconds());
       runningProcesses.set(game.name, info);
     }
   }
@@ -241,6 +252,21 @@ function launchGame(game) {
 function sessionRemainingMinutes() {
   if (!currentSession || currentSession.remaining_seconds == null) return 0;
   return Math.max(0, Math.floor(Number(currentSession.remaining_seconds) / 60));
+}
+
+/*
+ * How much of the café's start-of-session load buffer is still left, right
+ * now — so a game launched partway through it doesn't start ticking down
+ * again from zero. The server already holds elapsed/remaining at their full
+ * starting value for the whole buffer, but that alone can't tell a station
+ * "1 minute of a 5-minute buffer used" from "4 minutes used": both read as
+ * zero elapsed. Recomputing from the session's own started_at and the grace
+ * length the server sent is what actually answers that.
+ */
+function sessionBufferRemainingSeconds() {
+  if (!currentSession || !currentSession.started_at || !currentSession.grace_seconds) return 0;
+  const elapsedMs = Date.now() - new Date(currentSession.started_at).getTime();
+  return Math.max(0, currentSession.grace_seconds - Math.floor(elapsedMs / 1000));
 }
 
 /* ==========================================================================
@@ -489,11 +515,21 @@ async function runSessionCleanup(config, games) {
     });
     for (const n of names) await killProcess(n);
     // Close any timer cards the launches left behind.
+    const hadRunning = runningProcesses.size > 0;
     runningProcesses.forEach((info) => {
       if (info.timerCardWin && !info.timerCardWin.isDestroyed()) info.timerCardWin.close();
     });
     runningProcesses.clear();
     if (names.size) log(`  closed ${names.size} game process(es)`);
+
+    /* The portal mirrors the timer card's countdown for its own nav-bar
+       display (see createTimerCard), but only the timer card itself was ever
+       told a session actually ended — closing it here left the portal's own
+       copy ticking down from stale numbers forever, since nothing else was
+       going to fire the "app closed" event this bypassed (killProcess() is a
+       direct taskkill, not the watched child whose exit normally reports
+       back). Tell the portal directly so its countdown clears with the game. */
+    if (hadRunning) sendToWindow(win, 'app-closed', { appName: null });
   }
 
   /* 2. Sign out of the launchers the café asked for. Done before "close
@@ -575,6 +611,19 @@ function createWindow() {
     if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
       serverConnection.send(JSON.stringify({ type: "SESSION_OVERTIME", simId: SIM_ID, appName: appName || null }));
       log("Sent SESSION_OVERTIME to console");
+    }
+  });
+
+  /* The customer tapped "Call staff" from the Help menu. Fire-and-forget, same
+     as the other station-initiated requests: if the console is not connected
+     there is nobody to notify, and the customer already sees that from the
+     "Offline" state elsewhere in the portal. */
+  ipcMain.on('call-staff', () => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "CALL_STAFF", simId: SIM_ID }));
+      log("Sent CALL_STAFF to console");
+    } else {
+      log("Call staff requested but console not connected");
     }
   });
 
@@ -722,6 +771,36 @@ function createWindow() {
   ipcMain.handle('volume:mute-toggle', async () => runVolumeScript('-Action toggle-mute'));
 
   ipcMain.on('launch-game', (event, game) => launchGame(game));
+
+  /* The timer card asking to reveal or re-hide itself. Generic over which
+     card sent it (a station can have more than one game timed at once), via
+     the window that owns the renderer that asked. */
+  ipcMain.on('timer-card:show', (event) => {
+    const cardWin = BrowserWindow.fromWebContents(event.sender);
+    if (cardWin && !cardWin.isDestroyed()) cardWin.show();
+  });
+  ipcMain.on('timer-card:hide', (event) => {
+    const cardWin = BrowserWindow.fromWebContents(event.sender);
+    if (cardWin && !cardWin.isDestroyed()) cardWin.hide();
+  });
+
+  /* The customer closed the "Getting your game ready…" overlay before it
+     resolved. If the game already has a tracked process by now, close it the
+     same way the console's own "Close app" button would; otherwise the exe
+     launch is still in flight and cancelLaunches remembers to kill it the
+     moment it does report a PID. Protocol hand-offs (Steam etc.) have already
+     left this process's control by the time anything could react, so there is
+     nothing left here to stop — the customer is simply back at the picker. */
+  ipcMain.on('cancel-launch', (event, appName) => {
+    if (!appName) return;
+    if (runningProcesses.has(appName)) {
+      log(`Launch cancelled by customer: ${appName}`);
+      closeApplication(appName);
+    } else {
+      log(`Launch cancelled by customer before it started: ${appName}`);
+      cancelledLaunches.add(appName);
+    }
+  });
 
   /* ---- Window controls ----
    *
@@ -1241,7 +1320,8 @@ function getSystemMacAddress() {
   }
 }
 
-function createTimerCard(appName, timerMinutes) {
+function createTimerCard(appName, timerMinutes, bufferSeconds) {
+  bufferSeconds = bufferSeconds || 0;
   const { width, height } = screen.getPrimaryDisplay().workAreaSize;
   
   /* Sized to the pill, not to a panel. The old 190×130 window was mostly
@@ -1258,6 +1338,11 @@ function createTimerCard(appName, timerMinutes) {
     skipTaskbar: true,
     resizable: false,
     movable: true,
+    /* Most games show no on-screen session clock at all — this card should
+       read the same way. It stays off-screen (still running, still ticking)
+       until timercard.js asks to show it, which it does only once the
+       five-minute warning fires. */
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
@@ -1272,14 +1357,15 @@ function createTimerCard(appName, timerMinutes) {
   timerCard.webContents.once('did-finish-load', () => {
     timerCard.webContents.send("start-timer", {
       appName: appName,
-      minutes: timerMinutes
+      minutes: timerMinutes,
+      bufferSeconds: bufferSeconds
     });
   });
 
   // Mirror the same event to the customer portal so it can show the countdown
   // in its navigation bar. Display only — the timer card remains the window
   // that reports expiry back to the main process.
-  sendToWindow(win, "start-timer", { appName: appName, minutes: timerMinutes });
+  sendToWindow(win, "start-timer", { appName: appName, minutes: timerMinutes, bufferSeconds: bufferSeconds });
 
   return timerCard;
 }
@@ -1958,7 +2044,7 @@ function listen() {
             
             // Create timer card if timer is set
             if (msg.timerMinutes && msg.timerMinutes > 0) {
-              processInfo.timerCardWin = createTimerCard(msg.appName, msg.timerMinutes);
+              processInfo.timerCardWin = createTimerCard(msg.appName, msg.timerMinutes, sessionBufferRemainingSeconds());
             }
             
             runningProcesses.set(msg.appName, processInfo);

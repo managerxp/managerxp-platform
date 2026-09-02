@@ -21,6 +21,10 @@ contextBridge.exposeInMainWorld("api", {
   onBackendBase: (cb) => ipcRenderer.on("backend-base", (_, base) => cb(base)),
   getBackendBase: (cb) => ipcRenderer.invoke("get-backend-base").then(cb),
   onStartTimer: (cb) => ipcRenderer.on("start-timer", (_, data) => cb(data)),
+  // The timer card revealing itself for the final-minutes warning, and
+  // going back off-screen once it no longer needs to be seen.
+  showTimerCard: () => ipcRenderer.send("timer-card:show"),
+  hideTimerCard: () => ipcRenderer.send("timer-card:hide"),
   onAppLaunching: (cb) => ipcRenderer.on("app-launching", (_, data) => cb(data)),
   onAppLaunched: (cb) => ipcRenderer.on("app-launched", (_, data) => cb(data)),
   onAppLaunchFailed: (cb) => ipcRenderer.on("app-launch-failed", (_, data) => cb(data)),
@@ -31,6 +35,8 @@ contextBridge.exposeInMainWorld("api", {
   getGames: (cb) => ipcRenderer.invoke("get-games").then(cb),
   // The customer chose a game — launch it through its launcher.
   launchGame: (game) => ipcRenderer.send("launch-game", game),
+  // The customer closed the launch overlay themselves — stop waiting on it.
+  cancelLaunch: (appName) => ipcRenderer.send("cancel-launch", appName),
   // Warning shown before the station restarts, shuts down or signs out
   onPowerWarning: (cb) => ipcRenderer.on("power-warning", (_, data) => cb(data)),
   getSessionState: (cb) => ipcRenderer.invoke("get-session-state").then(cb),
@@ -63,6 +69,8 @@ contextBridge.exposeInMainWorld("api", {
   // The block ran out and the game was NOT closed — tell the console so it can
   // flag the station and staff can act.
   sessionOvertime: (appName) => ipcRenderer.send("session-overtime", appName),
+  // The customer tapped "Call staff" from the Help menu.
+  callStaff: () => ipcRenderer.send("call-staff"),
   // The console added a block; grow the timer card's clock by these minutes.
   onExtendTimer: (cb) => ipcRenderer.on("extend-timer", (_, data) => cb(data)),
   // Self-service: ask what this station's customer could start (its games,

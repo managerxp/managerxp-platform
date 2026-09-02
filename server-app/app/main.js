@@ -140,6 +140,7 @@
   var pendingCoinCount = 0;
   var pendingOrderCount = 0;
   var pendingReservationCount = 0;
+  var pendingHelpCount = 0;
   function openNotifications() {
     Router.go("notifications");
   }
@@ -305,7 +306,7 @@
     function paintBellBadge() {
       var badge = document.getElementById("notifyBellBadge");
       if (!badge) return;
-      var n = pendingCoinCount + pendingOrderCount + pendingReservationCount;
+      var n = pendingCoinCount + pendingOrderCount + pendingReservationCount + pendingHelpCount;
       badge.textContent = n > 99 ? "99+" : String(n);
       badge.classList.toggle("hidden", !n);
     }
@@ -319,6 +320,10 @@
     });
     Store.on("reservations-pending", function (list) {
       pendingReservationCount = (list || []).length;
+      paintBellBadge();
+    });
+    Store.on("help-requests", function (map) {
+      pendingHelpCount = Object.keys(map || {}).length;
       paintBellBadge();
     });
 
@@ -346,6 +351,21 @@
           " ordered ₹" + Number(o.total || 0).toFixed(0) + " worth of food & drink.",
         status: "accent",
         duration: 12000,
+        action: { label: "Open", onClick: openNotifications }
+      });
+    });
+
+    /* Same idea again for a customer tapping "Call staff" — the most urgent
+       of the four, since it means someone is waiting on a person right now,
+       not on a decision that can sit for a minute. Longest duration of the
+       set for that reason. */
+    Store.on("help-request:new", function (r) {
+      notifyBeep();
+      UI.toast({
+        title: "Staff requested — " + r.pcName,
+        message: (r.who || "A customer") + " needs help at their station.",
+        status: "warn",
+        duration: 20000,
         action: { label: "Open", onClick: openNotifications }
       });
     });

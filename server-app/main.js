@@ -219,6 +219,14 @@ function handleStationRequest(msg, ws) {
     if (win) win.webContents.send("station:overtime", { pcName, appName: msg.appName || null });
     return true;
   }
+  /* A customer tapped "Call staff" on the Help menu. No session or billing
+     state is touched here — this is purely "a person needs a person",
+     handed straight to the renderer to toast and flag on the floor. */
+  if (msg.type === "CALL_STAFF") {
+    log(`[Help] ${pcName} called staff`);
+    if (win) win.webContents.send("station:call-staff", { pcName });
+    return true;
+  }
   /* A logged-in customer opened the "choose a game" screen while idle — send
      what they need to start their own session (the café's games and prices
      for this station), independent of whether one is already running. */

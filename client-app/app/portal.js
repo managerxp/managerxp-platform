@@ -164,6 +164,9 @@
     if (launchOverlay) return;
     launchOverlay = UI.el("div", { class: "launch" });
     launchOverlay.innerHTML =
+      '<button class="modal-close launch-close" id="launchCancel" aria-label="Cancel launch">' +
+        Icon("close", 15) +
+      "</button>" +
       '<div class="launch-inner">' +
         '<div class="launch-art"></div>' +
         '<div class="launch-title">Launching ' + UI.esc(appName) + "</div>" +
@@ -181,6 +184,16 @@
         { transform: ["translateX(-110%)", "translateX(370%)"] },
         { duration: 1.1, easing: "ease-in-out", repeat: Infinity });
     }
+
+    // A launch that never reports back (a launcher that silently failed to
+    // hand off, a game that never actually opens a window) otherwise strands
+    // the customer on this screen with no way out until staff intervene.
+    launchOverlay.querySelector("#launchCancel").addEventListener("click", function () {
+      Session.cancelLaunch(appName);
+      hideLaunching();
+      paintChips();
+      refreshCurrentView();
+    });
   }
 
   function hideLaunching() {
@@ -678,10 +691,24 @@
     });
 
     document.getElementById("helpBtn").addEventListener("click", function () {
-      explainChip(
-        "Help",
-        "Need a hand? Flag down a staff member at the counter — they can see this station and your session from their side."
-      );
+      var here = Session.state.pcName || "your station";
+      UI.modal({
+        title: "Help",
+        body: '<div style="font-size:var(--t-body);line-height:1.65;color:var(--text-2)">' +
+          "Need a hand? Call a staff member and they'll come to " + UI.esc(here) +
+          " to see what's going on." +
+          "</div>",
+        actions: [
+          { label: "Not now", variant: "ghost" },
+          {
+            label: "Call staff", variant: "primary", icon: "help",
+            onClick: function () {
+              if (global.api && global.api.callStaff) global.api.callStaff();
+              UI.toast.ok("Staff called", "Someone will be with you at " + here + " shortly.");
+            }
+          }
+        ]
+      });
     });
 
     document.getElementById("volumeBtn").addEventListener("click", openVolumeMenu);

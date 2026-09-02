@@ -207,7 +207,12 @@
           appName: data.appName,
           totalSeconds: data.minutes * 60,
           remaining: data.minutes * 60,
-          startedAt: Date.now()
+          startedAt: Date.now(),
+          // Held at totalSeconds until this many seconds have passed — the
+          // café's own load buffer, so a slow-starting game doesn't spend
+          // play time before the player has actually seen it. Matches the
+          // timer card, which the main process fed the same figure.
+          bufferSeconds: Math.max(0, Number(data.bufferSeconds) || 0)
         };
         state.launching = null;
         state.endedAt = null;
@@ -261,7 +266,9 @@
 
       // Derive from wall-clock rather than counting ticks, so the display
       // stays accurate if the renderer is throttled while a game has focus.
-      var elapsed = Math.floor((Date.now() - state.play.startedAt) / 1000);
+      // Net of the load buffer, the same way the server nets it out of
+      // billing — held at zero elapsed until the buffer itself has passed.
+      var elapsed = Math.max(0, Math.floor((Date.now() - state.play.startedAt) / 1000) - (state.play.bufferSeconds || 0));
       var remaining = Math.max(0, state.play.totalSeconds - elapsed);
       var previous = state.play.remaining;
       state.play.remaining = remaining;
@@ -348,6 +355,13 @@
     sessionState: sessionState,
     /* Hand a chosen game to the main process to launch through its launcher. */
     launchGame: function (game) { if (api.launchGame) api.launchGame(game); },
+    /* The customer closed the "Getting your game ready…" overlay themselves —
+       tell the main process to stop waiting on this launch and kill it if it
+       does turn up late, rather than leaving an untracked game running. */
+    cancelLaunch: function (appName) {
+      state.launching = null;
+      if (api.cancelLaunch) api.cancelLaunch(appName);
+    },
     /* Self-service start: ask what's available, then ask to begin one. */
     requestStartOptions: function () { if (api.requestStartOptions) api.requestStartOptions(); },
     requestStartSession: function (game, gamingPriceId, useVenueAccount) {

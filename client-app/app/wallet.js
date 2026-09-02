@@ -255,8 +255,13 @@
   /** The menu the customer can order from right now. */
   function loadMenu(kind) {
     if (!token()) return Promise.resolve(null);
-    return request("/api/products/menu?kind=" + (kind || "FNB"))
+    kind = kind || "FNB";
+    return request("/api/products/menu?kind=" + kind)
       .then(function (body) {
+        // Tagged with what was actually asked for — Food and Shop share this
+        // one cached slot, and each needs to tell its own menu from the
+        // other's before trusting it for an instant repaint.
+        body.kind = kind;
         state.menu = body;
         state.menuError = null;
         emit();

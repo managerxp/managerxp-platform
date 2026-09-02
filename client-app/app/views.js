@@ -677,11 +677,14 @@
     return cartLines().reduce(function (n, l) { return n + l.quantity; }, 0);
   }
 
-  global.CXViews.food = {
-    label: "Food",
-    icon: "fnb",
-    title: "Food & drink",
-    mount: function (root, ctx) {
+  /*
+   * Food and Shop are the same feature twice over — a café-run product
+   * catalogue, browsed and ordered to a station — split only by the `kind`
+   * the backend already tags each category with ('FNB' vs 'SHOP'). One mount
+   * function serves both; only the copy and which half of the catalogue it
+   * asks for differ.
+   */
+  function mountProductShop(root, ctx, opts) {
       var Wallet = global.CXWallet;
       var activeCategory = "All";
 
@@ -689,8 +692,8 @@
       view.innerHTML =
         '<div class="view-head">' +
           "<div>" +
-            '<div class="view-title">Food &amp; drink</div>' +
-            '<div class="view-sub">Order to your station without leaving your seat.</div>' +
+            '<div class="view-title">' + UI.esc(opts.pageTitle) + "</div>" +
+            '<div class="view-sub">' + UI.esc(opts.subtitle) + "</div>" +
           "</div>" +
           '<button class="btn btn-primary btn-lg" id="foodCartBtn">' + Icon("fnb", 17) +
             '<span class="btn-label">Your order</span>' +
@@ -755,9 +758,9 @@
         var all = s.menu.data || [];
         if (!all.length) {
           host.appendChild(UI.emptyState({
-            icon: "fnb",
-            title: "Nothing on the menu right now",
-            text: "The kitchen hasn't put anything up for order. Ask a staff member what's available."
+            icon: opts.emptyIcon,
+            title: opts.emptyTitle,
+            text: opts.emptyText
           }));
           return;
         }
@@ -1049,11 +1052,31 @@
         paintOrders(s);
       });
 
-      if (Wallet.state.menu) { paintMenu(Wallet.state); paintOrders(Wallet.state); }
-      Wallet.loadMenu();
+      // Food and Shop share one cached menu slot on the wallet — only trust
+      // it for an instant repaint when it's actually this page's kind, or a
+      // customer flipping tabs would see the other one's items for a moment.
+      if (Wallet.state.menu && Wallet.state.menu.kind === opts.kind) {
+        paintMenu(Wallet.state); paintOrders(Wallet.state);
+      }
+      Wallet.loadMenu(opts.kind);
       Wallet.loadOrders();
       syncCartButton();
       Motion.enter(view, { y: 14 });
+  }
+
+  global.CXViews.food = {
+    label: "Food",
+    icon: "fnb",
+    title: "Food & drink",
+    mount: function (root, ctx) {
+      mountProductShop(root, ctx, {
+        kind: "FNB",
+        pageTitle: "Food & drink",
+        subtitle: "Order to your station without leaving your seat.",
+        emptyIcon: "fnb",
+        emptyTitle: "Nothing on the menu right now",
+        emptyText: "The kitchen hasn't put anything up for order. Ask a staff member what's available."
+      });
     }
   };
 
@@ -1142,23 +1165,15 @@
     label: "Shop",
     icon: "packages",
     title: "Shop",
-    mount: function (root) {
-      var view = UI.el("div", { class: "view" });
-      view.innerHTML =
-        '<div class="view-head"><div>' +
-          '<div class="view-title">Shop</div>' +
-          '<div class="view-sub">Accessories, merch and café extras.</div>' +
-        "</div></div>";
-
-      view.appendChild(awaiting({
-        icon: "packages",
-        title: "The shop is empty for now",
-        text: "Items your café puts on sale will appear here, with pictures and prices, ready to add to your bill.",
-        note: "Shares the same products catalogue as Food. Once that exists on the server, both pages fill in."
-      }));
-
-      root.appendChild(view);
-      Motion.enter(view, { y: 14 });
+    mount: function (root, ctx) {
+      mountProductShop(root, ctx, {
+        kind: "SHOP",
+        pageTitle: "Shop",
+        subtitle: "Accessories, merch and café extras.",
+        emptyIcon: "packages",
+        emptyTitle: "The shop is empty for now",
+        emptyText: "Ask a staff member what's in stock — items your café puts up for sale will appear here, with pictures and prices, ready to add to your bill."
+      });
     }
   };
 

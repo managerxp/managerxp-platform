@@ -278,13 +278,16 @@
     var status = Store.pcStatus(pc);
     var run = Store.state.running[pc.name];
     var cs = Store.state.connectionStatus[pc.name];
+    // Independent of whether a session exists — a customer stuck at the
+    // login or picker screen still needs a person, not a running bill.
+    var needsHelp = !!Store.state.helpRequests[pc.name];
 
     var card = UI.el("div", {
       class: "station",
-      dataset: { status: status, pc: pc.name },
+      dataset: needsHelp ? { status: status, pc: pc.name, help: "1" } : { status: status, pc: pc.name },
       tabindex: "0",
       role: "button",
-      "aria-label": pc.name + " — " + (STATUS_TEXT[status] || status)
+      "aria-label": pc.name + " — " + (STATUS_TEXT[status] || status) + (needsHelp ? " — needs help" : "")
     });
 
     var session = Store.sessionFor(pc.name);
@@ -353,6 +356,9 @@
       '<div class="station-foot">' +
         '<div class="station-tags">' +
           '<span class="badge">' + UI.esc(STATUS_TEXT[status] || status) + "</span>" +
+          (needsHelp
+            ? ' <span class="badge" data-status="warning" title="Tapped Call staff">Needs help</span>'
+            : "") +
         "</div>" +
         '<div class="station-quick"></div>' +
       "</div>";
@@ -1569,6 +1575,7 @@
       offs.push(Store.on("connection-status", renderGrid));
       offs.push(Store.on("tick", tickTimers));
       offs.push(Store.on("sessions", function () { renderPageChrome(); renderGrid(); }));
+      offs.push(Store.on("help-requests", renderGrid));
       offs.push(Store.on("session-tick", tickTimers));
 
       renderPageChrome();

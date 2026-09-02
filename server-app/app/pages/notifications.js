@@ -1,10 +1,11 @@
 /* ==========================================================================
    CafeXP Admin — Notifications
-   One page for everything waiting on staff: cash-coin requests, freshly
-   placed F&B orders, and new bookings. The topbar bell and its toasts land
-   here rather than jumping into Billing/F&B/Reservations' own tabs, so
-   there's a single place to see what needs attention regardless of which
-   feature it came from.
+   One page for everything waiting on staff: a customer calling for help, a
+   session that's run past its block, cash-coin requests, freshly placed F&B
+   orders, and new bookings. The topbar bell and its toasts land here rather
+   than jumping into Floor/Billing/F&B/Reservations' own tabs, so there's a
+   single place to see what needs attention regardless of which feature it
+   came from.
    ========================================================================== */
 (function (global) {
   "use strict";
@@ -32,8 +33,74 @@
   }
 
   var rootEl, bodyEl;
+  var offs = [];
   var loading = true, error = null;
   var requests = [], orders = [], reservations = [];
+
+  /* Help calls and overdue sessions live in Store.state already, kept fresh
+     by the station WebSocket and the session ticker — nothing to fetch, just
+     read and re-render whenever either changes while this page is open. */
+  function helpEntries() {
+    var map = Store.state.helpRequests || {};
+    return Object.keys(map)
+      .map(function (pcName) { return Object.assign({ pcName: pcName }, map[pcName]); })
+      .sort(function (a, b) { return a.at - b.at; });   // longest-waiting first
+  }
+
+  function overdueSessions() {
+    var sessions = Store.state.sessions || {};
+    return Object.keys(sessions)
+      .map(function (pcName) { return sessions[pcName]; })
+      .filter(function (s) { return s.status === "active" && s.remaining_seconds === 0; });
+  }
+
+  function helpCard(entry) {
+    var card = UI.el("div", { class: "card card-pad row-between", style: { alignItems: "center" } });
+    card.innerHTML =
+      "<div><div style='font-size:14px;font-weight:700'>" + UI.esc(entry.pcName) + "</div>" +
+      "<div class='faint' style='font-size:12px'>" + UI.esc(entry.who || "A customer") +
+        " · waiting " + UI.esc(UI.relTime(new Date(entry.at).toISOString())) + "</div></div>";
+    var go = UI.el("button", {
+      class: "btn btn-primary", html: Icon("chevronR", 15) + '<span class="btn-label">Go to station</span>'
+    });
+    go.addEventListener("click", function () { global.CXStationPanel.open(entry.pcName); });
+    card.appendChild(go);
+    return card;
+  }
+
+  function overdueCard(session) {
+    var SessionUI = global.CXSessionUI;
+    var card = UI.el("div", { class: "card card-pad col gap-3", dataset: { status: "warning" } });
+    card.innerHTML =
+      '<div class="row-between" style="align-items:flex-start">' +
+        "<div><div class='row gap-3' style='align-items:center'>" +
+          '<span style="font-size:15px;font-weight:700">' + UI.esc(session.pc_name) + "</span>" +
+          (session.low_balance
+            ? '<span class="badge" data-status="warning">Low balance</span>'
+            : '<span class="badge">Over its block</span>') +
+        "</div>" +
+        '<div class="faint" style="font-size:12px;margin-top:4px">' +
+          UI.esc(session.customer_name || "Guest") +
+          (session.game_name ? " · " + UI.esc(session.game_name) : "") +
+        "</div></div>" +
+        '<div style="text-align:right"><div style="font-size:19px;font-weight:800">' +
+          SessionUI.coins(session.running_amount) + " XP</div></div>" +
+      "</div>";
+
+    var actions = UI.el("div", { class: "row gap-2 wrap" });
+    if (session.can_extend) {
+      var extend = UI.el("button", {
+        class: "btn btn-primary grow", html: Icon("plus", 15) + '<span class="btn-label">Extend</span>'
+      });
+      extend.addEventListener("click", function () { SessionUI.extendDialog(session); });
+      actions.appendChild(extend);
+    }
+    var end = UI.el("button", { class: "btn btn-danger grow", html: Icon("stop", 15) + '<span class="btn-label">End session</span>' });
+    end.addEventListener("click", function () { SessionUI.endSessionDialog(session); });
+    actions.appendChild(end);
+    card.appendChild(actions);
+    return card;
+  }
 
   function load() {
     loading = true; error = null; render();
@@ -265,17 +332,33 @@
 
     if (loading) { bodyEl.appendChild(UI.skeletonCards(3)); return; }
 
-    if (!requests.length && !orders.length && !reservations.length) {
+    var help = helpEntries();
+    var overdue = overdueSessions();
+
+    if (!help.length && !overdue.length && !requests.length && !orders.length && !reservations.length) {
       bodyEl.appendChild(UI.emptyState({
         icon: "check",
         status: "online",
         title: "All caught up",
-        text: "Coin requests, new orders and new bookings will show up here as they come in."
+        text: "Help calls, overdue sessions, coin requests, new orders and new bookings will show up here as they come in."
       }));
       return;
     }
 
     var wrap = UI.el("div", { class: "col gap-6" });
+
+    // Someone waiting on a person, right now — leads the page.
+    if (help.length) {
+      var helpList = UI.el("div", { class: "col gap-3" });
+      help.forEach(function (h) { helpList.appendChild(helpCard(h)); });
+      wrap.appendChild(section("Needs help", help.length, helpList));
+    }
+
+    if (overdue.length) {
+      var overdueList = UI.el("div", { class: "col gap-3" });
+      overdue.forEach(function (s) { overdueList.appendChild(overdueCard(s)); });
+      wrap.appendChild(section("Sessions over their block", overdue.length, overdueList));
+    }
 
     if (requests.length) {
       var reqGrid = UI.el("div", { class: "req-grid" });
@@ -310,16 +393,28 @@
         '<div class="page-head">' +
           "<div>" +
             '<div class="page-title">Notifications</div>' +
-            '<div class="page-sub">Coin requests, new orders and new bookings, together</div>' +
+            '<div class="page-sub">Help calls, overdue sessions, coin requests, new orders and new bookings, together</div>' +
           "</div>" +
         "</div>" +
         '<div id="notifBody"></div>';
       root.appendChild(page);
       bodyEl = page.querySelector("#notifBody");
       load();
+
+      /* Help calls and overdue sessions live in Store state already — just
+         repaint when either moves, no fetch needed the way the three above
+         do. "sessions" only (not the once-a-second "session-tick"): a full
+         repaint on every tick for a running total nobody asked to watch live
+         is exactly the flicker this app's other list views deliberately
+         avoid — a session only enters or leaves this list on a real change
+         (started, extended, ended), which "sessions" already covers. */
+      offs.push(Store.on("help-requests", render));
+      offs.push(Store.on("sessions", render));
     },
 
     unmount: function () {
+      offs.forEach(function (f) { f(); });
+      offs = [];
       rootEl = null; bodyEl = null;
     }
   };
