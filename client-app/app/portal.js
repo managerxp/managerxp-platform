@@ -452,22 +452,44 @@
       else UI.toast({ title: "Couldn't read the volume", status: "error", duration: 3000 });
     });
 
-    // Dragging fires input continuously; each call spawns a PowerShell
-    // process, so this collapses a fast drag into the last value rather
-    // than one process per pixel. The fill and percentage still track every
-    // tick — only the actual OS call is debounced.
-    var setTimer = null;
+    /*
+     * Dragging fires "input" continuously, and each OS-level set spawns a
+     * PowerShell process — slow enough (regularly >80ms) that a fixed-delay
+     * debounce let a fast drag queue up several of these in flight at once.
+     * They then resolved out of order, and each one's response used to call
+     * paint() and overwrite slider.value — so a stale reply could snap the
+     * thumb backwards mid-drag while the user was still moving it. That was
+     * the actual lag: not the debounce, but overlapping calls fighting the
+     * live drag.
+     *
+     * Fixed by only ever letting one call run at a time, and always sending
+     * whatever the slider is at the moment that call finishes — never a
+     * value already superseded by the time it would arrive. The visual fill
+     * and percentage already update every tick, straight from the input
+     * event; only the real OS call is throttled, and it is never allowed to
+     * write slider.value back — the drag position is already correct and
+     * doesn't need correcting from a response.
+     */
+    var pendingLevel = null;
+    var setInFlight = false;
+    function flushVolume() {
+      if (pendingLevel === null || setInFlight) return;
+      var level = pendingLevel;
+      pendingLevel = null;
+      setInFlight = true;
+      global.api.volumeSet(level).then(function (r) {
+        setInFlight = false;
+        if (!r || !r.success) UI.toast({ title: "Couldn't change the volume", status: "error", duration: 3000 });
+        else muteBtn.innerHTML = Icon((r.muted || r.level === 0) ? "volumeMute" : "volume", 18);
+        flushVolume();   // pick up whatever the user moved to meanwhile
+      });
+    }
     slider.addEventListener("input", function () {
       var level = Number(slider.value);
       paintFill(level);
       pct.textContent = level + "%";
-      clearTimeout(setTimer);
-      setTimer = setTimeout(function () {
-        global.api.volumeSet(level).then(function (r) {
-          if (!r || !r.success) UI.toast({ title: "Couldn't change the volume", status: "error", duration: 3000 });
-          else paint(r.level, r.muted);
-        });
-      }, 80);
+      pendingLevel = level;
+      flushVolume();
     });
 
     muteBtn.addEventListener("click", function () {

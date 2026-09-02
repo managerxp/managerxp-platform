@@ -466,35 +466,47 @@
   flex: 1 1 auto;
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
-  border-radius: 2px;
+  height: 6px;
+  border-radius: 3px;
   /* The filled portion left of the thumb is drawn by the browser reading
      these two colors off the track background — no JS needed to keep it
      in sync with the value as long as .value stays current, which paint()
-     above already guarantees. */
+     above already guarantees. Not transitioned: it must track the pointer
+     exactly, every tick — a delayed fill would read as the same lag this
+     was built to get rid of. */
   background: linear-gradient(to right, var(--accent) 0%, var(--accent) var(--_v, 0%), var(--bg-raised-2) var(--_v, 0%), var(--bg-raised-2) 100%);
   outline: none;
   cursor: pointer;
 }
 .volume-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 16px; height: 16px;
+  width: 18px; height: 18px;
   border-radius: 50%;
   background: #fff;
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-2);
   cursor: pointer;
-  margin-top: 0;
+  /* (track height - thumb height) / 2 — centers the thumb on the track.
+     Chromium does not do this itself once -webkit-appearance is none; left
+     at the default 0 the thumb sat with its top edge on the track instead
+     of straddling it, reading as visibly misaligned. */
+  margin-top: -6px;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
+.volume-slider:hover::-webkit-slider-thumb { box-shadow: var(--shadow-3); }
+.volume-slider:active::-webkit-slider-thumb { transform: scale(1.15); }
 .volume-slider::-moz-range-thumb {
-  width: 16px; height: 16px;
+  width: 18px; height: 18px;
   border: 0;
   border-radius: 50%;
   background: #fff;
-  box-shadow: var(--shadow-1);
+  box-shadow: var(--shadow-2);
   cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease-out), box-shadow var(--dur-fast) var(--ease-out);
 }
-.volume-slider::-moz-range-progress { background: var(--accent); height: 4px; border-radius: 2px; }
-.volume-slider::-moz-range-track { background: var(--bg-raised-2); height: 4px; border-radius: 2px; }
+.volume-slider:hover::-moz-range-thumb { box-shadow: var(--shadow-3); }
+.volume-slider:active::-moz-range-thumb { transform: scale(1.15); }
+.volume-slider::-moz-range-progress { background: var(--accent); height: 6px; border-radius: 3px; }
+.volume-slider::-moz-range-track { background: var(--bg-raised-2); height: 6px; border-radius: 3px; }
 
 .shelf-rail {
   display: grid;

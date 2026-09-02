@@ -104,7 +104,40 @@ public static class AudioEndpoint {
 }
 '@
 
-Add-Type -TypeDefinition $sig -Language CSharp
+
+<#
+  Add-Type -TypeDefinition compiles this C# from scratch via csc.exe on every
+  single invocation — measured at 1-1.8 SECONDS per call, almost entirely
+  compile time, not the COM calls themselves or PowerShell's own startup.
+  That is the actual "laggy slider": every tick that reaches the OS was
+  taking the better part of two seconds to apply.
+
+  Compiling once to a cached assembly and loading that thereafter (a plain
+  file load, no compiler invocation) turns each call into tens of
+  milliseconds instead. Cached under LOCALAPPDATA rather than next to this
+  script: a kiosk build installed under Program Files is not writable by a
+  standard user account, and this must not silently fail volume control on
+  a machine set up that way.
+#>
+$cacheDir = Join-Path $env:LOCALAPPDATA 'CafeXP'
+if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null }
+$dllPath = Join-Path $cacheDir 'AudioEndpoint.dll'
+
+if (-not (Test-Path $dllPath)) {
+  # -OutputAssembly only writes the file — it does not also register the
+  # types in this session, so the explicit -Path load below is still needed
+  # after this, first run or not.
+  Add-Type -TypeDefinition $sig -Language CSharp -OutputAssembly $dllPath
+}
+try {
+  Add-Type -Path $dllPath
+} catch {
+  # A DLL from a different PowerShell/.NET build, or otherwise unusable —
+  # recompile rather than fail every call from here on.
+  Remove-Item -Force $dllPath -ErrorAction SilentlyContinue
+  Add-Type -TypeDefinition $sig -Language CSharp -OutputAssembly $dllPath
+  Add-Type -Path $dllPath
+}
 
 function Write-State {
   $obj = @{ level = [AudioEndpoint]::GetLevel(); muted = [AudioEndpoint]::GetMuted() }
