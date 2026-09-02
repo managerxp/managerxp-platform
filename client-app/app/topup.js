@@ -150,7 +150,29 @@
       return;
     }
 
-    var amount = options.presets && options.presets.length ? options.presets[0] : options.min_amount;
+    /* Bonus amounts are quick-picks too, not just a rate applied behind the
+       scenes — a café owner set "pay 1000, get 1100" precisely so a customer
+       sees it and picks it, not so it hides in a footnote. Merged with the
+       plain presets, deduped, sorted low to high. */
+    var bonusTiers = options.bonus_tiers || [];
+    var bonusByAmount = {};
+    bonusTiers.forEach(function (t) { bonusByAmount[t.pay_amount] = t.credit_amount; });
+    var presetAmounts = (options.presets || []).slice();
+    bonusTiers.forEach(function (t) {
+      if (presetAmounts.indexOf(t.pay_amount) === -1) presetAmounts.push(t.pay_amount);
+    });
+    presetAmounts.sort(function (a, b) { return a - b; });
+
+    /** What a top-up of this amount actually credits — the café's bonus tier
+        if this exact amount has one, otherwise the flat rate. Mirrors
+        resolveTopupCoins on the server; the server is what actually charges
+        this, so a mismatch here is only ever a display bug, never a billing one. */
+    function creditFor(value) {
+      if (Object.prototype.hasOwnProperty.call(bonusByAmount, value)) return bonusByAmount[value];
+      return value * options.coin_rate;
+    }
+
+    var amount = presetAmounts.length ? presetAmounts[0] : options.min_amount;
     var provider = options.methods[0].provider;
 
     /* ---- amount ---- */
@@ -176,7 +198,9 @@
     function paintReceipt() {
       var value = Number(input.value);
       var valid = Number.isFinite(value) && value >= options.min_amount && value <= options.max_amount;
-      var coins = valid ? value * options.coin_rate : 0;
+      var coins = valid ? creditFor(value) : 0;
+      var bonus = valid && Object.prototype.hasOwnProperty.call(bonusByAmount, value);
+      var plain = valid ? value * options.coin_rate : 0;
 
       receipt.innerHTML =
         '<div class="topup-receipt-row">' +
@@ -185,10 +209,15 @@
         '<div class="topup-receipt-row is-total">' +
           "<span>You get</span><strong>" + (valid ? coins.toFixed(2) : "—") + " XP</strong>" +
         "</div>" +
-        // Only shown when it is not 1:1, so the common case stays quiet.
-        (options.coin_rate !== 1
-          ? '<div class="topup-rate faint">' + options.coin_rate + " coins per ₹1</div>"
-          : "");
+        // The extra over the flat rate, named — "you get 1100" alone reads as
+        // the ordinary rate; this is what makes it read as a deal.
+        (bonus
+          ? '<div class="topup-bonus">' + Icon("sparkle", 13) +
+            "<span>" + (coins - plain).toFixed(2) + " bonus XP for this amount</span></div>"
+          // Only shown when it is not 1:1, so the common case stays quiet.
+          : options.coin_rate !== 1
+            ? '<div class="topup-rate faint">' + options.coin_rate + " coins per ₹1</div>"
+            : "");
 
       payBtn.disabled = !valid;
       if (payBtn.querySelector(".btn-label")) {
@@ -200,10 +229,13 @@
       return valid;
     }
 
-    (options.presets || []).forEach(function (value) {
+    presetAmounts.forEach(function (value) {
+      var hasBonus = Object.prototype.hasOwnProperty.call(bonusByAmount, value);
       var chip = UI.el("button", {
-        class: "topup-preset", type: "button", text: "₹" + value
+        class: "topup-preset" + (hasBonus ? " has-bonus" : ""), type: "button"
       });
+      chip.innerHTML = "₹" + value +
+        (hasBonus ? '<span class="topup-preset-bonus">' + Icon("sparkle", 10) + "</span>" : "");
       chip.addEventListener("click", function () {
         amount = value;
         input.value = value;
@@ -215,7 +247,7 @@
 
     function paintPresets() {
       presetHost.querySelectorAll(".topup-preset").forEach(function (chip, i) {
-        var on = Number(options.presets[i]) === Number(input.value);
+        var on = Number(presetAmounts[i]) === Number(input.value);
         chip.classList.toggle("is-active", on);
         chip.setAttribute("aria-pressed", on ? "true" : "false");
       });

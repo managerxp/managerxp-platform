@@ -39,10 +39,8 @@
     loadedAt: null,
     bills: [],
     billsError: null,
-    packages: [],
     membership: null,
     membershipHistory: [],
-    packageCatalog: [],
     planCatalog: [],
     entitlementsLoaded: false,
     menu: null,
@@ -194,21 +192,17 @@
       });
   }
 
-  /** The customer's packages and membership, and what they could still buy. */
+  /** The customer's membership, and what plans they could still buy. */
   function loadEntitlements() {
     var id = customerId();
     if (id == null || !token()) return Promise.resolve();
     return Promise.all([
-      request("/api/packages/customer/" + id).then(function (b) { return b.data || []; }).catch(function () { return null; }),
       request("/api/memberships/customer/" + id).then(function (b) { return b.data; }).catch(function () { return null; }),
-      request("/api/packages/catalog").then(function (b) { return b.data || []; }).catch(function () { return []; }),
       request("/api/memberships/plans/catalog").then(function (b) { return b.data || []; }).catch(function () { return []; })
     ]).then(function (res) {
-      state.packages = res[0] || [];
-      state.membership = res[1] ? res[1].current : null;
-      state.membershipHistory = res[1] ? res[1].history : [];
-      state.packageCatalog = res[2] || [];
-      state.planCatalog = res[3] || [];
+      state.membership = res[0] ? res[0].current : null;
+      state.membershipHistory = res[0] ? res[0].history : [];
+      state.planCatalog = res[1] || [];
       state.entitlementsLoaded = true;
       emit();
     });
@@ -231,15 +225,6 @@
         }
         return body;
       });
-    });
-  }
-
-  /** Buy a package for yourself, paid from your own wallet balance. */
-  function purchasePackage(packageId) {
-    return postJson("/api/packages/" + packageId + "/purchase-self", {}).then(function (body) {
-      load();               // the balance just moved
-      loadEntitlements();   // and so did what's owned / still buyable
-      return body;
     });
   }
 
@@ -439,7 +424,6 @@
     topupHistory: topupHistory,
     loadBills: loadBills,
     loadEntitlements: loadEntitlements,
-    purchasePackage: purchasePackage,
     subscribeMembership: subscribeMembership,
     loadBookableCategories: loadBookableCategories,
     loadReservations: loadReservations,

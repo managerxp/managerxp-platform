@@ -10,7 +10,7 @@
   global.CXPages = global.CXPages || {};
 
   var DURATIONS = [30, 60, 120, 180];
-  var EXTEND_BY = [15, 30, 60];
+  var EXTEND_BY = [10, 15, 30, 60, 120];
   var defaultRate = 60;
 
   Store.sessionDefaults()
@@ -672,47 +672,24 @@
      EXTEND / TRANSFER
      ========================================================================== */
   /*
-   * A BLOCK-priced session has no such thing as "add 15 minutes" — its price
-   * is fixed per whole block (block_unit_minutes / block_unit_amount), and
-   * the backend's /extend endpoint knows only two shapes: { blocks } for
-   * these, { minutes } for everything else. Sending { minutes } at a BLOCK
-   * session was silently ignored server-side, which defaulted to exactly one
-   * block — this is why the free-form minutes field used to always add the
-   * same fixed amount (one café's own block length) no matter what staff
-   * typed. Branching here on pricing_unit sends the shape the session
-   * actually understands.
+   * Always minutes, never "blocks" — a café owner thinks in "give them 15
+   * more minutes," not in billing units. A BLOCK-priced session still has a
+   * fixed price per whole block behind the scenes, but that's the backend's
+   * problem to round up and charge for correctly (see extendSession there);
+   * this dialog only ever asks for and shows minutes, for every session.
    */
   function extendDialog(session, onDone) {
-    var isBlock = session.pricing_unit === "BLOCK" && Number(session.block_unit_minutes) > 0;
     var body = UI.el("div", { class: "col gap-4" });
-
-    if (isBlock) {
-      var unitMin = Number(session.block_unit_minutes);
-      var unitAmount = Number(session.block_unit_amount) || 0;
-      body.innerHTML =
-        '<div class="notice" data-status="info">' + Icon("info", 16) +
-          "<div>This session is priced by the block — each block adds " + unitMin +
-          " min for " + coins(unitAmount) + " XP, billed at the end.</div></div>" +
-        '<div class="field"><label class="field-label">Add blocks</label>' +
-          '<div class="row gap-2" id="extendRow">' +
-            [1, 2, 3].map(function (n) {
-              return '<button type="button" class="chip" data-blocks="' + n + '">+' + n +
-                " block" + (n === 1 ? "" : "s") + " (" + (unitMin * n) + " min)</button>";
-            }).join("") +
-          "</div></div>" +
-        '<div class="field"><label class="field-label field-req" for="extendBlocks">Blocks</label>' +
-          '<input class="input" id="extendBlocks" type="number" min="1" max="24" value="1" data-autofocus></div>';
-    } else {
-      body.innerHTML =
-        '<div class="field"><label class="field-label">Add time</label>' +
-          '<div class="row gap-2" id="extendRow">' +
-            EXTEND_BY.map(function (m) {
-              return '<button type="button" class="chip" data-min="' + m + '">+' + m + " min</button>";
-            }).join("") +
-          "</div></div>" +
-        '<div class="field"><label class="field-label field-req" for="extendMinutes">Minutes</label>' +
-          '<input class="input" id="extendMinutes" type="number" min="1" max="1440" value="30" data-autofocus></div>';
-    }
+    body.innerHTML =
+      '<div class="field"><label class="field-label">Add time</label>' +
+        '<div class="row gap-2" id="extendRow">' +
+          EXTEND_BY.map(function (m) {
+            return '<button type="button" class="chip" data-min="' + m + '">+' +
+              (m >= 60 ? (m / 60) + "h" : m + " min") + "</button>";
+          }).join("") +
+        "</div></div>" +
+      '<div class="field"><label class="field-label field-req" for="extendMinutes">Minutes</label>' +
+        '<input class="input" id="extendMinutes" type="number" min="1" max="1440" value="30" data-autofocus></div>';
 
     var dialog = UI.modal({
       title: "Extend session",
@@ -723,25 +700,12 @@
         {
           label: "Extend", variant: "primary", icon: "plus",
           onClick: function (ctx) {
-            if (isBlock) {
-              var blocks = parseInt(ctx.body.querySelector("#extendBlocks").value, 10);
-              if (!blocks || blocks < 1) { Motion.shake(ctx.node); return false; }
-              return Store.extendSessionBlocks(session, blocks)
-                .then(function (s) {
-                  UI.toast.ok("Extended by " + blocks + " block" + (blocks === 1 ? "" : "s"),
-                    clock(s.remaining_seconds) + " left");
-                  if (onDone) onDone(s);
-                  return true;
-                })
-                .catch(function (err) { UI.toast.error("Could not extend", err.message); return false; });
-            }
-
             var minutes = parseInt(ctx.body.querySelector("#extendMinutes").value, 10);
             if (!minutes || minutes < 1) { Motion.shake(ctx.node); return false; }
             return Store.extendSession(session, minutes)
-              .then(function (s) {
-                UI.toast.ok("Extended by " + minutes + " minutes", clock(s.remaining_seconds) + " left");
-                if (onDone) onDone(s);
+              .then(function (r) {
+                UI.toast.ok(r.message, clock(r.session.remaining_seconds) + " left");
+                if (onDone) onDone(r.session);
                 return true;
               })
               .catch(function (err) { UI.toast.error("Could not extend", err.message); return false; });
@@ -750,17 +714,10 @@
       ]
     });
 
-    if (isBlock) {
-      var blocksInput = body.querySelector("#extendBlocks");
-      UI.$$("#extendRow .chip", body).forEach(function (chip) {
-        chip.addEventListener("click", function () { blocksInput.value = chip.dataset.blocks; });
-      });
-    } else {
-      var minutesInput = body.querySelector("#extendMinutes");
-      UI.$$("#extendRow .chip", body).forEach(function (chip) {
-        chip.addEventListener("click", function () { minutesInput.value = chip.dataset.min; });
-      });
-    }
+    var input = body.querySelector("#extendMinutes");
+    UI.$$("#extendRow .chip", body).forEach(function (chip) {
+      chip.addEventListener("click", function () { input.value = chip.dataset.min; });
+    });
     return dialog;
   }
 

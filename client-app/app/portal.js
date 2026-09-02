@@ -14,7 +14,7 @@
      the account quick-menu (and from there, the full Account page), so a
      second text tab to the same place would only cost width the labels
      below need to stay readable. */
-  var ORDER = ["home", "games", "apps", "packages", "membership", "food", "shop", "rewards"];
+  var ORDER = ["home", "games", "apps", "membership", "food", "shop", "rewards"];
   var current = null;
   var navToken = 0;
   var host = null;

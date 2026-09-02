@@ -55,7 +55,6 @@
         { id: "session-master", label: "Session Master", icon: "clock",   feature: "SESSION_MANAGEMENT", permission: "sessions.manage" },
         { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
         { id: "pricing-windows", label: "Peak & Happy Hours", icon: "clock", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
-        { id: "packages",    label: "Packages",    icon: "packages",   feature: "PRODUCTS",    permission: "packages.manage" },
         { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP",  permission: "packages.manage" },
         { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING",      permission: "discounts.manage" },
         { id: "reservations",label: "Reservations",icon: "reservations", feature: "RESERVATIONS", permission: "sessions.view" }

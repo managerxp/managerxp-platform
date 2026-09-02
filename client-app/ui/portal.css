@@ -1711,6 +1711,15 @@
   background: var(--accent-soft);
   color: var(--text);
 }
+/* A café-configured bonus amount — marked even when not selected, so it
+   reads as "this one's a deal" while scanning the row, not just after tapping it. */
+.topup-preset.has-bonus { border-color: var(--ok, var(--accent)); }
+.topup-preset-bonus {
+  display: inline-flex;
+  margin-left: 4px;
+  color: var(--ok, var(--accent));
+  vertical-align: middle;
+}
 
 .topup-custom { position: relative; display: flex; align-items: center; }
 .topup-currency {
@@ -1757,6 +1766,14 @@
 }
 .topup-receipt-row.is-total strong { font-size: 20px; letter-spacing: -0.02em; }
 .topup-rate { font-size: var(--t-xs); }
+.topup-bonus {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--t-xs);
+  font-weight: 700;
+  color: var(--ok, var(--accent));
+}
 
 .topup-methods { display: flex; gap: var(--s-2); flex-wrap: wrap; }
 .topup-method {

@@ -983,17 +983,26 @@
   function extendSession(session, minutes) {
     return sessionAction(session.session_id, "extend", { minutes: minutes }).then(function (r) {
       var pcName = session.pc_name;
+      /* What actually landed, not what was asked for — a BLOCK-priced
+         session rounds a minutes request up to its nearest whole block on
+         the server, so the real addition can be more than requested. The
+         timer card and the toast both need the true figure, not the input. */
+      var actualAdded = (Number(r.data.planned_minutes) || 0) - (Number(session.planned_minutes) || 0);
+      if (actualAdded <= 0) actualAdded = minutes;
+
       // Grows the station's own floating timer card to match — otherwise the
       // café-session clock (pushed below, via afterSessionChange) knows about
       // the added time but the timer card overlay does not, and would still
       // count down to the old total. extendSessionBlocks already did this;
       // the plain-minutes path never did.
       if (pcName && api.pushExtendTimer) {
-        api.pushExtendTimer(pcName, minutes).catch(function (e) {
+        api.pushExtendTimer(pcName, actualAdded).catch(function (e) {
           console.warn("[store] extend-timer push failed", e);
         });
       }
-      return afterSessionChange(r.data, pcName);
+      return afterSessionChange(r.data, pcName).then(function (s) {
+        return { session: s, message: r.message };
+      });
     });
   }
   /*
@@ -1175,27 +1184,6 @@
     return request("/api/orders/" + id + "/status", {
       method: "PATCH", body: JSON.stringify({ status: status })
     });
-  }
-
-  // Packages
-  function listPackages(params) { return request("/api/packages" + qs(params)); }
-  function createPackage(body) {
-    return request("/api/packages", { method: "POST", body: JSON.stringify(body) });
-  }
-  function updatePackage(id, body) {
-    return request("/api/packages/" + id, { method: "PUT", body: JSON.stringify(body) });
-  }
-  function setPackageStatus(id, status) {
-    return request("/api/packages/" + id + "/status", {
-      method: "PATCH", body: JSON.stringify({ status: status })
-    });
-  }
-  function deletePackage(id) { return request("/api/packages/" + id, { method: "DELETE" }); }
-  function purchasePackage(id, body) {
-    return request("/api/packages/" + id + "/purchase", { method: "POST", body: JSON.stringify(body) });
-  }
-  function customerPackages(customerId) {
-    return request("/api/packages/customer/" + customerId).then(function (r) { return r.data; });
   }
 
   // Memberships
@@ -2101,14 +2089,7 @@
     listOrders: listOrders,
     setOrderStatus: setOrderStatus,
 
-    // packages & memberships
-    listPackages: listPackages,
-    createPackage: createPackage,
-    updatePackage: updatePackage,
-    setPackageStatus: setPackageStatus,
-    deletePackage: deletePackage,
-    purchasePackage: purchasePackage,
-    customerPackages: customerPackages,
+    // memberships
     listPlans: listPlans,
     createPlan: createPlan,
     updatePlan: updatePlan,

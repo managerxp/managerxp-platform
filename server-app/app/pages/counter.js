@@ -23,14 +23,12 @@
      the customer asked for. */
   var SOURCES = [
     { id: "products", label: "Products", icon: "fnb" },
-    { id: "gaming",   label: "Gaming",   icon: "sessions" },
-    { id: "packages", label: "Packages", icon: "packages" }
+    { id: "gaming",   label: "Gaming",   icon: "sessions" }
   ];
   var activeSource = "products";
   var rates = [];              // Gaming Price Master
   var rateCategories = [];     // PC / PS5 / Pool / Darts
-  var packages = [];           // Package Master
-  var extrasLoaded = false;    // rates and packages are fetched once, on demand
+  var extrasLoaded = false;    // rates are fetched once, on demand
 
   var UNCATEGORISED = "— uncategorised —";
 
@@ -1019,56 +1017,6 @@
     });
   }
 
-  function renderPackages(host, q) {
-    var visible = packages.filter(function (p) {
-      if (!q) return true;
-      return (p.package_name || "").toLowerCase().indexOf(q) !== -1;
-    });
-
-    if (!visible.length) {
-      host.className = "";
-      host.appendChild(UI.emptyState({
-        icon: "packages",
-        title: packages.length ? "Nothing matches" : "No packages on sale",
-        text: packages.length
-          ? "No package matches the current filter."
-          : "Create packages under Catalogue → Packages and switch them on sale."
-      }));
-      return;
-    }
-
-    host.className = "grid ct-products";
-    visible.forEach(function (p) {
-      var total = Number(p.units || 0) + Number(p.bonus_units || 0);
-      host.appendChild(tile({
-        name: p.package_name,
-        price: money(p.price),
-        flag: unitFlag(p.package_type, total) +
-          (Number(p.bonus_units) > 0 ? " · incl. " + p.bonus_units + " free" : ""),
-        onPick: function () {
-          addLine({
-            item_type: "other",
-            reference_id: p.package_id,
-            description: p.package_name,
-            quantity: 1,
-            unit_price: Number(p.price)
-          });
-        }
-      }));
-    });
-  }
-
-  /* Package units are counted in whatever the package is measured in, and
-     saying "600 units" to a cashier means nothing. */
-  function unitFlag(type, units) {
-    if (type === "HOURS") {
-      if (units % 60 === 0) return (units / 60) + (units === 60 ? " hour" : " hours");
-      return units + " min";
-    }
-    if (type === "SESSIONS") return units + (units === 1 ? " session" : " sessions");
-    return units + " XP coins";
-  }
-
   function renderCatalogue() {
     if (!rootEl) return;
     var host = rootEl.querySelector("#ctProducts");
@@ -1078,7 +1026,6 @@
     var q = productQuery.trim().toLowerCase();
 
     if (activeSource === "gaming") return renderGaming(host, q);
-    if (activeSource === "packages") return renderPackages(host, q);
 
     var visible = products.filter(function (p) {
       if (activeCategory && String(p.category_id) !== String(activeCategory)) return false;
@@ -1167,7 +1114,6 @@
     var search = rootEl.querySelector("#ctSearch");
     if (search) {
       search.placeholder = activeSource === "gaming" ? "Search gaming rates…"
-        : activeSource === "packages" ? "Search packages…"
         : "Search products…";
     }
   }
@@ -1176,12 +1122,6 @@
     var host = rootEl.querySelector("#ctCategories");
     if (!host) return;
     UI.clear(host);
-
-    /* Packages are a short flat list; chips would be furniture. */
-    if (activeSource === "packages") {
-      host.classList.add("hidden");
-      return;
-    }
     host.classList.remove("hidden");
 
     var chips = activeSource === "gaming"
@@ -1316,19 +1256,14 @@
     });
   }
 
-  /* Rates and packages are fetched the first time one of those tabs is opened
-     rather than on mount: the till is opened all day to sell a coffee, and
-     three requests where one would do is three chances to be slow at the
-     counter. */
+  /* Rates are fetched the first time that tab is opened rather than on mount:
+     the till is opened all day to sell a coffee, and an extra request where
+     none would do is one more chance to be slow at the counter. */
   function loadExtras() {
     if (extrasLoaded || activeSource === "products") return Promise.resolve();
     extrasLoaded = true;
-    return Promise.all([
-      global.CXRates.list().catch(function () { return []; }),
-      Store.listPackages({ status: "ACTIVE", limit: 200 }).catch(function () { return { data: [] }; })
-    ]).then(function (res) {
-      rates = res[0];
-      packages = res[1].data || [];
+    return global.CXRates.list().catch(function () { return []; }).then(function (list) {
+      rates = list;
 
       /* Built from the rates actually on offer rather than from the category
          endpoint, so a category whose games are all unpriced does not appear
