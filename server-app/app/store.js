@@ -982,7 +982,18 @@
   }
   function extendSession(session, minutes) {
     return sessionAction(session.session_id, "extend", { minutes: minutes }).then(function (r) {
-      return afterSessionChange(r.data);
+      var pcName = session.pc_name;
+      // Grows the station's own floating timer card to match — otherwise the
+      // café-session clock (pushed below, via afterSessionChange) knows about
+      // the added time but the timer card overlay does not, and would still
+      // count down to the old total. extendSessionBlocks already did this;
+      // the plain-minutes path never did.
+      if (pcName && api.pushExtendTimer) {
+        api.pushExtendTimer(pcName, minutes).catch(function (e) {
+          console.warn("[store] extend-timer push failed", e);
+        });
+      }
+      return afterSessionChange(r.data, pcName);
     });
   }
   /*
