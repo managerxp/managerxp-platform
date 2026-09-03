@@ -1,11 +1,57 @@
 {
   "name": "sim-client",
+  "productName": "CafeXP Client",
+  "version": "1.0.0",
+  "description": "CafeXP station client",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never",
+    "dist:publish": "electron-builder --win --publish always"
   },
   "dependencies": {
+    "ws": "^8.16.0",
+    "electron-updater": "^6.3.9"
+  },
+  "devDependencies": {
     "electron": "^41.2.0",
-    "ws": "^8.16.0"
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.managerxp.cafexp.client",
+    "productName": "CafeXP Client",
+    "artifactName": "CafeXP-Client-Setup-${version}.${ext}",
+    "icon": "Images/icon.png",
+    "files": [
+      "**/*",
+      "!legacy/**",
+      "!output/**",
+      "!**/*.log"
+    ],
+    "win": {
+      "icon": "Images/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true,
+      "allowElevation": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "Images/icon.png",
+      "uninstallerIcon": "Images/icon.png"
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://updates.managerxp.local/cafexp/client/"
+      }
+    ]
   }
 }

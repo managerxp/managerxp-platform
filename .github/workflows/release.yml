@@ -1,0 +1,149 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-clientxp:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: client-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: client-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Build installer
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          # Present only if the repo has these secrets configured — electron-builder
+          # signs automatically when they exist, and stays unsigned otherwise.
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: clientxp-installer
+          path: |
+            client-app/dist/*.exe
+            client-app/dist/*.yml
+            client-app/dist/*.blockmap
+
+  build-serverxp:
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: server-app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: server-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          npm version "$VERSION" --no-git-tag-version --allow-same-version
+
+      - name: Build installer
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: serverxp-installer
+          path: |
+            server-app/dist/*.exe
+            server-app/dist/*.yml
+            server-app/dist/*.blockmap
+
+  release:
+    needs: [build-clientxp, build-serverxp]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: clientxp-installer
+          path: artifacts/client
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: serverxp-installer
+          path: artifacts/server
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/client/*.exe
+            artifacts/client/*.yml
+            artifacts/client/*.blockmap
+            artifacts/server/*.exe
+            artifacts/server/*.yml
+            artifacts/server/*.blockmap
+          generate_release_notes: true
+
+      # Registers each installer with ManagerXP's own release system
+      # (client_releases table — see backend's updates.Controller.js), so a
+      # station's existing update check picks it up. This never touches the
+      # admin JWT auth path; it uses a separate, narrowly-scoped bearer token
+      # (see docs/GITHUB_CI_CD.md) checked only on this one endpoint.
+      - name: Register release with ManagerXP backend
+        shell: bash
+        env:
+          MANAGERXP_API_URL: ${{ secrets.MANAGERXP_API_URL }}
+          MANAGERXP_ADMIN_TOKEN: ${{ secrets.MANAGERXP_ADMIN_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${GITHUB_REF_NAME}"
+          REPO="${GITHUB_REPOSITORY}"
+
+          register() {
+            component="$1"
+            dir="$2"
+            exe=$(ls "$dir"/*.exe | head -1)
+            yml=$(ls "$dir"/*.yml | head -1)
+            file_name=$(basename "$exe")
+            download_url="https://github.com/${REPO}/releases/download/${TAG}/${file_name}"
+            sha512=$(grep '^sha512:' "$yml" | head -1 | awk '{print $2}')
+
+            curl -sf -X POST "${MANAGERXP_API_URL}/api/platform/releases" \
+              -H "Authorization: Bearer ${MANAGERXP_ADMIN_TOKEN}" \
+              -H "Content-Type: application/json" \
+              -d "{\"version\":\"${VERSION}\",\"component\":\"${component}\",\"is_published\":true,\"download_url\":\"${download_url}\",\"file_name\":\"${file_name}\",\"sha512\":\"${sha512}\",\"release_notes\":\"See GitHub release ${TAG}\"}" \
+              && echo "Registered ${component} ${VERSION}"
+          }
+
+          register client artifacts/client
+          register server artifacts/server

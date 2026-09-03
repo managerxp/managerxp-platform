@@ -1,229 +1,137 @@
 # ManagerXP Platform
 
-A modern multi-platform system to manage a racing/simulator center operations.
+CafeXP — a system for running a gaming café's stations day to day: sessions,
+pricing, XP Coin wallets, F&B, and a self-service kiosk for customers.
 
-This project includes:
+This repository holds the two Windows desktop apps:
 
-- **Web Admin Console** (Next.js)
-- **Desktop Rig/Kiosk App** (Electron)
-- **Backend API** (Node + Express)
-- **PostgreSQL database**
-- **Real-time updates** via WebSockets
+- **ClientXP** (`client-app/`) — the station kiosk a customer sits in front
+  of. Full-screen, locked down, runs the customer's session and launches
+  their game.
+- **ServerXP** (`server-app/`) — the café's admin console: dashboard,
+  sessions, customers, gaming prices, billing, reports, CafeXP AI.
 
-## Goal
-
-ManagerXP is designed to help run a racing center daily with:
-
-- Customer CRM (Profiles + history)
-- Rig session management (start/pause/extend/end)
-- Payments (Pre-Pay and Post-Pay support)
-- Real-time rig dashboard + reporting
-
-This repo is built in phases:
-
-- **Phase 1**: CRM + Rig Sessions + Payments (MVP)
-- **Phase 2**: Cafe Management + Ops Enhancements
-- **Phase 3**: Employee Management + Permissions
-
-*(Full requirement details are in our internal requirements document.)* ✅
+Both are Electron apps that talk to each other over a local WebSocket, and
+both talk to the ManagerXP backend API (a separate repository —
+`Manager-XP-Website/backend`, Node/Express + PostgreSQL — not part of this
+one).
 
 ## Tech Stack
 
-### Frontend (Web)
-- Next.js
-- TypeScript
-- Tailwind CSS
-- GSAP
-- Three.js
-
-### Desktop App (Rig/Kiosk)
-- Electron.js
-
-### Backend (Common)
-- Node.js
-- Express.js
-- PostgreSQL
-- WebSockets (real-time updates)
-
-## Core Features (Phase 1 MVP)
-
-### 1) Customer CRM
-- Register customer (phone/email + name)
-- Quick lookup by phone/name/QR
-- Profile history (sessions + spend)
-- Staff notes and flags (VIP / banned / payment-risk)
-
-### 2) Rig Session Management
-- Live rig dashboard (available/reserved/in-session/maintenance/offline)
-- Create and assign sessions
-- Start/pause/extend/end session lifecycle
-- Auto-end based on time expiry (with grace time)
-- Move customer between rigs without losing remaining time
-
-### 3) Payments & Billing Ledger
-- Supports card/cash (and credit/gift card later)
-- Pre-pay (default)
-- Post-pay (manager controlled / trusted customers)
-- Ledger entries stored immutably for audit and reporting
-- Outstanding balances visible
+- Electron.js (both apps)
+- Plain JS renderer (no framework) + a small shared `CX*` UI/store/router
+  layer per app
+- WebSockets, for the client ↔ console link
+- Node.js / npm for tooling
 
 ## Repository Structure
 
-*(will update once we have more clear Knowledge)*
-
 ```
-apps/web      -> Next.js Admin Console
-apps/desktop  -> Electron Rig/Kiosk App
-apps/server   -> Node.js + Express backend
-docs/         -> documentation and system design notes
-```
-
-### Current Folder Structure
-
-```
-client-app/              -> Client application (connects to server)
-  ├── get_apps.ps1       -> PowerShell script to scan installed apps
-  ├── index.html         -> Client UI
-  ├── main.js            -> Electron main process with WebSocket client
-  ├── preload.js         -> IPC bridge
-  ├── renderer.js        -> Client UI logic
-  ├── package.json       -> Dependencies
-  └── output/
-      └── apps.json      -> Cached application list
-
-server-app/              -> Server application (manages clients)
-  ├── index.html         -> Server dashboard UI
-  ├── main.js            -> Electron main process with WebSocket server
-  ├── preload.js         -> IPC bridge
-  ├── renderer.js        -> Server UI logic
-  └── package.json       -> Dependencies
-
-
+managerxp-platform/
+├── client-app/          ClientXP — the station kiosk
+│   ├── main.js           Electron main process (kiosk lockdown, sessions,
+│   │                      game launch, volume, timer card, updates)
+│   ├── preload.js         IPC bridge to the renderer
+│   ├── app/               Renderer: portal, wallet, views, session UI
+│   ├── scripts/           PowerShell helpers (volume control, etc.)
+│   └── updater.js          electron-updater wiring (see Auto Update below)
+├── server-app/           ServerXP — the café admin console
+│   ├── main.js             Electron main process (WS server, station state)
+│   ├── preload.js           IPC bridge
+│   └── app/pages/            Dashboard, Sessions, Customers, Gaming Prices,
+│                              Billing, Reports, CafeXP AI, Settings…
+├── docs/                 CONTRIBUTING.md, ACCESS.md, GITHUB_CI_CD.md
+└── .github/workflows/    CI + release pipelines (see below)
 ```
 
-## Architecture
+## Development
 
-### Client App
-- Connects to the server via WebSocket
-- Automatically scans and sends list of installed Windows applications to server
-- Listens for launch commands from server and executes them
-- Supports refreshing the application list on demand
+### Install dependencies
 
-### Server App  
-- Receives connections from multiple clients
-- Displays all connected clients
-- Shows installed applications for each client
-- Allows launching applications remotely on client machines
-
-## How It Works
-
-1. **Client Startup**:
-   - Client connects to server (ws://localhost:8080)
-   - Runs PowerShell script to scan installed applications
-   - Sends application list to server
-
-2. **Server Interface**:
-   - View connected clients
-   - Select a client to see their applications
-   - Click "Launch" to run an application on the client machine
-   - Click "Refresh" to update the application list
-
-3. **Application Detection**:
-   - Scans Windows Registry (HKLM\Software\Microsoft\Windows\CurrentVersion\Uninstall)
-   - Scans Start Menu shortcuts (.lnk files)
-   - Extracts application name, version, and executable path
-
-## Message Protocol
-
-### Client → Server:
-- `REGISTER`: Client registration with ID and hostname
-- `APPS_LIST`: Send list of installed applications
-- `HEARTBEAT`: Keep-alive signal every 5 seconds
-
-### Server → Client:
-- `LAUNCH_APP`: Command to launch a specific application
-- `REFRESH_APPS`: Request to rescan and send updated app list
-
-
-
-## 🧑‍💻 Local Setup (Basic)
-
-### 1) Clone
 ```bash
-git clone https://github.com/managerxp/managerxp-platform.git
-cd managerxp-platform
+cd client-app && npm install
+cd ../server-app && npm install
 ```
 
-### 2) Install dependencies
+### Run ClientXP (the kiosk)
+
 ```bash
-npm install
+cd client-app
+npm start
 ```
 
-### 3) Run Web App
+### Run ServerXP (the admin console)
+
 ```bash
-cd apps/web
-npm run dev
+cd server-app
+npm start
 ```
 
-### 4) Run Backend
+Both read their config from a local `.env` — see `.env.example` at the repo
+root for the keys each one needs, and the backend API (`Manager-XP-Website/backend`)
+needs to be running for either app to do anything beyond boot.
+
+### Building a Windows installer
+
 ```bash
-cd apps/server
-npm run dev
+cd client-app && npm run dist     # -> client-app/dist/CafeXP-Client-Setup-<version>.exe
+cd server-app && npm run dist     # -> server-app/dist/CafeXP-Console-Setup-<version>.exe
 ```
 
-### 5) Run Electron App
-```bash
-cd apps/desktop
-npm run dev
-```
+`npm run dist:publish` does the same build and additionally attempts to
+publish per the app's `build.publish` config — used by the release pipeline,
+not for a manual local build.
 
-## Features
+## Git Branching
 
-✅ Auto-detection of installed Windows applications  
-✅ Real-time client connection status  
-✅ Remote application launching  
-✅ Multi-client support  
-✅ Application list refresh  
-✅ Automatic reconnection on disconnect  
-✅ Heartbeat monitoring
+Documented in full in [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md); the
+short version:
+
+- `main` — production-ready only, via Pull Request.
+- `develop` — integration branch; feature work merges here first.
+- `feature/<name>`, `fix/<name>`, `docs/<name>`, `chore/<name>` — everything
+  else, branched from `develop`.
+
+## Release & Versioning
+
+Both apps share one release number (semantic versioning: `MAJOR.MINOR.PATCH`,
+tagged `v1.2.3`). Pushing a tag matching `v*.*.*` on `main` triggers the
+release pipeline described below — it builds **both** installers, publishes
+one GitHub Release with both attached, and registers each with ManagerXP's
+own release system so stations can be offered the update.
+
+## CI/CD
+
+Three GitHub Actions workflows, all in `.github/workflows/`:
+
+| Workflow | Runs on | What it does |
+|---|---|---|
+| `clientxp-ci.yml` | PR into `main`/`develop`, push to `develop` | `npm ci` + build ClientXP only when `client-app/**` changed |
+| `serverxp-ci.yml` | same | same, for `server-app/**` |
+| `release.yml` | push of a `v*.*.*` tag | builds both installers, creates the GitHub Release, registers both with the backend |
+
+Full architecture, secrets, code signing setup, and troubleshooting:
+[docs/GITHUB_CI_CD.md](docs/GITHUB_CI_CD.md).
+
+## Auto Update
+
+ClientXP ships `electron-updater` and a session-aware update module
+(`client-app/updater.js`) that never installs over a live customer session.
+**It is not yet wired into `main.js`** — the backend's release-tracking side
+(`client_releases`, `/api/updates/*`) is fully built and is what the release
+pipeline above registers new versions with, but nothing currently calls
+`updater.js` to act on that. Wiring the two together is tracked as a
+follow-up in `docs/GITHUB_CI_CD.md` rather than done as part of CI/CD setup.
 
 ## Contributing
 
-We are building this as a team project.
-
-Read contribution rules here:  
-➡️ **CONTRIBUTING.md**
+Read [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) before opening a PR.
 
 ## Access & Permissions
 
-If you cannot push code / create branches / access repository settings:
+If you cannot push code / create branches / access repository settings, see
+[docs/ACCESS.md](docs/ACCESS.md).
 
-➡️ Check: **ACCESS.md**  
-It explains what each role means and who to contact.
-
-## Roadmap
-
-### Phase 1
-
-* Customer CRM
-* Website + Booking
-* Rig sessions + Game Control & Telemerty (AC,F1,ACR,iRacing,Le Mans)
-* Payments + ledger
-* Live dashboard + basic reporting
-
-### Phase 2
-- Cafe POS + inventory
-- Reservations
-- Wallet + loyalty
-- Rig maintenance tracking
-- Multi-location readiness
-
-### Phase 3
-- Employee profiles + roles
-- Scheduling & shifts
-- Time clock
-- RBAC hardening
-
-## 🧾 License
+## License
 
 This is currently a private/team project. Licensing will be decided later.

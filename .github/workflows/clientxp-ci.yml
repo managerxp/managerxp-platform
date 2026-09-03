@@ -1,0 +1,45 @@
+name: ClientXP CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "client-app/**"
+      - ".github/workflows/clientxp-ci.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "client-app/**"
+      - ".github/workflows/clientxp-ci.yml"
+
+defaults:
+  run:
+    working-directory: client-app
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: client-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Build
+        run: npm run dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
