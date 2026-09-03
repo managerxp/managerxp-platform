@@ -6,6 +6,7 @@ const { exec,spawn } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const telemetry = require("./telemetry");
+const updater = require("./updater");
 
 // .env is optional — a fresh checkout or a machine where it was never copied
 // still runs on the defaults below, exactly as it did before this existed.
@@ -2347,6 +2348,26 @@ function listen() {
         } else if (!currentSession) {
           pendingSelfStartGame = null;
         }
+
+        // The station just freed up — if an update finished downloading
+        // while a customer was playing, this is the moment updater.js was
+        // built to wait for.
+        if (wasRunning && !currentSession) updater.onStationIdle();
+      }
+
+      /* The console found this station running an older build than what
+         ManagerXP has published (see checkForSoftwareUpdate). feedUrl is
+         derived by dropping the filename from the direct download link —
+         electron-updater's generic provider fetches "<feedUrl>/latest.yml"
+         itself, which the release pipeline uploads to the same tag as the
+         installer. */
+      if (msg.type === "UPDATE_AVAILABLE") {
+        const url = msg.download_url || "";
+        const feedUrl = url.slice(0, url.lastIndexOf("/"));
+        if (feedUrl) {
+          log(`Update available: v${msg.version} — downloading in the background`);
+          updater.download({ feedUrl, targetVersion: msg.version });
+        }
       }
 
       /* The games this station may offer. Held so a portal that mounts after
@@ -2665,6 +2686,15 @@ app.whenReady().then(() => {
   loadUnlockPin();
 
   createWindow();
+
+  /* Updates only ever reach this station because the console pushed one
+     (see the UPDATE_AVAILABLE handler below) — this station never asks the
+     backend itself. autoApply is on because the whole point of updater.js's
+     session-aware design is to install itself the moment the station is
+     free; leaving it off would make this no different from the console's
+     own do-nothing visibility badge. */
+  updater.init({ log: log, isSessionActive: () => !!currentSession });
+  updater.setAutoApply(true);
 
   /*
    * The same staff toggle, system-wide.

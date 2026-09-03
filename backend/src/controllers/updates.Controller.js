@@ -253,12 +253,13 @@ export const checkForUpdateMine = async (req, res) => {
     }
 
     const reported = String(req.query?.current_version || '0.0.0');
+    const available = isNewer(latest.version, reported);
     res.json({
       success: true,
       data: {
         entitled: true,
         component,
-        update_available: isNewer(latest.version, reported),
+        update_available: available,
         current_version: reported,
         latest_version: latest.version,
         channel: latest.channel,
@@ -266,12 +267,68 @@ export const checkForUpdateMine = async (req, res) => {
         is_mandatory: latest.is_mandatory,
         below_minimum: latest.min_supported_version
           ? versionSort(reported) < versionSort(latest.min_supported_version)
-          : false
+          : false,
+        // Was deliberately absent while no release existed to fetch — see
+        // checkForUpdate's identical block, now that client_releases is
+        // populated by the release pipeline this answers "here is the file"
+        // too, not just "one exists".
+        download: available
+          ? {
+            url: latest.download_url,
+            file_name: latest.file_name,
+            file_size: latest.file_size != null ? Number(latest.file_size) : null,
+            sha512: latest.sha512
+          }
+          : null
       }
     });
   } catch (error) {
     console.error('Error checking for updates (mine):', error);
     res.status(500).json({ success: false, message: 'Could not check for updates' });
+  } finally {
+    client.release();
+  }
+};
+
+/**
+ * GET /api/portal/downloads
+ *
+ * The website's own Downloads page, not a station or a console — a portal
+ * user asking "what can I install" before anything has been set up yet, so
+ * this takes no licence, no subscription check and no reported version. It
+ * is the one place `client_releases` is read by someone who isn't already
+ * running CafeXP.
+ */
+export const getLatestDownloads = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT DISTINCT ON (component) component, version, release_notes,
+             download_url, file_name, file_size, published_at
+      FROM client_releases
+      WHERE product = 'cafexp' AND is_published AND channel = 'stable'
+      ORDER BY component, version_sort DESC
+    `);
+
+    const byComponent = {};
+    rows.forEach((r) => {
+      byComponent[r.component] = {
+        version: r.version,
+        release_notes: r.release_notes,
+        download_url: r.download_url,
+        file_name: r.file_name,
+        file_size: r.file_size != null ? Number(r.file_size) : null,
+        published_at: r.published_at
+      };
+    });
+
+    res.json({
+      success: true,
+      data: { server: byComponent.server || null, client: byComponent.client || null }
+    });
+  } catch (error) {
+    console.error('Error loading downloads:', error);
+    res.status(500).json({ success: false, message: 'Could not load downloads' });
   } finally {
     client.release();
   }

@@ -95,6 +95,8 @@ export const portalApi = {
 
   subscription: () => request('/subscription', { noBranch: true }).then((b) => b.data),
 
+  downloads: () => request('/downloads', { noBranch: true }).then((b) => b.data),
+
   devices: () => request('/devices'),
   installations: () => request('/installations').then((b) => b.data),
   revokeInstallation: (id, reason) =>

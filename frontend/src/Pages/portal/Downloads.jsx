@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { usePortal } from '../../components/portal/PortalShell';
 import { Page, Card, Button, Banner, Pill } from '../../components/portal/ui';
+import { portalApi } from '../../lib/portalApi';
 
 /*
  * Downloads and the setup guide.
@@ -9,9 +10,17 @@ import { Page, Card, Button, Banner, Pill } from '../../components/portal/ui';
  * register a PC before the server is signed in — and the ordering is the
  * information, not decoration.
  *
- * The download buttons are honest about not being wired yet rather than
- * pretending: a button that downloads nothing is worse than one that says so.
+ * The download buttons show a real link only once a build has actually been
+ * published (GET /api/portal/downloads) — falling back to the same "coming
+ * soon" state as before whenever a component has nothing published yet, so
+ * a fetch failure or an empty catalogue degrades to what this page already
+ * looked like rather than a broken page.
  */
+const DOWNLOAD_BUTTON_CLASS =
+  'mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 ' +
+  'bg-gradient-to-br from-red-700 to-red-900 px-4 py-2 text-sm font-semibold text-white ' +
+  'shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] transition-all duration-300 ' +
+  'hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)] active:scale-[0.99]';
 
 const STEPS = [
   { title: 'Download CafeXP Server', body: 'Install it on the machine at your counter — the one that will run the café.' },
@@ -26,6 +35,13 @@ const STEPS = [
 
 const Downloads = () => {
   const { me } = usePortal();
+  const [downloads, setDownloads] = useState({ server: null, client: null });
+
+  useEffect(() => {
+    portalApi.downloads()
+      .then(setDownloads)
+      .catch(() => {}); // stays on "coming soon" — see the note above
+  }, []);
 
   return (
     <Page
@@ -49,9 +65,15 @@ const Downloads = () => {
           <p className="mt-4 text-sm text-neutral-400">
             One per branch. Sign in with your account and pick the branch it runs.
           </p>
-          <Button className="mt-5 w-full" disabled title="Not published yet">
-            Download — coming soon
-          </Button>
+          {downloads.server ? (
+            <a className={DOWNLOAD_BUTTON_CLASS} href={downloads.server.download_url} download>
+              Download v{downloads.server.version}
+            </a>
+          ) : (
+            <Button className="mt-5 w-full" disabled title="Not published yet">
+              Download — coming soon
+            </Button>
+          )}
         </Card>
 
         <Card
@@ -65,9 +87,15 @@ const Downloads = () => {
           <p className="mt-4 text-sm text-neutral-400">
             One per station. It finds your server on the local network automatically.
           </p>
-          <Button className="mt-5 w-full" disabled title="Not published yet">
-            Download — coming soon
-          </Button>
+          {downloads.client ? (
+            <a className={DOWNLOAD_BUTTON_CLASS} href={downloads.client.download_url} download>
+              Download v{downloads.client.version}
+            </a>
+          ) : (
+            <Button className="mt-5 w-full" disabled title="Not published yet">
+              Download — coming soon
+            </Button>
+          )}
         </Card>
       </div>
 

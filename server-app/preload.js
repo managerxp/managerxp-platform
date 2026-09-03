@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("api", {
   pushSessionState: (pcName, session) => ipcRenderer.invoke("session:push-state", { pcName, session }),
   // Grow a station's floating timer card after its session was extended.
   pushExtendTimer: (pcName, minutes) => ipcRenderer.invoke("session:push-extend-timer", { pcName, minutes }),
+  // Tell one connected station a newer client build is available.
+  pushUpdateAvailable: (pcName, payload) => ipcRenderer.invoke("update:push-available", { pcName, payload }),
   // Send a station the games its customer may choose from (installed + enabled).
   pushGames: (pcName, games) => ipcRenderer.invoke("session:push-games", { pcName, games }),
   // End-of-session cleanup on a station (close game, sign launchers out, free PC).

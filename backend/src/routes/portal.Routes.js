@@ -6,6 +6,7 @@ import {
   subscription, listDevices, listInstallations, revokeInstallation,
   listUsers, inviteUser, acceptInvite
 } from '../controllers/portal.Controller.js';
+import { getLatestDownloads } from '../controllers/updates.Controller.js';
 import { requirePortalUser, withOrganization, withBranch, requireOwner } from '../middleware/tenancy.js';
 import {
   portalListTickets, portalCreateTicket, portalGetTicket, portalReply, portalCloseTicket,
@@ -38,6 +39,10 @@ router.use(requirePortalUser);
 
 // Spans every organization the user belongs to, so it takes no org scope.
 router.get('/me', me);
+
+// Same reason — the Downloads page is what gets you an installation in the
+// first place, so it can't be scoped to one you don't have yet.
+router.get('/downloads', getLatestDownloads);
 
 router.get('/dashboard', withOrganization(), withBranch(), dashboard);
 

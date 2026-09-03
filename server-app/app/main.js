@@ -98,7 +98,26 @@
     var oldest = reported.sort(function (a, b) { return localVersionSort(a) - localVersionSort(b); })[0];
 
     Store.checkUpdate("client", oldest)
-      .then(function (data) { updateInfo.client = data; paintUpdateButton(); })
+      .then(function (data) {
+        updateInfo.client = data;
+        paintUpdateButton();
+        // The badge above is the summary (furthest-behind station only); this
+        // is what actually gets a build moving — every connected station on
+        // an older version than what was just found, not just the oldest one.
+        if (data && data.update_available && data.download && data.download.url) {
+          (Store.state.pcs || []).forEach(function (pc) {
+            if (!pc.client_version) return;
+            if (localVersionSort(pc.client_version) >= localVersionSort(data.latest_version)) return;
+            if (!Store.isConnected(pc.name)) return;
+            Store.pushUpdateAvailable(pc.name, {
+              version: data.latest_version,
+              download_url: data.download.url,
+              file_name: data.download.file_name,
+              sha512: data.download.sha512
+            }).catch(function () {});
+          });
+        }
+      })
       .catch(function () {});
   }
 

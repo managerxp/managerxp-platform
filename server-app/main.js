@@ -1058,6 +1058,19 @@ function registerIPCHandlers() {
     return pushExtendTimer(pcName, minutes);
   });
 
+  /* checkForSoftwareUpdate() found a station running an older client build
+     than what ManagerXP has published — tell it directly, the same way a
+     session push reaches one specific station. */
+  ipcMain.handle("update:push-available", async (_, { pcName, payload }) => {
+    const client = clients.get(pcName);
+    if (!client || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "UPDATE_AVAILABLE", ...payload }));
+    log(`Sent update notice to ${pcName}: v${payload.version}`);
+    return { success: true };
+  });
+
   /* The games a station may offer its customer. The renderer resolves the list
      (only this PC's installed, enabled titles) and hands it here to send down
      the station's connection, the same channel session state travels on. An

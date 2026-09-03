@@ -890,6 +890,12 @@
     });
   }
 
+  /** Tell one connected station a newer build exists and where to get it. */
+  function pushUpdateAvailable(pcName, payload) {
+    if (!api.pushUpdateAvailable) return Promise.resolve();
+    return api.pushUpdateAvailable(pcName, payload);
+  }
+
   /*
    * End-of-session cleanup.
    *
@@ -2085,6 +2091,7 @@
 
     // software updates — visibility only
     checkUpdate: checkUpdate,
+    pushUpdateAvailable: pushUpdateAvailable,
     reportStationVersion: reportStationVersion,
 
     // derived
