@@ -846,8 +846,43 @@
   }
 
   /** Mirror a session onto its station so the customer portal can show it. */
+  /*
+   * Decrypted venue-account credentials, for the one session that currently
+   * holds each account. Kept only in memory, only here — never written into
+   * state.sessions (what the console's own screens read), so nothing in this
+   * app's UI can end up displaying or logging one. Cleared the moment the
+   * account frees up, so a credential never outlives the session that needed
+   * it, and a small in-memory map never grows unbounded.
+   */
+  var credentialCache = {};
+  function fetchAccountCredential(accountId, gamePlatformId) {
+    if (credentialCache[accountId]) return Promise.resolve(credentialCache[accountId]);
+    return request("/api/games/platforms/" + gamePlatformId + "/accounts/" + accountId + "/credential")
+      .then(function (r) {
+        credentialCache[accountId] = r.data;
+        return r.data;
+      });
+  }
+
+  /*
+   * Mirror a session onto its station, including — for a venue-account game —
+   * what the station needs to sign that account in itself. This is the one
+   * path a decrypted password ever travels: fetched here, attached to this
+   * one outgoing message, never touching state.sessions or any rendered
+   * screen in this console.
+   */
   function pushSessionToStation(pcName, session) {
     if (!api.pushSessionState) return Promise.resolve();
+    if (session && session.game_account_id && session.game_platform_id) {
+      return fetchAccountCredential(session.game_account_id, session.game_platform_id)
+        .then(function (cred) {
+          return api.pushSessionState(pcName, Object.assign({}, session, { account_credential: cred }));
+        })
+        .catch(function (e) {
+          console.warn("[store] credential fetch failed, launching without auto sign-in", e);
+          return api.pushSessionState(pcName, session);
+        });
+    }
     return api.pushSessionState(pcName, session).catch(function (e) {
       console.warn("[store] session push failed", e);
     });
@@ -954,6 +989,9 @@
     /* A session that has just ended leaves a machine holding the last
        customer's game accounts. Clean it before the next person sits down. */
     if (session && !running && pcName) cleanupStation(pcName, session.pc_id);
+    // The account is free for the next session the moment this one ends —
+    // its cached password must not outlive it.
+    if (session && !running && session.game_account_id) delete credentialCache[session.game_account_id];
     return pushSessionToStation(pcName, stillRunning(session) ? session : null)
       .then(function () { return session; });
   }

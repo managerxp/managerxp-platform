@@ -527,8 +527,122 @@
   }
 
   /* ==========================================================================
+     COIN TOP-UP
+     "Pay 1000, get 1100" — a fixed payout for specific top-up amounts, shown
+     to the customer as a highlighted quick-pick on the top-up screen (client
+     and counter both), rather than a flat rate applied invisibly. An amount
+     with no tier here just uses the standard coin rate as always.
+
+     Lives on this page rather than in Settings: it's a price, same as every
+     row in the table beside it, just priced in XP paid rather than minutes
+     played.
+     ========================================================================== */
+  var topupTiers = [];
+  var topupLoaded = false;
+  var topupRoot = null;
+
+  function renderTopupRows() {
+    if (!topupRoot) return;
+    var rowsHost = topupRoot.querySelector("#gpBonusRows");
+    if (!rowsHost) return;
+    UI.clear(rowsHost);
+    if (!topupTiers.length) {
+      rowsHost.appendChild(UI.el("div", {
+        class: "faint", style: "font-size:12px",
+        text: "No bonus tiers — every top-up uses the standard coin rate."
+      }));
+      return;
+    }
+    topupTiers.forEach(function (t, i) {
+      var row = UI.el("div", { class: "row gap-2", style: "align-items:center" });
+      row.innerHTML =
+        '<span class="faint" style="font-size:12px">Pay ₹</span>' +
+        '<input class="input" type="number" min="1" step="1" style="max-width:110px" data-pay value="' +
+          UI.esc(t.pay_amount) + '">' +
+        '<span class="faint" style="font-size:12px">get</span>' +
+        '<input class="input" type="number" min="1" step="1" style="max-width:110px" data-credit value="' +
+          UI.esc(t.credit_amount) + '">' +
+        '<span class="faint" style="font-size:12px">XP</span>';
+      var remove = UI.el("button", {
+        class: "btn btn-ghost btn-sm btn-icon", type: "button", html: Icon("close", 13), "data-tip": "Remove"
+      });
+      remove.addEventListener("click", function () { topupTiers.splice(i, 1); renderTopupRows(); });
+      row.appendChild(remove);
+      row.querySelector("[data-pay]").addEventListener("input", function (e) { t.pay_amount = e.target.value; });
+      row.querySelector("[data-credit]").addEventListener("input", function (e) { t.credit_amount = e.target.value; });
+      rowsHost.appendChild(row);
+    });
+  }
+
+  function loadTopupTiers() {
+    if (topupLoaded) { renderTopupRows(); return Promise.resolve(); }
+    return Store.getSettings("wallet").then(function (rows) {
+      var row = (rows || []).filter(function (r) { return r.setting_key === "topup.bonus_tiers"; })[0];
+      try {
+        topupTiers = row && row.setting_value ? JSON.parse(row.setting_value) : [];
+      } catch (e) { topupTiers = []; }
+      if (!Array.isArray(topupTiers)) topupTiers = [];
+      topupLoaded = true;
+      renderTopupRows();
+    }).catch(function () { renderTopupRows(); });
+  }
+
+  function renderTopupPane(pane) {
+    pane.innerHTML =
+      '<div class="card">' +
+        '<div class="card-head"><h2>Coin bonus on top-up</h2></div>' +
+        '<div class="card-body col gap-3">' +
+          '<div class="faint" style="font-size:13px;line-height:1.6">Reward bigger top-ups — e.g. pay ' +
+            '₹1,000, get 1,100 XP. Shown to customers as a highlighted quick-pick on the top-up screen, ' +
+            'in the client app and at the counter alike.</div>' +
+          '<div class="col gap-2" id="gpBonusRows"></div>' +
+          '<div class="row gap-2">' +
+            '<button class="btn btn-outline btn-sm" type="button" id="gpBonusAdd">' + Icon("plus", 14) +
+              '<span class="btn-label">Add a tier</span></button>' +
+            '<button class="btn btn-primary btn-sm" type="button" id="gpBonusSave">' + Icon("check", 14) +
+              '<span class="btn-label">Save</span></button>' +
+          "</div>" +
+        "</div>" +
+      "</div>";
+    topupRoot = pane;
+
+    pane.querySelector("#gpBonusAdd").addEventListener("click", function () {
+      topupTiers.push({ pay_amount: "", credit_amount: "" });
+      renderTopupRows();
+    });
+
+    var saveBtn = pane.querySelector("#gpBonusSave");
+    saveBtn.addEventListener("click", function () {
+      var clean = topupTiers
+        .map(function (t) { return { pay_amount: Number(t.pay_amount), credit_amount: Number(t.credit_amount) }; })
+        .filter(function (t) { return Number.isFinite(t.pay_amount) && t.pay_amount > 0 &&
+          Number.isFinite(t.credit_amount) && t.credit_amount > 0; });
+
+      if (clean.some(function (t) { return t.credit_amount <= t.pay_amount; })) {
+        UI.toast.warn("Not a bonus", "Each tier's coins should be more than what's paid, or it isn't a bonus.");
+        return;
+      }
+
+      UI.withBusy(saveBtn, function () {
+        return Store.setSetting("topup.bonus_tiers", JSON.stringify(clean))
+          .then(function () {
+            topupTiers = clean;
+            renderTopupRows();
+            UI.toast.ok("Coin bonus saved",
+              clean.length ? clean.length + " tier(s) active" : "No tiers — standard rate applies to every top-up");
+          })
+          .catch(function (e) { UI.toast.error("Could not save", e.message); });
+      });
+    });
+
+    loadTopupTiers();
+  }
+
+  /* ==========================================================================
      PAGE
      ========================================================================== */
+  var activeTab = "prices";
+
   global.CXPages["gaming-prices"] = {
     title: "Gaming Price Master",
     subtitle: "What each game costs per session",
@@ -542,7 +656,7 @@
             '<div class="page-title">Gaming Price Master</div>' +
             '<div class="page-sub">Game → Session → Duration → Price. Names and durations come from the masters.</div>' +
           "</div>" +
-          '<div class="page-actions">' +
+          '<div class="page-actions" id="gpPriceActions">' +
             '<button class="btn btn-outline" id="gpRefresh">' + Icon("refresh", 15) +
               '<span class="btn-label">Refresh</span></button>' +
             '<button class="btn btn-outline" id="gpAddGame">' + Icon("plus", 15) +
@@ -551,20 +665,27 @@
               '<span class="btn-label">Add price</span></button>' +
           "</div>" +
         "</div>" +
-        '<div class="toolbar">' +
-          '<div class="search" style="width:280px">' + Icon("search", 15) +
-            '<input class="input" id="gpSearch" type="search" placeholder="Search game or session…" autocomplete="off">' +
-          "</div>" +
-          '<select class="select" id="gpGameFilter" style="width:200px">' +
-            '<option value="">All games</option>' +
-          "</select>" +
-          '<div class="row gap-2" id="gpFilters">' +
-            '<button class="chip" data-status="" aria-pressed="true">All</button>' +
-            '<button class="chip" data-status="ACTIVE">Active</button>' +
-            '<button class="chip" data-status="INACTIVE">Inactive</button>' +
-          "</div>" +
+        '<div class="tabs" id="gpTabs" style="margin-bottom:var(--s-5)">' +
+          '<button data-tab="prices" aria-selected="true">Prices</button>' +
+          '<button data-tab="topup" aria-selected="false">Coin Top-up</button>' +
         "</div>" +
-        '<div class="card card-body-flush" id="gpTable"></div>';
+        '<div id="gpPricesPane">' +
+          '<div class="toolbar">' +
+            '<div class="search" style="width:280px">' + Icon("search", 15) +
+              '<input class="input" id="gpSearch" type="search" placeholder="Search game or session…" autocomplete="off">' +
+            "</div>" +
+            '<select class="select" id="gpGameFilter" style="width:200px">' +
+              '<option value="">All games</option>' +
+            "</select>" +
+            '<div class="row gap-2" id="gpFilters">' +
+              '<button class="chip" data-status="" aria-pressed="true">All</button>' +
+              '<button class="chip" data-status="ACTIVE">Active</button>' +
+              '<button class="chip" data-status="INACTIVE">Inactive</button>' +
+            "</div>" +
+          "</div>" +
+          '<div class="card card-body-flush" id="gpTable"></div>' +
+        "</div>" +
+        '<div id="gpTopupPane" class="hidden"></div>';
       root.appendChild(page);
 
       page.querySelector("#gpAdd").addEventListener("click", function () { priceForm(null); });
@@ -595,6 +716,28 @@
         });
       });
 
+      var pricesPane = page.querySelector("#gpPricesPane");
+      var topupPane = page.querySelector("#gpTopupPane");
+      var priceActions = page.querySelector("#gpPriceActions");
+
+      function syncTab() {
+        UI.$$("#gpTabs button", page).forEach(function (btn) {
+          btn.setAttribute("aria-selected", String(btn.dataset.tab === activeTab));
+        });
+        var onPrices = activeTab === "prices";
+        pricesPane.classList.toggle("hidden", !onPrices);
+        topupPane.classList.toggle("hidden", onPrices);
+        priceActions.classList.toggle("hidden", !onPrices);
+        if (!onPrices && !topupPane.childElementCount) renderTopupPane(topupPane);
+      }
+      UI.$$("#gpTabs button", page).forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          activeTab = btn.dataset.tab;
+          syncTab();
+        });
+      });
+      syncTab();
+
       syncFilters();
       load();
     },
@@ -602,6 +745,7 @@
     unmount: function () {
       clearTimeout(searchTimer);
       rootEl = null;
+      topupRoot = null;
     }
   };
 })(window);

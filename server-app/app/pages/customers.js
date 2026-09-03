@@ -25,12 +25,14 @@
   var TYPE_FILTERS = [
     { id: "all", label: "All" },
     { id: "normal", label: "Normal" },
-    { id: "regular", label: "Regular" }
+    { id: "regular", label: "Regular" },
+    { id: "staff", label: "Staff" }
   ];
 
   function visibleCustomers() {
     if (typeFilter === "regular") return customers.filter(function (c) { return c.is_regular; });
-    if (typeFilter === "normal") return customers.filter(function (c) { return !c.is_regular; });
+    if (typeFilter === "staff") return customers.filter(function (c) { return c.is_staff; });
+    if (typeFilter === "normal") return customers.filter(function (c) { return !c.is_regular && !c.is_staff; });
     return customers;
   }
 
@@ -242,22 +244,28 @@
      normal. The create-customer dialog only sets this once, at registration;
      this is the same PATCH /tier call for a customer who already exists.
      ========================================================================== */
+  var TYPE_HINT = {
+    NORMAL: "A walk-in. Pays at the counter, no standing discount.",
+    REGULAR: "A known customer. Gets a discount on the whole bill and can settle later.",
+    STAFF: "A test/internal account — yours, for trying things out. Excluded from every revenue figure in Reports, Billing and the Dashboard."
+  };
+
   function editTierDialog(customer, onDone) {
-    var wasRegular = !!customer.is_regular;
+    var initialType = customer.customer_type || "NORMAL";
+    var wasRegular = initialType === "REGULAR";
 
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
       '<div class="field">' +
         '<label class="field-label">Customer type</label>' +
         '<div class="row gap-2" id="etType">' +
-          '<button type="button" class="chip" data-type="NORMAL" aria-pressed="' + String(!wasRegular) + '">Normal</button>' +
-          '<button type="button" class="chip" data-type="REGULAR" aria-pressed="' + String(wasRegular) + '">Regular</button>' +
+          ["NORMAL", "REGULAR", "STAFF"].map(function (t) {
+            var label = t === "NORMAL" ? "Normal" : t === "REGULAR" ? "Regular" : "Staff";
+            return '<button type="button" class="chip" data-type="' + t + '" aria-pressed="' +
+              String(t === initialType) + '">' + label + "</button>";
+          }).join("") +
         "</div>" +
-        '<div class="field-hint" id="etTypeHint">' +
-          (wasRegular
-            ? "A known customer. Gets a discount on the whole bill and can settle later."
-            : "A walk-in. Pays at the counter, no standing discount.") +
-        "</div>" +
+        '<div class="field-hint" id="etTypeHint">' + TYPE_HINT[initialType] + "</div>" +
       "</div>" +
 
       '<div class="' + (wasRegular ? "" : "hidden") + '" id="etRegularFields">' +
@@ -278,7 +286,7 @@
             'value="' + UI.esc(customer.tier_note || "") + '"></div>' +
       "</div>";
 
-    var type = wasRegular ? "REGULAR" : "NORMAL";
+    var type = initialType;
     var regularFields = body.querySelector("#etRegularFields");
     var typeHint = body.querySelector("#etTypeHint");
     UI.$$("#etType .chip", body).forEach(function (chip) {
@@ -288,17 +296,15 @@
           c.setAttribute("aria-pressed", String(c === chip));
         });
         regularFields.classList.toggle("hidden", type !== "REGULAR");
-        typeHint.textContent = type === "REGULAR"
-          ? "A known customer. Gets a discount on the whole bill and can settle later."
-          : "A walk-in. Pays at the counter, no standing discount.";
+        typeHint.textContent = TYPE_HINT[type];
       });
     });
 
     return UI.modal({
       title: "Customer type",
       description: wasRegular
-        ? "Change " + customer.customer_name + "’s discount, credit limit, or move them back to normal."
-        : "Move " + customer.customer_name + " to a regular, with a discount and an optional tab.",
+        ? "Change " + customer.customer_name + "’s discount, credit limit, or move them to normal or staff."
+        : "Move " + customer.customer_name + " to a regular with a discount and an optional tab, or mark them as a staff/test account.",
       body: body,
       actions: [
         { label: "Cancel", variant: "ghost" },
@@ -314,11 +320,15 @@
             return Store.setCustomerTier(customer.customer_id, payload)
               .then(function (r) {
                 UI.toast.ok(
-                  type === "REGULAR" ? "Marked as a regular" : "Set back to normal",
+                  type === "REGULAR" ? "Marked as a regular"
+                    : type === "STAFF" ? "Marked as staff"
+                    : "Set back to normal",
                   type === "REGULAR"
                     ? r.data.discount_percent + "% off · " +
                       (r.data.credit_limit > 0 ? r.data.credit_limit + " credit" : "no tab")
-                    : customer.customer_name + " now pays at the counter"
+                    : type === "STAFF"
+                      ? "Excluded from revenue reports"
+                      : customer.customer_name + " now pays at the counter"
                 );
                 if (onDone) onDone();
                 return true;
@@ -414,7 +424,12 @@
                 ? '<div class="kv"><span class="kv-key">Note</span><span class="kv-val">' +
                     UI.esc(current.tier_note) + "</span></div>"
                 : "")
-            : '<div class="kv"><span class="kv-key">Status</span><span class="kv-val">' +
+            : current.is_staff
+              ? '<div class="kv"><span class="kv-key">Status</span><span class="kv-val">' +
+                  '<span class="badge">Staff</span></span></div>' +
+                '<div class="kv"><span class="kv-key">Note</span><span class="kv-val">' +
+                  "Test/internal account — excluded from revenue in Reports, Billing and the Dashboard</span></div>"
+              : '<div class="kv"><span class="kv-key">Status</span><span class="kv-val">' +
                 "Normal — pays at the counter, no standing discount</span></div>") +
         "</div>";
       wrap.appendChild(tier);
@@ -709,10 +724,12 @@
     if (!shown.length) {
       host.appendChild(UI.emptyState({
         icon: "customers",
-        title: typeFilter === "regular" ? "No regulars yet" : "No normal customers",
+        title: typeFilter === "regular" ? "No regulars yet" : typeFilter === "staff" ? "No staff accounts yet" : "No normal customers",
         text: typeFilter === "regular"
           ? "Nobody has been marked as a regular. Open a customer and edit their type to promote one."
-          : "Everyone who matches is currently a regular.",
+          : typeFilter === "staff"
+            ? "Nobody has been marked as staff. Open a customer and edit their type to mark one for testing."
+            : "Everyone who matches is currently a regular or staff.",
         actions: [{ label: "Show all", icon: "close", onClick: function () {
           typeFilter = "all";
           render();
@@ -741,7 +758,9 @@
           (c.is_regular
             ? ' <span class="badge" data-status="accent">Regular' +
               (c.discount_percent > 0 ? " · " + c.discount_percent + "%" : "") + "</span>"
-            : "") +
+            : c.is_staff
+              ? ' <span class="badge">Staff</span>'
+              : "") +
           "</div></td>" +
         '<td class="mono faint" style="font-size:12px">' + UI.esc(c.phone_number || "—") + "</td>" +
         '<td class="faint" style="font-size:12px">' + UI.esc(c.email || "—") + "</td>" +

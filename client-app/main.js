@@ -2,7 +2,7 @@ const { app, BrowserWindow, ipcMain, screen, Menu, globalShortcut, shell } = req
 const WebSocket = require("ws");
 const os = require("os");
 const path = require("path");
-const { exec } = require("child_process");
+const { exec,spawn } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const telemetry = require("./telemetry");
@@ -35,6 +35,351 @@ let allowQuit = false;
    moved aside, not a station unlocked, so clicking it in the task bar seals
    it straight back to full screen. */
 let kioskLocked = true;
+
+/*
+ * Windows keyboard guard.
+ *
+ * Electron's before-input-event cannot see shell-level shortcuts such as
+ * Alt+Tab or the Windows key. This low-level WH_KEYBOARD_LL hook runs before
+ * those shortcuts reach the Windows shell and swallows the escape keys while
+ * CafeXP is locked.
+ *
+ * Ctrl+Alt+Shift+Q is deliberately allowed so the staff hatch still works.
+ * Ctrl+Alt+Delete and Win+L are Windows secure/system shortcuts and cannot be
+ * intercepted reliably by a normal desktop application.
+ */
+let windowsKioskGuard = null;
+let windowsKioskGuardStarting = false;
+
+const WINDOWS_KIOSK_GUARD_SCRIPT = String.raw`
+Add-Type @'
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+
+public static class CafeXPKbdGuard {
+    private const int WH_KEYBOARD_LL = 13;
+
+    private const int WM_KEYDOWN = 0x0100;
+    private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_KEYUP = 0x0101;
+    private const int WM_SYSKEYUP = 0x0105;
+
+    private const int VK_LWIN = 0x5B;
+    private const int VK_RWIN = 0x5C;
+    private const int VK_TAB = 0x09;
+    private const int VK_ESCAPE = 0x1B;
+    private const int VK_F4 = 0x73;
+    private const int VK_F11 = 0x7A;
+    private const int VK_F12 = 0x7B;
+    private const int VK_Q = 0x51;
+    private const int VK_D = 0x44;
+    private const int VK_E = 0x45;
+    private const int VK_R = 0x52;
+    private const int VK_X = 0x58;
+
+    private const int VK_CONTROL = 0x11;
+    private const int VK_MENU = 0x12;
+    private const int VK_SHIFT = 0x10;
+
+    private delegate IntPtr LowLevelKeyboardProc(
+        int nCode,
+        IntPtr wParam,
+        IntPtr lParam
+    );
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KBDLLHOOKSTRUCT {
+        public uint vkCode;
+        public uint scanCode;
+        public uint flags;
+        public uint time;
+        public UIntPtr dwExtraInfo;
+    }
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr SetWindowsHookEx(
+        int idHook,
+        LowLevelKeyboardProc lpfn,
+        IntPtr hMod,
+        uint dwThreadId
+    );
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto)]
+    private static extern IntPtr CallNextHookEx(
+        IntPtr hhk,
+        int nCode,
+        IntPtr wParam,
+        IntPtr lParam
+    );
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(
+        out MSG lpMsg,
+        IntPtr hWnd,
+        uint wMsgFilterMin,
+        uint wMsgFilterMax
+    );
+
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref MSG lpMsg);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr DispatchMessage(ref MSG lpMsg);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct POINT {
+        public int x;
+        public int y;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public POINT pt;
+    }
+
+    private static IntPtr hookId = IntPtr.Zero;
+    private static LowLevelKeyboardProc proc = HookCallback;
+
+    private static bool IsDown(int vk) {
+        return (GetAsyncKeyState(vk) & 0x8000) != 0;
+    }
+
+    private static bool IsKeyMessage(IntPtr wParam) {
+        int msg = wParam.ToInt32();
+
+        return msg == WM_KEYDOWN ||
+               msg == WM_SYSKEYDOWN ||
+               msg == WM_KEYUP ||
+               msg == WM_SYSKEYUP;
+    }
+
+    private static bool IsBlockedShortcut(int vk) {
+        bool ctrl = IsDown(VK_CONTROL);
+        bool alt = IsDown(VK_MENU);
+        bool shift = IsDown(VK_SHIFT);
+
+        // Always block the Windows keys while kiosk is active.
+        if (vk == VK_LWIN || vk == VK_RWIN)
+            return true;
+
+        // F11/F12
+        if (vk == VK_F11 || vk == VK_F12)
+            return true;
+
+        // Alt+Tab
+        if (alt && vk == VK_TAB)
+            return true;
+
+        // Alt+F4
+        if (alt && vk == VK_F4)
+            return true;
+
+        // Alt+Escape
+        if (alt && vk == VK_ESCAPE)
+            return true;
+
+        // Ctrl+Escape
+        if (ctrl && vk == VK_ESCAPE)
+            return true;
+
+        // Ctrl+Shift+Escape
+        if (ctrl && shift && vk == VK_ESCAPE)
+            return true;
+
+        // Windows shortcuts
+        if ((IsDown(VK_LWIN) || IsDown(VK_RWIN))) {
+            if (vk == VK_D ||
+                vk == VK_E ||
+                vk == VK_R ||
+                vk == VK_TAB ||
+                vk == VK_X) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IntPtr HookCallback(
+        int nCode,
+        IntPtr wParam,
+        IntPtr lParam
+    ) {
+        if (nCode >= 0 && IsKeyMessage(wParam)) {
+            KBDLLHOOKSTRUCT data =
+                Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+
+            int vk = (int)data.vkCode;
+
+            // Allow the staff escape shortcut:
+            // Ctrl+Alt+Shift+Q
+            //
+            // Q must pass through to Electron's globalShortcut.
+            if (vk == VK_Q &&
+                IsDown(VK_CONTROL) &&
+                IsDown(VK_MENU) &&
+                IsDown(VK_SHIFT)) {
+                return CallNextHookEx(hookId, nCode, wParam, lParam);
+            }
+
+            if (IsBlockedShortcut(vk)) {
+                return (IntPtr)1;
+            }
+        }
+
+        return CallNextHookEx(hookId, nCode, wParam, lParam);
+    }
+
+    public static void Run() {
+        using (Process current = Process.GetCurrentProcess()) {
+            using (ProcessModule module = current.MainModule) {
+                hookId = SetWindowsHookEx(
+                    WH_KEYBOARD_LL,
+                    proc,
+                    GetModuleHandle(module.ModuleName),
+                    0
+                );
+            }
+        }
+
+        if (hookId == IntPtr.Zero)
+            throw new Exception("SetWindowsHookEx failed.");
+
+        MSG msg;
+
+        while (GetMessage(out msg, IntPtr.Zero, 0, 0) != 0) {
+            TranslateMessage(ref msg);
+            DispatchMessage(ref msg);
+        }
+    }
+}
+'@
+
+[Console]::WriteLine("CafeXP keyboard guard started")
+[CafeXPKbdGuard]::Run()
+`;
+
+function startWindowsKioskGuard() {
+    if (process.platform !== "win32")
+        return;
+
+    if (windowsKioskGuard)
+        return;
+
+    if (windowsKioskGuardStarting)
+        return;
+
+    windowsKioskGuardStarting = true;
+
+    try {
+        const child = spawn(
+            "powershell.exe",
+            [
+                "-NoProfile",
+                "-NonInteractive",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-WindowStyle",
+                "Hidden",
+                "-Command",
+                WINDOWS_KIOSK_GUARD_SCRIPT
+            ],
+            {
+                windowsHide: true,
+                stdio: ["ignore", "pipe", "pipe"]
+            }
+        );
+
+        windowsKioskGuard = child;
+
+        child.stdout.on("data", data => {
+            console.log("[Kiosk] Windows keyboard guard:", data.toString().trim());
+        });
+
+        child.stderr.on("data", data => {
+            console.error("[Kiosk] Windows keyboard guard error:", data.toString().trim());
+        });
+
+        child.on("error", error => {
+            console.error("[Kiosk] Failed to start Windows keyboard guard:", error);
+            windowsKioskGuard = null;
+            windowsKioskGuardStarting = false;
+        });
+
+        child.on("exit", (code, signal) => {
+            console.log(
+                `[Kiosk] Windows keyboard guard exited (code=${code}, signal=${signal})`
+            );
+
+            windowsKioskGuard = null;
+            windowsKioskGuardStarting = false;
+
+            // Restart automatically if kiosk protection is still required.
+            if (kioskLocked) {
+                setTimeout(() => {
+                    if (kioskLocked && !windowsKioskGuard) {
+                        startWindowsKioskGuard();
+                    }
+                }, 500);
+            }
+        });
+
+        windowsKioskGuardStarting = false;
+
+    } catch (error) {
+        windowsKioskGuardStarting = false;
+        windowsKioskGuard = null;
+
+        console.error(
+            "[Kiosk] Failed to start Windows keyboard guard:",
+            error
+        );
+    }
+}
+
+function stopWindowsKeyboardBlocker() {
+    if (!windowsKioskGuard)
+        return;
+
+    try {
+        windowsKioskGuard.kill();
+    } catch (error) {
+        console.warn(
+            "[Kiosk] Could not stop Windows keyboard guard:",
+            error
+        );
+    }
+
+    windowsKioskGuard = null;
+    windowsKioskGuardStarting = false;
+}
+
+function syncWindowsKeyboardBlocker() {
+    if (process.platform !== "win32")
+        return;
+
+    if (kioskLocked) {
+        startWindowsKioskGuard();
+    } else {
+        stopWindowsKeyboardBlocker();
+    }
+}
 
 /*
  * The café's staff-unlock PIN, pushed by the console when this station
@@ -205,7 +550,7 @@ function launchGame(game) {
   if (plan.url) {
     // Protocol hand-off to the launcher. openExternal resolves once the OS
     // has accepted the URL, not when the game is up — which is all we need.
-    shell.openExternal(plan.url).then(() => {
+    const openGame = () => shell.openExternal(plan.url).then(() => {
       markSessionGameConfirmed();
       // Nothing to poll for a protocol hand-off (there is no PID to watch),
       // so this is the only launched signal it ever gets — without it the
@@ -217,6 +562,15 @@ function launchGame(game) {
       sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
       reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     });
+
+    // A venue account reserved for this session — sign Steam into it first,
+    // best-effort, before handing off to the game itself.
+    const credential = game.platform === 'Steam' && currentSession && currentSession.account_credential;
+    if (credential) {
+      ensureSteamSignedIn(credential).then(openGame);
+    } else {
+      openGame();
+    }
   } else if (plan.exe) {
     const cmd = game.launch_arguments ? `"${plan.exe}" ${game.launch_arguments}` : `"${plan.exe}"`;
     const child = exec(cmd, (err) => {
@@ -371,6 +725,44 @@ async function detectLaunchers() {
   }
 
   return result;
+}
+
+/*
+ * Best-effort Steam sign-in for a venue account, ahead of the game hand-off.
+ *
+ * `-login <user> <pass>` is the one CLI credential mechanism Steam still
+ * honours, for switching which account is signed in — it does not launch the
+ * game itself, which still happens the same way it always has, via
+ * steam://rungameid, once this has had a chance to finish.
+ *
+ * Steam Guard or any other second factor on the account defeats this
+ * completely: there is no way to script past a prompt Valve deliberately
+ * requires a human to answer, and this makes no attempt to. The account this
+ * is meant for is the café's own, reserved for "Just Play" precisely so it
+ * can be left free of that friction — the same reason a launcher already
+ * signed in on the station was the alternative to this in the first place.
+ */
+function ensureSteamSignedIn(credential) {
+  if (!credential || !credential.username || !credential.password) return Promise.resolve();
+  return detectLaunchers().then((launchers) => {
+    const steam = launchers.Steam;
+    if (!steam || !steam.installed) {
+      log('Steam auto sign-in skipped: Steam not found on this station');
+      return;
+    }
+    log(`Signing in to venue Steam account (${credential.username}) before launch`);
+    return new Promise((resolve) => {
+      exec(
+        `"${steam.path}" -login "${credential.username}" "${credential.password}"`,
+        { windowsHide: true },
+        (err) => { if (err) log(`Steam sign-in command failed: ${err.message}`); }
+      );
+      /* A fixed wait rather than polling for "signed in": there is no public
+         signal for that which would not also fire while a Guard prompt sits
+         waiting on a human, so polling could not tell the two apart anyway. */
+      setTimeout(resolve, 6000);
+    });
+  }).catch((e) => { log(`Steam auto sign-in error: ${e.message}`); });
 }
 
 /* ==========================================================================
@@ -1515,11 +1907,8 @@ function applyKioskCapabilities() {
  * of the combinations it tries to block — Alt+Tab above all — are intercepted
  * by Windows' own shell before any application's window procedure sees them;
  * calling preventDefault() there does nothing for those specific keys. The
- * fix is `globalShortcut.register`, which claims a combination system-wide
- * through the same Win32 RegisterHotKey call a real hotkey utility would use,
- * so Windows never gets to act on it at all. A no-op handler is the whole
- * trick: claiming the combination and doing nothing on it *is* "stay on the
- * kiosk".
+ * WH_KEYBOARD_LL hook started by startWindowsKioskGuard() runs ahead of the
+ * shell itself, which is the only thing that actually stops them.
  *
  * Win+L and Ctrl+Alt+Del are deliberately not attempted here — Windows
  * reserves both as part of the Secure Attention Sequence and refuses to let
@@ -1527,26 +1916,9 @@ function applyKioskCapabilities() {
  * Group Policy / Assigned Access configuration on the machine itself can
  * change that, so claiming success here would be a lie.
  */
-const KIOSK_ESCAPE_SHORTCUTS = [
-  'Alt+Tab', 'Alt+Escape', 'Control+Escape', 'Control+Shift+Escape',
-  'Super+D', 'Super+E', 'Super+R', 'Super+Tab', 'Super+X'
-];
-let kioskShortcutsClaimed = false;
-
+/* Keep the Windows keyboard guard synchronized with kioskLocked. */
 function syncKioskShortcuts() {
-  if (kioskLocked && !kioskShortcutsClaimed) {
-    KIOSK_ESCAPE_SHORTCUTS.forEach((combo) => {
-      const ok = globalShortcut.register(combo, () => {});
-      if (!ok) log(`[Kiosk] Could not claim ${combo} — another application already holds it.`);
-    });
-    kioskShortcutsClaimed = true;
-  } else if (!kioskLocked && kioskShortcutsClaimed) {
-    /* Targeted, not unregisterAll(): the staff Ctrl+Alt+Shift+Q combo is
-       registered separately for the life of the app and must survive an
-       unlock, since re-locking uses the same keys. */
-    KIOSK_ESCAPE_SHORTCUTS.forEach((combo) => globalShortcut.unregister(combo));
-    kioskShortcutsClaimed = false;
-  }
+  syncWindowsKeyboardBlocker();
 }
 
 /* Tell the page whether it is sealed, so the on-screen window controls can
@@ -1704,6 +2076,7 @@ ipcMain.handle('staff-pin:try', async (_event, typed) => {
   }
 
   kioskLocked = false;
+  stopWindowsKeyboardBlocker();
   if (alive(win)) {
     win.setKiosk(false);
     win.setFullScreen(false);
@@ -1759,6 +2132,10 @@ function runPowerAction(ws, action, delaySeconds) {
      *
      * Genuinely unlocking a station is Ctrl+Alt+Shift+Q, at the station.
      */
+    // kioskLocked itself stays true (see above), so this stops the hook
+    // directly rather than through publishKioskState — restore-client's
+    // own publishKioskState() call is what starts it back up.
+    stopWindowsKeyboardBlocker();
     win.setKiosk(false);
     win.setFullScreen(false);
     win.minimize();
@@ -1964,7 +2341,15 @@ function listen() {
           : "cleared";
         log(`Session ${summary}`);
         console.log(`[Session] Received: ${summary}`);
-        sendToWindow(win, "session-state", currentSession);
+        // account_credential exists only for the main process's own Steam
+        // sign-in step (see ensureSteamSignedIn) — the renderer has no use
+        // for it and must never hold it, not even in memory.
+        if (currentSession && currentSession.account_credential) {
+          const { account_credential, ...forRenderer } = currentSession;
+          sendToWindow(win, "session-state", forRenderer);
+        } else {
+          sendToWindow(win, "session-state", currentSession);
+        }
 
         /* The self-started session just went live — launch the title the
            customer picked when they hit Start, so they land straight in the

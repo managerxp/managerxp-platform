@@ -371,6 +371,16 @@
     var Wallet = global.CXWallet;
     var host = UI.el("div", { class: "col gap-4" });
     var selectedGame = null, selectedPriceId = null, starting = false;
+    /* A regular customer the café has given a credit limit can start even
+       short of the price — the server allows it (session.Controller.js's
+       require_prepaid falls back to their credit) and the bill settles the
+       rest later. Fetched once so the balance note below can say so instead
+       of wrongly telling them to top up first when they don't need to. */
+    var creditLimit = 0;
+    Wallet.request("/api/customers/me").then(function (me) {
+      creditLimit = (me && me.can_pay_later) ? Number(me.credit_limit) || 0 : 0;
+      render();
+    }).catch(function () { /* falls back to wallet-only messaging below */ });
     /* null until the game's account mode has been answered. Only asked when
        the café actually offers a choice — a game that is venue-only or
        own-login-only has one possible answer, so asking would be a step that
@@ -503,15 +513,25 @@
       var selectedPrice = prices.filter(function (p) { return p.price_id === selectedPriceId; })[0];
       if (selectedPrice) {
         var covers = balance !== null && balance >= selectedPrice.price;
+        // A credit-eligible regular can make up the difference on their
+        // account — checked against the limit only, not what they may
+        // already owe elsewhere, so this can still be optimistic; the
+        // server has the exact answer either way.
+        var onCredit = !covers && balance !== null && creditLimit > 0 &&
+          (selectedPrice.price - balance) <= creditLimit;
         var note = UI.el("div", { class: "notice" });
-        note.setAttribute("data-status", covers ? "online" : "warning");
-        note.innerHTML = Icon(covers ? "check" : "alert", 16) + "<div>" +
+        note.setAttribute("data-status", covers ? "online" : onCredit ? "accent" : "warning");
+        note.innerHTML = Icon(covers || onCredit ? "check" : "alert", 16) + "<div>" +
           (balance === null
             ? "Checking your balance…"
             : covers
               ? "Your wallet holds " + UI.esc(Wallet.money(balance)) + " — enough to start."
-              : "Your wallet holds " + UI.esc(Wallet.money(balance)) + ", and this needs " +
-                UI.esc(Wallet.money(selectedPrice.price)) + ". Top up at the counter to start.") +
+              : onCredit
+                ? "Your wallet holds " + UI.esc(Wallet.money(balance)) + " — short by " +
+                  UI.esc(Wallet.money(selectedPrice.price - balance)) +
+                  ", which goes on your account as a regular customer. You can still start."
+                : "Your wallet holds " + UI.esc(Wallet.money(balance)) + ", and this needs " +
+                  UI.esc(Wallet.money(selectedPrice.price)) + ". Top up at the counter to start.") +
           "</div>";
         host.appendChild(note);
       }
