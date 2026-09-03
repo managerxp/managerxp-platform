@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Loader2, CalendarCheck } from 'lucide-react';
 import AuthLayout, { authFieldClasses, authLabelClasses } from '../components/AuthLayout';
+import DatePicker from '../components/ui/DatePicker';
+import TimePicker from '../components/ui/TimePicker';
 
 /*
  * The public booking page — managerxp.com/book/:slug.
@@ -41,6 +43,7 @@ const BookSlot = () => {
   const [date, setDate] = useState(todayISO());
   const [time, setTime] = useState(nextHalfHour());
   const [duration, setDuration] = useState(60);
+  const [quantity, setQuantity] = useState(1);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
@@ -108,12 +111,15 @@ const BookSlot = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           category, start_time: window_.start.toISOString(), end_time: window_.end.toISOString(),
-          guest_name: name, guest_phone: phone || null, notes: notes || null
+          guest_name: name, guest_phone: phone || null, notes: notes || null, quantity
         })
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.message || 'Could not book that slot');
-      setBooked(body.data);
+      // A single booking (the common case) comes back as one object; a group
+      // booking as an array — normalised to an array either way so the
+      // confirmation screen only has one shape to render.
+      setBooked(Array.isArray(body.data) ? body.data : [body.data]);
     } catch (e) {
       setBookError(e.message);
     } finally {
@@ -143,18 +149,24 @@ const BookSlot = () => {
   }
 
   if (booked) {
+    const first = booked[0];
+    const when = new Date(first.start_time).toLocaleString('en-IN', {
+      weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
     return (
       <AuthLayout title="Booked!" subtitle="See you then.">
         <div className="mt-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
           <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
           <div>
-            {booked.category} at {cafe.name}, {new Date(booked.start_time).toLocaleString('en-IN', {
-              weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit'
-            })}.
+            {booked.length > 1
+              ? <>{booked.length}× {first.category} at {cafe.name}, {when}.</>
+              : <>{first.category} at {cafe.name}, {when}.</>}
           </div>
         </div>
         <p className="mt-4 text-xs text-neutral-500">
-          Show up a few minutes early — the café will have your station ready.
+          {booked.length > 1
+            ? `Show up a few minutes early — the café will have all ${booked.length} stations ready together.`
+            : 'Show up a few minutes early — the café will have your station ready.'}
         </p>
       </AuthLayout>
     );
@@ -185,45 +197,68 @@ const BookSlot = () => {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={authLabelClasses}>Date</label>
-              <input type="date" className={authFieldClasses} value={date} min={todayISO()}
-                onChange={(e) => setDate(e.target.value)} />
+              <DatePicker id="book-date" value={date} min={todayISO()} onChange={setDate} />
             </div>
             <div>
               <label className={authLabelClasses}>Time</label>
-              <input
-                type="time" className={authFieldClasses} value={time} onChange={(e) => setTime(e.target.value)}
+              <TimePicker
+                id="book-time" value={time} onChange={setTime}
                 min={cafe.opening_time && cafe.opening_time < cafe.closing_time ? cafe.opening_time : undefined}
                 max={cafe.closing_time && cafe.opening_time < cafe.closing_time ? cafe.closing_time : undefined}
               />
             </div>
           </div>
 
-          <div>
-            <label className={authLabelClasses}>Duration</label>
-            <select className={authFieldClasses} value={duration} onChange={(e) => setDuration(e.target.value)}>
-              {DURATIONS.map(([mins, label]) => (
-                <option key={mins} value={mins}>{label}</option>
-              ))}
-            </select>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className={authLabelClasses}>Duration</label>
+              <select className={authFieldClasses} value={duration} onChange={(e) => setDuration(e.target.value)}>
+                {DURATIONS.map(([mins, label]) => (
+                  <option key={mins} value={mins}>{label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className={authLabelClasses}>Stations (group size)</label>
+              <select
+                className={authFieldClasses} value={quantity}
+                onChange={(e) => setQuantity(Number(e.target.value))}
+              >
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
+                  <option key={n} value={n}>{n === 1 ? '1 (just me)' : `${n} — booked together`}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm">
-            {checking ? (
-              <span className="text-neutral-500">Checking availability…</span>
-            ) : avail ? (
-              avail.available ? (
-                <span className="text-emerald-300">
-                  {avail.total - avail.booked} of {avail.total} {avail.category} station{avail.total === 1 ? '' : 's'} free then.
-                </span>
-              ) : (
-                <span className="text-red-300">
-                  {avail.message || `No ${avail.category} stations free at that time.`}
-                </span>
-              )
-            ) : (
-              <span className="text-neutral-500">Pick a time to check availability.</span>
-            )}
-          </div>
+          {(checking || avail) && (
+            <div className="rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5 text-sm">
+              {checking ? (
+                <span className="text-neutral-500">Checking availability…</span>
+              ) : (() => {
+                const free = avail.total - avail.booked;
+                if (!avail.available) {
+                  return (
+                    <span className="text-red-300">
+                      {avail.message || `No ${avail.category} stations free at that time.`}
+                    </span>
+                  );
+                }
+                if (free < quantity) {
+                  return (
+                    <span className="text-red-300">
+                      Only {free} of {avail.total} {avail.category} stations free then — not enough for a group of {quantity}.
+                    </span>
+                  );
+                }
+                return (
+                  <span className="text-emerald-300">
+                    {free} of {avail.total} {avail.category} station{avail.total === 1 ? '' : 's'} free then.
+                  </span>
+                );
+              })()}
+            </div>
+          )}
 
           <div>
             <label className={authLabelClasses}>Your name</label>
@@ -250,7 +285,7 @@ const BookSlot = () => {
 
           <button
             type="submit"
-            disabled={booking || !name.trim() || (avail ? !avail.available : false)}
+            disabled={booking || !name.trim() || (avail ? !avail.available || (avail.total - avail.booked) < quantity : false)}
             className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
                        bg-gradient-to-br from-red-700 to-red-900 border border-white/10
                        py-2.5 text-sm font-semibold text-white

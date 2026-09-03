@@ -27,7 +27,7 @@ const contactCards = [
   {
     icon: <Mail className="w-6 h-6" />,
     title: 'Email',
-    body: 'support@managerxp.com',
+    body: 'managerxp2026@gmail.com',
     note: 'Response time: ~24h'
   },
   {

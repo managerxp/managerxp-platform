@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Page, Card, Button, Field, Input, Pill, Banner, Empty, Skeleton, StatusDot, Meter } from '../../components/portal/ui';
+import TimePicker from '../../components/ui/TimePicker';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;
 
@@ -79,8 +80,8 @@ const Branches = () => {
 
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
-  const setHoursField = (branchId, field) => (e) =>
-    setHoursDraft((d) => ({ ...d, [branchId]: { ...d[branchId], [field]: e.target.value } }));
+  const setHoursField = (branchId, field) => (value) =>
+    setHoursDraft((d) => ({ ...d, [branchId]: { ...d[branchId], [field]: value } }));
 
   const saveHours = async (branchId) => {
     setSavingHoursId(branchId);
@@ -236,15 +237,15 @@ const Branches = () => {
                   </p>
                   <div className="mt-2 flex flex-wrap items-end gap-3">
                     <Field label="Opens" id={`br-open-${b.branch_id}`}>
-                      <Input
-                        id={`br-open-${b.branch_id}`} type="time"
+                      <TimePicker
+                        id={`br-open-${b.branch_id}`}
                         value={hoursDraft[b.branch_id]?.opening_time || ''}
                         onChange={setHoursField(b.branch_id, 'opening_time')}
                       />
                     </Field>
                     <Field label="Closes" id={`br-close-${b.branch_id}`}>
-                      <Input
-                        id={`br-close-${b.branch_id}`} type="time"
+                      <TimePicker
+                        id={`br-close-${b.branch_id}`}
                         value={hoursDraft[b.branch_id]?.closing_time || ''}
                         onChange={setHoursField(b.branch_id, 'closing_time')}
                       />

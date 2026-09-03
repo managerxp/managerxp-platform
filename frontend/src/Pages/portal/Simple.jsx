@@ -174,7 +174,7 @@ export const Support = () => {
       {sent && (
         <Banner tone="warn">
           Ticket submission is not connected yet. In the meantime, email{' '}
-          <a className="underline" href="mailto:support@managerxp.com">support@managerxp.com</a> and
+          <a className="underline" href="mailto:managerxp2026@gmail.com">managerxp2026@gmail.com</a> and
           quote your business name — we will pick it up from there.
         </Banner>
       )}

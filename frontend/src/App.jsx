@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation }
 import { MotionConfig } from 'framer-motion'
 import Navbar from './components/Navbar'
 import Footer from './components/Footer'
+import CookieConsent from './components/CookieConsent'
 import ProtectedRoute from './components/ProtectedRoute'
 import { AuthProvider } from './context/AuthContext'
 // Home stays eager: it is the landing page, and deferring it would add a round
@@ -13,6 +14,8 @@ import Home from './Pages/Home'
 const Products = lazy(() => import('./Pages/Products'))
 const About = lazy(() => import('./Pages/About'))
 const Contact = lazy(() => import('./Pages/Contact'))
+const PrivacyPolicy = lazy(() => import('./Pages/PrivacyPolicy'))
+const TermsOfService = lazy(() => import('./Pages/TermsOfService'))
 const BookDemoPage = lazy(() => import('./Pages/BookDemo'))
 const Login = lazy(() => import('./Pages/Login'))
 const ForgotPassword = lazy(() => import('./Pages/ForgotPassword'))
@@ -125,7 +128,7 @@ const AppLayout = () => {
   // Signed-in and auth surfaces carry their own chrome, so the marketing
   // navbar and footer would only get in the way.
   const hideNavAndFooter = ['/login', '/signup', '/cafexp-login', '/gamingxp-login', '/store-login', '/store',
-    '/start-trial', '/accept-invite', '/auth/google']
+    '/start-trial', '/accept-invite', '/auth/google', '/privacy-policy', '/terms-of-service']
     .includes(location.pathname)
     || location.pathname.startsWith('/pay/')
     || location.pathname.startsWith('/book/')
@@ -148,6 +151,8 @@ const AppLayout = () => {
           <Route path="/products" element={<Products />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+          <Route path="/terms-of-service" element={<TermsOfService />} />
           <Route path="/demo" element={<BookDemoPage/>} />
           <Route path="/login" element={<Login />} />
           {/* Where the browser returns from a Google sign-in — reads the token
@@ -312,6 +317,7 @@ const AppLayout = () => {
         </Suspense>
       </main>
       {!hideFooter && <Footer />}
+      <CookieConsent />
     </div>
   )
 }

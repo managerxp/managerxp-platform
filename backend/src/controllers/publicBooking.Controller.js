@@ -96,12 +96,25 @@ export const publicAvailability = async (req, res) => {
   }
 };
 
+// A café's whole floor is rarely more than a few dozen stations, and this is
+// an unauthenticated form — a cap here is what stops "10,000" typed into the
+// field from trying to insert that many rows.
+const MAX_GROUP_SIZE = 10;
+
 /* ==========================================================================
    POST /api/public/cafes/:slug/reservations
-   { category, start_time, end_time, guest_name, guest_phone, notes? }
+   { category, start_time, end_time, guest_name, guest_phone, notes?, quantity? }
    Always a guest booking, always paid at the counter — there is no wallet to
    charge without a login, so this only ever holds the station, the same as
    a phone-in booking would.
+
+   `quantity` books that many stations of the category together, for a group
+   arriving as one party — all or nothing, inside one transaction, so a
+   group of 3 never ends up with 2 stations held and a third silently
+   missing. `party_size` (already on the schema, previously write-only from
+   the staff-side form and never read back) is set to the group's total on
+   every row created, so a café looking at any one of them can tell it is
+   part of a group and how large.
    ========================================================================== */
 export const publicCreateReservation = async (req, res) => {
   const client = await pool.connect();
@@ -120,6 +133,9 @@ export const publicCreateReservation = async (req, res) => {
     const guestPhone = req.body?.guest_phone ? String(req.body.guest_phone).trim().slice(0, 20) : null;
     const notes = req.body?.notes ? String(req.body.notes).trim().slice(0, 300) : null;
 
+    const rawQuantity = req.body?.quantity ? parseInt(req.body.quantity, 10) : 1;
+    const quantity = Number.isFinite(rawQuantity) ? Math.min(MAX_GROUP_SIZE, Math.max(1, rawQuantity)) : 1;
+
     const hours = await storeHoursFor(pool, cafe.cafe_id);
     if (!withinStoreHours(hours.openingTime, hours.closingTime, times.start, times.end)) {
       return res.status(409).json({ success: false, message: storeHoursMessage(hours.openingTime, hours.closingTime) });
@@ -136,25 +152,43 @@ export const publicCreateReservation = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(409).json({ success: false, message: `No ${category} stations free at that time` });
     }
+    if (avail.available < quantity) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        success: false,
+        message: `Only ${avail.available} of ${quantity} ${category} stations are free at that time`
+      });
+    }
 
-    const inserted = await client.query(
-      `INSERT INTO reservations (cafe_id, category, guest_name, guest_phone, start_time, end_time, notes, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,'public')
-       RETURNING reservation_id`,
-      [cafe.cafe_id, category, guestName, guestPhone, times.start, times.end, notes]
-    );
+    const ids = [];
+    for (let i = 0; i < quantity; i++) {
+      const inserted = await client.query(
+        `INSERT INTO reservations
+           (cafe_id, category, guest_name, guest_phone, start_time, end_time, party_size, notes, created_by)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'public')
+         RETURNING reservation_id`,
+        [cafe.cafe_id, category, guestName, guestPhone, times.start, times.end, quantity, notes]
+      );
+      ids.push(inserted.rows[0].reservation_id);
+    }
 
     await client.query('COMMIT');
 
-    const full = await pool.query(`${SELECT_RESERVATION} WHERE r.reservation_id = $1`, [inserted.rows[0].reservation_id]);
-    const row = shape(full.rows[0]);
+    const full = await pool.query(`${SELECT_RESERVATION} WHERE r.reservation_id = ANY($1::int[]) ORDER BY r.reservation_id`, [ids]);
+    const rows = full.rows.map(shape);
 
     await recordAudit(req, {
-      action: 'reservation.create', category: 'reservations', entity: 'reservation', entity_id: row.reservation_id,
-      summary: `Public booking: ${row.category} for ${guestName} at ${row.start_time}`
+      action: 'reservation.create', category: 'reservations', entity: 'reservation', entity_id: rows[0].reservation_id,
+      summary: quantity > 1
+        ? `Public booking: ${quantity}× ${category} for ${guestName} at ${rows[0].start_time}`
+        : `Public booking: ${category} for ${guestName} at ${rows[0].start_time}`
     });
 
-    res.status(201).json({ success: true, message: 'Booked — see you then!', data: row });
+    res.status(201).json({
+      success: true,
+      message: quantity > 1 ? `Booked ${quantity} stations — see you then!` : 'Booked — see you then!',
+      data: quantity > 1 ? rows : rows[0]
+    });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Public booking failed:', error);

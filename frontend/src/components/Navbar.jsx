@@ -80,7 +80,11 @@ const Navbar = () => {
 
           {/* Left Side: Logo */}
           <div className="shrink-0">
-            <Link to="/" className="flex items-center hover:opacity-80 transition-opacity duration-300">
+            <Link
+              to="/"
+              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+              className="flex items-center hover:opacity-80 transition-opacity duration-300"
+            >
               <img
                 src={logo}
                 alt="ManagerXP"

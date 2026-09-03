@@ -4,6 +4,7 @@ import { adminApi, adminAuth, money, shortDate } from '../../lib/adminApi';
 import {
   Page, Panel, Table, Pill, Banner, Skeleton, Empty, Button, Field, Input, Select
 } from '../../components/admin/ui';
+import DatePicker from '../../components/ui/DatePicker';
 
 const STATUS_TONE = {
   TRIAL: 'info', ACTIVE: 'good', PAST_DUE: 'warn', GRACE_PERIOD: 'warn',
@@ -314,17 +315,20 @@ export const SubscriptionEditor = () => {
       <Panel title="Dates">
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Start" id="se-start">
-            <Input id="se-start" type="date" disabled={!mayEdit}
-                   value={String(value('start_date')).slice(0, 10)} onChange={set('start_date')} />
+            <DatePicker id="se-start" disabled={!mayEdit}
+                   value={String(value('start_date')).slice(0, 10)}
+                   onChange={(v) => set('start_date')({ target: { value: v } })} />
           </Field>
           <Field label="Ends / renews" id="se-end">
-            <Input id="se-end" type="date" disabled={!mayEdit}
-                   value={String(value('end_date')).slice(0, 10)} onChange={set('end_date')} />
+            <DatePicker id="se-end" disabled={!mayEdit}
+                   value={String(value('end_date')).slice(0, 10)}
+                   onChange={(v) => set('end_date')({ target: { value: v } })} />
           </Field>
           <Field label="Promotional price ends" id="se-promo"
                  hint="After this, the price reverts">
-            <Input id="se-promo" type="date" disabled={!mayEdit}
-                   value={String(value('promo_ends_at')).slice(0, 10)} onChange={set('promo_ends_at')} />
+            <DatePicker id="se-promo" disabled={!mayEdit}
+                   value={String(value('promo_ends_at')).slice(0, 10)}
+                   onChange={(v) => set('promo_ends_at')({ target: { value: v } })} />
           </Field>
         </div>
       </Panel>

@@ -4,10 +4,19 @@ import { ArrowLeft } from 'lucide-react';
 import logo from '../assets/whitelogo.png';
 import PageBackground from './PageBackground';
 
-/** Shared field styling for the auth forms. */
+/**
+ * Shared field styling for the auth forms.
+ *
+ * `[color-scheme:dark]` matters specifically for `type="date"`/`type="time"`
+ * inputs: without it the browser draws the calendar/clock picker icon in a
+ * color meant for a light background, which is invisible against this
+ * black field — the icon is there, just black-on-black. This tells the
+ * browser to use its own dark-appropriate (light) icon instead, the same
+ * fix native controls need on every dark-themed site, not just ManagerXP.
+ */
 export const authFieldClasses =
   'w-full bg-white/[0.03] border border-white/10 rounded-xl px-3.5 py-2.5 text-sm text-white ' +
-  'placeholder-neutral-600 outline-none transition-colors ' +
+  'placeholder-neutral-600 outline-none transition-colors [color-scheme:dark] ' +
   'focus:border-red-500/60 focus:ring-2 focus:ring-red-500/20 focus:bg-white/[0.05]';
 
 export const authLabelClasses = 'block text-xs text-neutral-400 mb-1.5 uppercase tracking-wider font-mono';

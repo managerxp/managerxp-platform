@@ -2,7 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import logo from '../assets/logo.png';
 import { Mail, Phone, MapPin } from 'lucide-react';
-import { FaXTwitter, FaLinkedin } from 'react-icons/fa6';
+import { FaXTwitter, FaLinkedin, FaInstagram } from 'react-icons/fa6';
 
 // Explicit paths: deriving them from the label produced dead routes (/ourproducts).
 const navLinks = [
@@ -13,9 +13,18 @@ const navLinks = [
   { label: 'Book a Demo', to: '/demo' },
 ];
 
+// No separate Cookie Policy — with only session cookies and no analytics or
+// ad trackers, it would just duplicate the Privacy Policy's own "Cookies and
+// Similar Technologies" section rather than say anything new.
+const legalLinks = [
+  { label: 'Privacy_Policy', to: '/privacy-policy' },
+  { label: 'Terms_of_Service', to: '/terms-of-service' },
+];
+
 const socialLinks = [
   { label: 'ManagerXP on X', href: 'https://twitter.com/managerxp', Icon: FaXTwitter },
   { label: 'ManagerXP on LinkedIn', href: 'https://linkedin.com/company/managerxp', Icon: FaLinkedin },
+  { label: 'ManagerXP on Instagram', href: 'https://www.instagram.com/manager.xp', Icon: FaInstagram },
 ];
 
 const Footer = () => {
@@ -117,9 +126,9 @@ const Footer = () => {
             </h2>
             <ul className="space-y-5 text-sm">
               <li>
-                <a href="mailto:info@managerxp.com" className="flex items-start gap-4 text-neutral-300 hover:text-white transition-colors group">
+                <a href="mailto:managerxp2026@gmail.com" className="flex items-start gap-4 text-neutral-300 hover:text-white transition-colors group">
                   <Mail className="w-4 h-4 mt-0.5 shrink-0 text-red-500/70 group-hover:text-red-500 transition-colors" />
-                  <span className="break-all">info@managerxp.com</span>
+                  <span className="break-all">managerxp2026@gmail.com</span>
                 </a>
               </li>
               <li>
@@ -144,14 +153,14 @@ const Footer = () => {
               &copy; {new Date().getFullYear()} MANAGERXP PRIVATE LIMITED. All rights reserved.
             </p>
             <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 sm:gap-x-8">
-              {['Privacy_Policy', 'Terms_of_Service', 'Cookie_Protocol'].map((item) => (
-                <a
-                  key={item}
-                  href="#"
+              {legalLinks.map((item) => (
+                <Link
+                  key={item.label}
+                  to={item.to}
                   className="text-neutral-600 hover:text-red-500 text-xs font-mono transition-colors duration-300 uppercase tracking-wide"
                 >
-                  {item}
-                </a>
+                  {item.label}
+                </Link>
               ))}
             </div>
           </div>

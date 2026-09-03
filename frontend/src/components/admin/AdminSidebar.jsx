@@ -30,7 +30,7 @@ const GROUPS = [
 const AdminSidebar = ({ user, activeMenu, onMenuChange, onLogout }) => (
   <aside className="flex flex-col border-r border-neutral-800 p-4 sm:p-5">
     <h1 className="text-xl font-semibold tracking-tight">ManagerXP</h1>
-    <p className="mt-1 text-xs text-neutral-400">{user?.email || 'admin@managerxp.com'}</p>
+    <p className="mt-1 text-xs text-neutral-400">{user?.email || 'managerxp2026@gmail.com'}</p>
 
     <nav className="mt-6 flex-1 space-y-5 overflow-y-auto">
       {GROUPS.map((group) => (
