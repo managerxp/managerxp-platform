@@ -1,0 +1,14 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /admin
+Disallow: /store
+Disallow: /store-login
+Disallow: /portal
+Disallow: /pay/
+Disallow: /book/
+Disallow: /accept-invite
+Disallow: /forgot-password
+Disallow: /auth/google
+
+Sitemap: https://managerxp.com/sitemap.xml
