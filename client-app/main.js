@@ -743,6 +743,14 @@ async function detectLaunchers() {
  * can be left free of that friction — the same reason a launcher already
  * signed in on the station was the alternative to this in the first place.
  */
+function isSteamRunning() {
+  return new Promise((resolve) => {
+    exec('tasklist /FI "IMAGENAME eq steam.exe" /NH', { windowsHide: true }, (err, stdout) => {
+      resolve(!err && !!stdout && stdout.toLowerCase().includes('steam.exe'));
+    });
+  });
+}
+
 function ensureSteamSignedIn(credential) {
   if (!credential || !credential.username || !credential.password) return Promise.resolve();
   return detectLaunchers().then((launchers) => {
@@ -751,17 +759,38 @@ function ensureSteamSignedIn(credential) {
       log('Steam auto sign-in skipped: Steam not found on this station');
       return;
     }
-    log(`Signing in to venue Steam account (${credential.username}) before launch`);
-    return new Promise((resolve) => {
-      exec(
-        `"${steam.path}" -login "${credential.username}" "${credential.password}"`,
-        { windowsHide: true },
-        (err) => { if (err) log(`Steam sign-in command failed: ${err.message}`); }
-      );
-      /* A fixed wait rather than polling for "signed in": there is no public
-         signal for that which would not also fire while a Guard prompt sits
-         waiting on a human, so polling could not tell the two apart anyway. */
-      setTimeout(resolve, 6000);
+    return Promise.all([
+      isSteamRunning(),
+      readRegistry('HKCU\\Software\\Valve\\Steam', 'AutoLoginUser')
+    ]).then(([running, autoLoginUser]) => {
+      if (running && autoLoginUser && autoLoginUser.toLowerCase() === credential.username.toLowerCase()) {
+        log(`Venue Steam account (${credential.username}) already signed in`);
+        return;
+      }
+      /* Steam is single-instance: handing -login to it while a copy is
+         already running — left open from the previous session, or signed
+         into a different account — does nothing, because that flag only
+         does anything the moment Steam itself starts. That silent no-op,
+         not a config problem, is why auto sign-in previously "didn't work"
+         whenever the launcher hadn't already been closed. Kill it first so
+         the next launch actually starts fresh and reads these credentials. */
+      const restart = running
+        ? killProcess('steam.exe').then(() => killProcess('steamwebhelper.exe'))
+        : Promise.resolve();
+      return restart.then(() => new Promise((resolve) => {
+        setTimeout(() => {
+          log(`Signing in to venue Steam account (${credential.username}) before launch`);
+          exec(
+            `"${steam.path}" -login "${credential.username}" "${credential.password}"`,
+            { windowsHide: true },
+            (err) => { if (err) log(`Steam sign-in command failed: ${err.message}`); }
+          );
+          /* A fixed wait rather than polling for "signed in": there is no public
+             signal for that which would not also fire while a Guard prompt sits
+             waiting on a human, so polling could not tell the two apart anyway. */
+          setTimeout(resolve, 6000);
+        }, running ? 700 : 0);   // a moment for file handles to release after the kill
+      }));
     });
   }).catch((e) => { log(`Steam auto sign-in error: ${e.message}`); });
 }
