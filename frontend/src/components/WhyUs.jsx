@@ -141,7 +141,7 @@ const WhyUsPage = () => {
                   Need something unique? We provide custom gaming cafe solutions, AI model integration, automation tools, and full-stack development support.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {['Automation Tools', 'AI Models', 'Business Digitization'].map((tag) => (
+                  {['Web Development', 'Android & iOS Apps', 'Automation Tools', 'AI Models', 'Business Digitization'].map((tag) => (
                     <span key={tag} className="px-3 py-1.5 bg-red-500/10 border border-red-500/20 rounded-full text-[10px] text-red-400">
                       {tag}
                     </span>
