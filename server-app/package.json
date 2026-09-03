@@ -2,6 +2,7 @@
   "name": "vms-server",
   "productName": "CafeXP Console",
   "version": "1.0.0",
+  "author": "ManagerXP",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
