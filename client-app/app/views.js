@@ -1615,7 +1615,9 @@
                 '<span class="wallet-unit">XP</span>' +
               "</div>" +
             "</div>" +
-            global.CXCoin(112, { detail: "full", spin: true }).replace('class="xp-coin', 'class="xp-coin xp-coin-hero') +
+            '<div class="xp-coin-halo">' +
+              global.CXCoin(112, { detail: "full", spin: true }).replace('class="xp-coin', 'class="xp-coin xp-coin-hero') +
+            "</div>" +
           "</div>" +
           '<div class="wallet-sub">Earn · Redeem · Grow</div>' +
           '<div class="wallet-actions">' +

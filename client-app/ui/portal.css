@@ -464,6 +464,12 @@
 }
 .volume-slider {
   flex: 1 1 auto;
+  /* Without this, the flex item's default min-width:auto floors it at the
+     <input type=range> UA default width (~130px), which is wider than the
+     space left inside the 240px popover once the mute button and percent
+     label take their share — overflowing the row and pushing the "100%"
+     label outside the popover's rounded edge instead of shrinking to fit. */
+  min-width: 0;
   -webkit-appearance: none;
   appearance: none;
   height: 6px;
@@ -1138,13 +1144,44 @@
     linear-gradient(160deg, var(--bg-raised-2), var(--bg-raised));
   box-shadow: var(--shadow-3);
 }
+.wallet-card::before {
+  /* A second, slower ember drifting behind the content — the static radial
+     gradient above reads flat on its own; this gives the card the same
+     ambient depth as the coin's halo without competing with it. */
+  content: "";
+  position: absolute;
+  top: -35%;
+  right: -12%;
+  width: 300px;
+  height: 300px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 23, 68, 0.22), transparent 68%);
+  filter: blur(4px);
+  animation: wallet-glow-drift 11s var(--ease-in-out) infinite;
+  pointer-events: none;
+}
 .wallet-card::after {
-  /* soft sheen across the top edge */
+  /* soft sheen across the top edge, slowly sweeping rather than static */
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.28), transparent);
+  background-size: 220% 100%;
+  animation: wallet-sheen-sweep 6s linear infinite;
+}
+@keyframes wallet-glow-drift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50%      { transform: translate(-22px, 16px) scale(1.1); }
+}
+@keyframes wallet-sheen-sweep {
+  0%   { background-position: 220% 0; }
+  100% { background-position: -220% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .wallet-card::before, .wallet-card::after, .xp-coin-halo::before, .xp-coin-spin {
+    animation: none;
+  }
 }
 .wallet-label {
   font-size: var(--t-xs);
@@ -1197,6 +1234,31 @@
   50%      { transform: perspective(600px) rotateY(12deg) rotateX(-3deg); }
 }
 .xpc-ring { font-family: var(--font); }
+
+/* Halo behind the wallet page's hero coin — a plain drop-shadow reads as a
+   dark smudge on this card's own dark background, so the glow needs to be
+   its own lit shape sitting behind the coin rather than a shadow under it. */
+.xp-coin-halo {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.xp-coin-halo::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(240, 185, 55, .38), rgba(255, 23, 68, .2) 55%, transparent 74%);
+  filter: blur(7px);
+  animation: coin-halo-breathe 3.4s var(--ease-in-out) infinite;
+}
+.xp-coin-halo .xp-coin { position: relative; z-index: 1; }
+@keyframes coin-halo-breathe {
+  0%, 100% { opacity: .55; transform: scale(.92); }
+  50%      { opacity: 1; transform: scale(1.06); }
+}
 
 /* Coin sitting inline with a number (nav chip, ledger rows) */
 .coin-inline { display: inline-flex; align-items: center; gap: 7px; }
@@ -1808,6 +1870,8 @@
 
 /* ---- wallet card ---- */
 .wallet-actions { display: flex; gap: var(--s-3); margin-top: var(--s-5); }
+.wallet-actions .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 1px 0 rgba(255,255,255,.18) inset, 0 10px 26px rgba(255,23,68,.4); }
+.wallet-actions .btn-primary:active:not(:disabled) { transform: translateY(0); }
 .wallet-foot { font-size: var(--t-xs); margin-top: var(--s-3); }
 
 /* ---- method rows: cash and card do different things, so they look different ---- */
