@@ -64,8 +64,6 @@ contextBridge.exposeInMainWorld("api", {
   isKioskLocked: () => ipcRenderer.invoke("window:is-kiosk-locked"),
   onKioskState: (cb) => ipcRenderer.on("window:kiosk-state", (_, locked) => cb(locked)),
   timerExpired: (appName) => ipcRenderer.send("timer-expired", appName),
-  // The player tapped Extend on the timer card. Fire-and-forget to the console.
-  requestExtend: () => ipcRenderer.send("request-extend"),
   // The block ran out and the game was NOT closed — tell the console so it can
   // flag the station and staff can act.
   sessionOvertime: (appName) => ipcRenderer.send("session-overtime", appName),

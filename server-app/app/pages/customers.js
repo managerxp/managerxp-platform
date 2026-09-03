@@ -15,6 +15,7 @@
   var loading = false;
   var loadError = null;
   var searchTimer = null;
+  var refreshTimer = null;
   var typeFilter = "all";
 
   var PRESETS = [100, 250, 500, 1000, 2000];
@@ -26,14 +27,26 @@
     { id: "all", label: "All" },
     { id: "normal", label: "Normal" },
     { id: "regular", label: "Regular" },
-    { id: "staff", label: "Staff" }
+    { id: "staff", label: "Staff" },
+    { id: "owing", label: "Owing" }
   ];
 
   function visibleCustomers() {
     if (typeFilter === "regular") return customers.filter(function (c) { return c.is_regular; });
     if (typeFilter === "staff") return customers.filter(function (c) { return c.is_staff; });
+    if (typeFilter === "owing") return customers.filter(function (c) { return Number(c.wallet_balance) < 0; });
     if (typeFilter === "normal") return customers.filter(function (c) { return !c.is_regular && !c.is_staff; });
     return customers;
+  }
+
+  /** How many regulars are currently negative, and the total owed. */
+  function owingSummary() {
+    var count = 0, total = 0;
+    customers.forEach(function (c) {
+      var b = Number(c.wallet_balance);
+      if (b < 0) { count++; total += -b; }
+    });
+    return { count: count, total: total };
   }
 
   /** XP Coin amounts: whole numbers unless there are real part-coins. */
@@ -87,6 +100,24 @@
       });
   }
 
+  /*
+   * Nothing pushes a live update when a customer's balance or details change
+   * elsewhere — a station top-up, a session ending, a self-service
+   * registration — so without this the list only ever moved when staff
+   * clicked Refresh themselves. Polls quietly in the background instead: no
+   * skeleton, no error toast, and a failed tick just tries again on the next
+   * one rather than disturbing whatever is already on screen.
+   */
+  function silentRefresh() {
+    if (loading) return Promise.resolve();   // a real load is already in flight
+    return Store.getCustomers({ search: query, limit: 200 })
+      .then(function (body) {
+        customers = body.data || [];
+        render();
+      })
+      .catch(function () { /* next tick tries again */ });
+  }
+
   /* ==========================================================================
      MOVE COINS
      ========================================================================== */
@@ -97,6 +128,10 @@
   function moveCoinsDialog(customer, direction, onDone) {
     var isCredit = direction === "credit";
     var balance = Number(customer.wallet_balance || 0);
+    // A regular may run this negative, up to their own credit limit — same
+    // floor the backend enforces. Everyone else's floor stays zero.
+    var floor = customer.is_regular && Number(customer.credit_limit) > 0
+      ? -Number(customer.credit_limit) : 0;
 
     var body = UI.el("div", { class: "col gap-5" });
     body.innerHTML =
@@ -165,9 +200,13 @@
               UI.toast.warn("Enter an amount greater than zero");
               return false;
             }
-            if (!isCredit && amount > balance) {
+            if (!isCredit && balance - amount < floor) {
               Motion.shake(ctx.node);
-              UI.toast.warn("Not enough coins", "Balance is " + coins(balance) + " XP.");
+              UI.toast.warn(
+                floor < 0 ? "Exceeds their credit limit" : "Not enough coins",
+                "Balance is " + coins(balance) + " XP" +
+                  (floor < 0 ? ", with " + coins(-floor) + " XP of credit available." : ".")
+              );
               return false;
             }
 
@@ -218,16 +257,20 @@
         preview.innerHTML = Icon("info", 16) + "<div>Choose or type an amount.</div>";
         return;
       }
-      if (!isCredit && next < 0) {
+      if (!isCredit && next < floor) {
         preview.setAttribute("data-status", "offline");
         preview.innerHTML = Icon("alert", 16) +
-          "<div>That is more than the customer has. Balance is <strong>" + coins(balance) + " XP</strong>.</div>";
+          (floor < 0
+            ? "<div>That is more than their credit limit allows. Balance is <strong>" + coins(balance) +
+              " XP</strong>, with <strong>" + coins(-floor) + " XP</strong> of credit available.</div>"
+            : "<div>That is more than the customer has. Balance is <strong>" + coins(balance) + " XP</strong>.</div>");
         return;
       }
       preview.setAttribute("data-status", isCredit ? "online" : "warning");
       preview.innerHTML = Icon(isCredit ? "check" : "alert", 16) +
         "<div>New balance will be <strong>" + coins(next) + " XP</strong>" +
-        " (" + coins(balance) + (isCredit ? " + " : " − ") + coins(amount) + ").</div>";
+        " (" + coins(balance) + (isCredit ? " + " : " − ") + coins(amount) + ")" +
+        (!isCredit && next < 0 ? " — charged to their credit." : "") + ".</div>";
     }
 
     chips.forEach(function (c) {
@@ -381,10 +424,15 @@
             '<div class="grow">' +
               '<div class="eyebrow">XP Coin balance</div>' +
               '<div style="display:flex;align-items:flex-end;gap:10px;margin-top:8px">' +
-                '<span style="font-size:40px;font-weight:820;letter-spacing:-.03em;font-variant-numeric:tabular-nums" ' +
+                '<span style="font-size:40px;font-weight:820;letter-spacing:-.03em;font-variant-numeric:tabular-nums' +
+                  (balance < 0 ? ";color:var(--warn)" : "") + '" ' +
                   'id="custBalance">' + coins(balance) + "</span>" +
                 '<span style="font-size:14px;font-weight:750;letter-spacing:.08em;color:var(--accent-hot);padding-bottom:6px">XP</span>' +
               "</div>" +
+              (balance < 0
+                ? '<div class="faint" style="font-size:12px;color:var(--warn);margin-top:2px">' +
+                  "Owes " + coins(-balance) + " XP on credit</div>"
+                : "") +
             "</div>" +
             global.CXCoin(84, { detail: "full", spin: true }) +
           "</div>" +
@@ -692,6 +740,19 @@
 
   function render() {
     if (!rootEl) return;
+
+    var summary = rootEl.querySelector("#owingSummary");
+    if (summary) {
+      var owing = owingSummary();
+      summary.classList.toggle("hidden", owing.count === 0);
+      if (owing.count > 0) {
+        summary.innerHTML = Icon("alert", 16) +
+          "<div>" + owing.count + " regular" + (owing.count === 1 ? "" : "s") +
+          " currently owe" + (owing.count === 1 ? "s" : "") + " a total of <strong>" +
+          coins(owing.total) + " XP</strong> on credit.</div>";
+      }
+    }
+
     var host = rootEl.querySelector("#customerTable");
     if (!host) return;
     UI.clear(host);
@@ -724,12 +785,17 @@
     if (!shown.length) {
       host.appendChild(UI.emptyState({
         icon: "customers",
-        title: typeFilter === "regular" ? "No regulars yet" : typeFilter === "staff" ? "No staff accounts yet" : "No normal customers",
+        title: typeFilter === "regular" ? "No regulars yet"
+          : typeFilter === "staff" ? "No staff accounts yet"
+          : typeFilter === "owing" ? "Nobody owes anything"
+          : "No normal customers",
         text: typeFilter === "regular"
           ? "Nobody has been marked as a regular. Open a customer and edit their type to promote one."
           : typeFilter === "staff"
             ? "Nobody has been marked as staff. Open a customer and edit their type to mark one for testing."
-            : "Everyone who matches is currently a regular or staff.",
+            : typeFilter === "owing"
+              ? "Every wallet is at zero or positive right now."
+              : "Everyone who matches is currently a regular or staff.",
         actions: [{ label: "Show all", icon: "close", onClick: function () {
           typeFilter = "all";
           render();
@@ -765,7 +831,7 @@
         '<td class="mono faint" style="font-size:12px">' + UI.esc(c.phone_number || "—") + "</td>" +
         '<td class="faint" style="font-size:12px">' + UI.esc(c.email || "—") + "</td>" +
         '<td class="td-num"><span style="font-weight:700;font-variant-numeric:tabular-nums;color:' +
-          (balance ? "var(--text)" : "var(--text-3)") + '">' +
+          (balance < 0 ? "var(--warn)" : balance ? "var(--text)" : "var(--text-3)") + '">' +
           (balance === null ? "—" : coins(balance)) + "</span>" +
           '<span class="faint" style="font-size:10px;margin-left:4px">XP</span></td>' +
         "<td>" + UI.esc(UI.fmtDate(c.created_at)) + "</td>" +
@@ -828,6 +894,7 @@
             }).join("") +
           "</div>" +
         "</div>" +
+        '<div class="notice hidden" data-status="warning" id="owingSummary"></div>' +
         '<div class="card card-body-flush" id="customerTable"></div>';
       root.appendChild(page);
 
@@ -871,10 +938,13 @@
 
       render();
       load();
+      refreshTimer = setInterval(silentRefresh, 15000);
     },
 
     unmount: function () {
       clearTimeout(searchTimer);
+      clearInterval(refreshTimer);
+      refreshTimer = null;
       rootEl = null;
     }
   };

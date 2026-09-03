@@ -22,7 +22,7 @@
     { id: "inactive", label: "Deactivated" }
   ];
 
-  var STATUS_TEXT = { online: "Available", gaming: "In use", offline: "Offline", inactive: "Deactivated" };
+  var STATUS_TEXT = { online: "Available", gaming: "In use", paused: "Paused", offline: "Offline", inactive: "Deactivated" };
 
   /* ==========================================================================
      LAYOUT

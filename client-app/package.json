@@ -3,6 +3,7 @@
   "productName": "CafeXP Client",
   "version": "1.0.0",
   "description": "CafeXP station client",
+  "author": "ManagerXP",
   "main": "main.js",
   "scripts": {
     "start": "electron .",

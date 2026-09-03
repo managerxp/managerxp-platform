@@ -143,6 +143,7 @@
   --st: var(--info); --st-soft: var(--info-soft); --st-line: var(--info-line); --st-glow: rgba(0,176,255,.28);
 }
 [data-status="maintenance"],
+[data-status="paused"],
 [data-status="warning"],
 [data-status="reserved"],
 [data-status="pending"] {

@@ -1,27 +1,21 @@
 /* ==========================================================================
    CafeXP Client — Launch timer card
 
-   Counts down the block the server sent with LAUNCH_APP. Two behaviours were
-   added on top of the plain countdown:
-
-     - It beeps when time is running low, and again when the block ends, so a
-       player deep in a fullscreen game notices without watching the corner.
-
-     - It offers "+ Extend" once the clock is low. A tap asks the console to
-       add another block; the extra time is added to the bill and settled at
-       the counter later, so it works even with an empty wallet.
+   Counts down the block the server sent with LAUNCH_APP. One behaviour was
+   added on top of the plain countdown: it beeps when time is running low,
+   and again when the block ends, so a player deep in a fullscreen game
+   notices without watching the corner.
 
    And one behaviour was deliberately removed: hitting zero no longer closes
    the game. A player is never cut off mid-match — the block simply runs over,
-   the card says so, the console is told, and staff (or the player, by
-   extending) decide what happens next.
+   the card says so, the console is told, and staff decide what happens next
+   (extending it from there, or ending the session at the counter).
    ========================================================================== */
 const timerDisplayEl = document.getElementById("timerDisplay");
 const progressFillEl = document.getElementById("progressFill");
 const timerCardEl = document.getElementById("timerCard");
 const appNameEl = document.getElementById("appName");
 const timerLabelEl = document.getElementById("timerLabel");
-const extendBtnEl = document.getElementById("extendBtn");
 
 let remainingSeconds = 0;
 let totalSeconds = 0;
@@ -88,7 +82,6 @@ window.api.onStartTimer((data) => {
   appNameEl.textContent = currentAppName;
   appNameEl.title = currentAppName;
   timerCardEl.classList.add("glow");
-  hideExtend();
   // A session shorter than the warning window starts already "ending soon".
   setVisible(remainingSeconds <= WARN_AT);
 
@@ -150,7 +143,6 @@ function tick() {
     warnedAt = true;
     setVisible(true);
     warningBeep();
-    showExtend();
   }
 
   if (remainingSeconds <= 0) {
@@ -169,35 +161,8 @@ function enterOvertime() {
   overtimeBeepAt = 0;
   timerCardEl.classList.remove("glow");
   overtimeBeep();
-  showExtend();
   if (window.api.sessionOvertime) window.api.sessionOvertime(currentAppName);
 }
-
-function showExtend() {
-  if (!extendBtnEl) return;
-  extendBtnEl.hidden = false;
-  timerCardEl.style.cursor = "pointer";
-}
-function hideExtend() {
-  if (!extendBtnEl) return;
-  extendBtnEl.hidden = true;
-  timerCardEl.style.cursor = "";
-}
-
-/* Either the button or the body of the card, once low — a bigger target over a
-   fullscreen game than a 12px button alone. */
-function askExtend(e) {
-  if (e) e.stopPropagation();
-  if (extendBtnEl && extendBtnEl.hidden) return;   // not offered yet
-  if (window.api.requestExtend) window.api.requestExtend();
-  // Immediate feedback; the real clock grows when onExtendTimer arrives.
-  timerLabelEl.textContent = "Extending…";
-  beep(1040, 120, 0.08);
-}
-if (extendBtnEl) extendBtnEl.addEventListener("click", askExtend);
-timerCardEl.addEventListener("click", function (e) {
-  if (extendBtnEl && !extendBtnEl.hidden) askExtend(e);
-});
 
 function updateDisplay() {
   const shown = Math.max(0, remainingSeconds);
@@ -220,8 +185,8 @@ function updateDisplay() {
   if (loading) {
     timerLabelEl.textContent = "Loading…";
   } else if (overtime) {
-    timerLabelEl.textContent = "Over · tap to extend";
+    timerLabelEl.textContent = "Time's up";
   } else if (remainingSeconds > 0) {
-    timerLabelEl.textContent = state === "expired" ? "Ending · extend?" : "Remaining";
+    timerLabelEl.textContent = state === "expired" ? "Ending soon" : "Remaining";
   }
 }

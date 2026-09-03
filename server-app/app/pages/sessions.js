@@ -824,7 +824,7 @@
       var session = live && live.session_id === s.session_id ? live : s;
       var isOpen = session.status !== "ended";
 
-      var tr = UI.el("tr", { dataset: { status: session.status === "paused" ? "maintenance" : session.status === "ended" ? "idle" : "gaming" } });
+      var tr = UI.el("tr", { dataset: { status: session.status === "paused" ? "paused" : session.status === "ended" ? "idle" : "gaming" } });
       tr.innerHTML =
         "<td><strong>" + UI.esc(session.customer_name || "—") + "</strong>" +
           (session.is_guest ? ' <span class="badge badge-plain">Guest</span>' : "") + "</td>" +

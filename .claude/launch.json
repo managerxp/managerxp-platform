@@ -2,16 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "website",
+      "name": "frontend-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--prefix", "D:/ManagerXp/Manager-XP-Website/frontend"],
+      "runtimeArgs": ["run", "dev", "--", "--prefix", "frontend"],
       "port": 5173
-    },
-    {
-      "name": "backend-api",
-      "runtimeExecutable": "npm",
-      "runtimeArgs": ["start", "--prefix", "D:/ManagerXp/Manager-XP-Website/backend"],
-      "port": 5000
     }
   ]
 }

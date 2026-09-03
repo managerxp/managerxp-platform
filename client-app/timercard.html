@@ -33,27 +33,7 @@
       <span class="timercard-label" id="timerLabel">Remaining</span>
     </span>
     <span class="timercard-track"><span class="timercard-fill" id="progressFill" style="width:100%"></span></span>
-    <!--
-      Extend affordance. Hidden until the clock is low; then the whole card
-      becomes tappable and this shows what a tap does. The player extends from
-      here without alt-tabbing out of their game. The extra time rides on the
-      bill and is settled at the counter later — the game is never cut off, so
-      a tap only ever adds time, it can never take it away.
-    -->
-    <button type="button" class="timercard-extend" id="extendBtn" hidden>+ Extend</button>
   </div>
-  <style>
-    .timercard-extend {
-      margin-left: 8px; padding: 4px 10px; border-radius: 999px;
-      border: 1px solid var(--st-line, var(--accent-line));
-      background: var(--st-glow, rgba(255,255,255,.08));
-      color: var(--text, #fff); font: inherit; font-size: 12px; font-weight: 700;
-      white-space: nowrap; cursor: pointer;
-    }
-    .timercard-extend:hover { filter: brightness(1.15); }
-    .timercard-extend:active { transform: scale(.96); }
-    .timercard-extend[hidden] { display: none; }
-  </style>
 
   <script src="timercard.js"></script>
 </body>

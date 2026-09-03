@@ -205,7 +205,7 @@
     if (pc.status === "MAINTENANCE") return "maintenance";
 
     var session = state.sessions[name];
-    if (session) return session.status === "paused" ? "maintenance" : "gaming";
+    if (session) return session.status === "paused" ? "paused" : "gaming";
     if (state.running[name]) return "gaming";
     if (state.connected.indexOf(name) !== -1) return "online";
 
@@ -281,7 +281,9 @@
       bucket.total++;
       if (networked) bucket.networked = true;
 
-      if (s === "gaming") { c.running++; bucket.running++; if (networked) c.online++; }
+      // Paused counts the same as gaming for occupancy — the station is still
+      // held by that session, not free and not actually offline.
+      if (s === "gaming" || s === "paused") { c.running++; bucket.running++; if (networked) c.online++; }
       else if (s === "online") { if (networked) c.online++; bucket.free++; }
       else if (s === "inactive") { c.inactive++; }
       else { c.offline++; bucket.offline++; }

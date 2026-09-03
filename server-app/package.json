@@ -1,6 +1,7 @@
 {
   "name": "vms-server",
   "version": "1.0.0",
+  "author": "ManagerXP",
   "main": "main.js",
   "scripts": {
     "start": "electron ."

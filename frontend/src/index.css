@@ -1,0 +1,226 @@
+@import "tailwindcss";
+
+@keyframes blob {
+  0% { transform: translate(0px, 0px) scale(1); }
+  33% { transform: translate(30px, -50px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.9); }
+  100% { transform: translate(0px, 0px) scale(1); }
+}
+
+.animate-blob {
+  animation: blob 7s infinite;
+}
+
+.animation-delay-2000 {
+  animation-delay: 2s;
+}
+
+.animation-delay-4000 {
+  animation-delay: 4s;
+}
+
+@keyframes scroll {
+  0% { transform: translateY(0); opacity: 1; }
+  75% { transform: translateY(6px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 0; }
+}
+
+.animate-scroll {
+  animation: scroll 2s infinite;
+}
+
+@keyframes racer-fast {
+  0% { transform: translateX(-100vw); }
+  100% { transform: translateX(100vw); }
+}
+
+.animate-racer-fast {
+  animation: racer-fast 4s linear infinite;
+}
+
+@keyframes racer-slow {
+  0% { transform: translateX(100vw); }
+  100% { transform: translateX(-100vw); }
+}
+
+.animate-racer-slow {
+  animation: racer-slow 9s linear infinite;
+}
+
+/* Calmer streaks for the footer, so it doesn't compete with page content. */
+.animate-racer-drift {
+  animation: racer-fast 8s linear infinite;
+}
+
+.animate-racer-drift-slow {
+  animation: racer-slow 12s linear infinite;
+}
+
+/* Hero entrance: staggered fade + rise on first paint. */
+@keyframes enter-up {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-enter-up {
+  animation: enter-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* Section rhythm ----------------------------------------------------------
+   One vertical scale for every section, so stacked sections cannot drift into
+   the large unexplained gaps that come from each one picking its own padding. */
+
+.section-y {
+  padding-top: 3.5rem;
+  padding-bottom: 3.5rem;
+}
+
+/* Sections that should read as a continuation of the one above. */
+.section-y-tight {
+  padding-top: 2rem;
+  padding-bottom: 4rem;
+}
+
+@media (min-width: 640px) {
+  .section-y { padding-top: 4.5rem; padding-bottom: 4.5rem; }
+  .section-y-tight { padding-top: 2.5rem; padding-bottom: 4.5rem; }
+}
+
+@media (min-width: 1024px) {
+  .section-y { padding-top: 5rem; padding-bottom: 5rem; }
+  .section-y-tight { padding-top: 2.5rem; padding-bottom: 5rem; }
+}
+
+/* A hairline red bridge across a section boundary, so consecutive sections
+   read as one continuous surface instead of stacked boxes. */
+.section-seam::before {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgba(220, 38, 38, 0.28) 30%,
+    rgba(220, 38, 38, 0.45) 50%,
+    rgba(220, 38, 38, 0.28) 70%,
+    transparent
+  );
+}
+
+/* Global base ------------------------------------------------------------- */
+
+html {
+  scroll-behavior: smooth;
+  background-color: #000;
+}
+
+/* Guards against a stray wide child causing sideways scroll on mobile.
+   `clip` rather than `hidden`: `hidden` forces overflow-y to `auto`, which turns
+   the element into a scroll container and breaks window scroll position. */
+html {
+  overflow-x: clip;
+}
+
+/* Visible keyboard focus on the dark theme (mouse clicks stay ring-free). */
+:focus-visible {
+  outline: 2px solid rgb(239 68 68);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-racer-fast,
+  .animate-racer-slow,
+  .animate-racer-drift,
+  .animate-racer-drift-slow,
+  .animate-enter-up,
+  .animate-blob,
+  .animate-scroll {
+    animation: none;
+  }
+}
+
+
+
+/* ==========================================================================
+   INTERACTIVE DEFAULTS
+   Tailwind v4 dropped the opinionated `cursor: pointer` on buttons and now
+   follows the browser, which uses the arrow. Across the site that left 47 of
+   71 clickable elements on /products with no pointer cursor and 26 with no
+   hover transition — an interface that looks clickable but does not feel it.
+
+   Set once here rather than sprinkling `cursor-pointer transition-colors` on
+   every button, which is what let it drift in the first place.
+   ========================================================================== */
+@layer base {
+  button,
+  [role="button"],
+  summary,
+  label[for],
+  a[href] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [role="button"]:disabled {
+    cursor: not-allowed;
+  }
+
+  /*
+     Colour-only transition, deliberately. Transform and opacity are left out
+     because framer-motion drives those through inline styles on many of these
+     same elements — a CSS transition on them would fight the animation and
+     produce a visible lag on exit.
+
+     150-300ms is the range the design guidance calls for; 180ms sits inside it
+     and stays out of the way.
+  */
+  button,
+  [role="button"],
+  a[href] {
+    transition-property: color, background-color, border-color, box-shadow,
+      text-decoration-color, fill, stroke;
+    transition-duration: 180ms;
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* A component that sets its own transition still wins: its declaration comes
+     later in the cascade, and utilities outrank base layer rules regardless. */
+
+  /*
+     Keyboard focus has to be visible, and the ring has to survive on black.
+     :focus-visible only, so a mouse click does not leave a ring behind.
+  */
+  :focus-visible {
+    outline: 2px solid var(--color-red-500, #ef4444);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /*
+     Every <select> on the site is styled with white text for the dark theme,
+     which the browser also applies to its native option-list popup — a popup
+     it otherwise renders with its own light background. That leaves white
+     text on white with no way to read it. `color-scheme: dark` tells the
+     browser to draw that popup in dark colors instead; the explicit
+     background/color on <option> is the fallback for engines that ignore
+     color-scheme on a per-element basis.
+  */
+  select {
+    color-scheme: dark;
+  }
+
+  select option {
+    background-color: #171717;
+    color: #fff;
+  }
+}

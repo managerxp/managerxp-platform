@@ -423,14 +423,19 @@
 
     return Store.createBill(payload).then(function (r) {
       var raised = r.data;
-      if (!codeState || !codeState.code) return raised;
+      // Whether this customer could cover the ticket on credit if it stays
+      // unpaid — computed once, against the bill as first raised, and
+      // carried along regardless of what a code does to the total.
+      var credit = r.credit || null;
+      if (!codeState || !codeState.code) { raised.credit = credit; return raised; }
       return Store.applyBillCode(raised.bill_id, codeState.code.code).then(function (applied) {
         // The code was checked a moment ago, but state can move — if the
         // server refuses now, raise the bill without it rather than fail
         // the sale over a discount.
-        if (applied.success) return applied.data;
-        UI.toast.warn("Code not applied", applied.message);
-        return raised;
+        var result = applied.success ? applied.data : raised;
+        if (!applied.success) UI.toast.warn("Code not applied", applied.message);
+        result.credit = credit;
+        return result;
       });
     });
   }
@@ -466,10 +471,13 @@
   /*
    * Raise the bill and stop there — no tenders, no payment dialog.
    *
-   * For a customer who is still playing, or still deciding: the food they
-   * ordered lands on their bill as owed, and it stays open until someone
-   * settles it — from here later, or from the Bills tab. Nothing about
-   * ordering a Coke should require the till to know how they intend to pay.
+   * A regular customer with enough credit left has this charged straight to
+   * their XP wallet (going negative, capped at their limit) — the same
+   * credit their record already promises them, so it shows up as what they
+   * actually owe rather than a bill sitting open somewhere nobody's
+   * balance reflects. Anyone who doesn't qualify (not a regular, no limit,
+   * or this ticket would exceed it) falls back to exactly today's
+   * behaviour: the bill stays open, owed, settled later from Bills.
    */
   function saveForLater() {
     if (!draft.customer && !draft.guestName.trim()) {
@@ -478,11 +486,44 @@
     }
     return raiseBill()
       .then(function (raised) {
+        var credit = raised.credit;
+        if (credit && credit.can_pay_later && raised.balance_due > 0) {
+          return Store.payBill(raised.bill_id, { method: "wallet", amount: raised.balance_due })
+            .then(function (r) {
+              return Store.getCustomerWallet(draft.customer.customer_id)
+                .catch(function () { return null; })
+                .then(function (wallet) {
+                  var balance = wallet ? Number(wallet.balance) : null;
+                  UI.toast.ok(
+                    "Charged to " + (raised.customer_name || "their") + " XP balance",
+                    balance !== null && balance < 0
+                      ? raised.customer_name + " now owes " + money(-balance) + " XP on credit."
+                      : "Bill " + raised.bill_number + " settled from their credit."
+                  );
+                  return r.data;
+                });
+            })
+            .catch(function () {
+              // The advisory check said yes a moment ago; if the actual charge
+              // is refused anyway (balance moved, race with another sale),
+              // fall back to leaving it as an ordinary open bill rather than
+              // failing the sale outright.
+              UI.toast.ok(
+                "Added to bill " + raised.bill_number,
+                (raised.customer_name || "Guest") + " owes " + money(raised.balance_due) +
+                  " XP — settle it any time from Bills."
+              );
+              return raised;
+            });
+        }
         UI.toast.ok(
           "Added to bill " + raised.bill_number,
           (raised.customer_name || "Guest") + " owes " + money(raised.balance_due) +
             " XP — settle it any time from Bills."
         );
+        return raised;
+      })
+      .then(function () {
         draft = newDraft();
         codeState = null;
         renderTicket();

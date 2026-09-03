@@ -330,7 +330,7 @@
         var paused = session.status === "paused";
         var card = UI.el("div", {
           class: "card card-pad",
-          dataset: { status: paused ? "maintenance" : "gaming" },
+          dataset: { status: paused ? "paused" : "gaming" },
           style: { background: "linear-gradient(180deg, var(--st-soft), var(--bg-raised))" }
         });
         card.innerHTML =
@@ -341,7 +341,7 @@
                 UI.esc(session.customer_name) +
                 (session.is_guest ? ' <span class="badge badge-plain">Guest</span>' : "") + "</div>" +
             "</div>" +
-            '<span class="badge badge-lg" data-status="' + (paused ? "maintenance" : "gaming") + '">' +
+            '<span class="badge badge-lg" data-status="' + (paused ? "paused" : "gaming") + '">' +
               UI.esc(session.status) + "</span>" +
           "</div>" +
           '<div class="timer-big" id="sessionTimer" style="margin:18px 0 4px">' +
@@ -833,7 +833,13 @@
     function renderAll() {
       pc = Store.getPC(pcName) || pc;
       renderHead();
+      // renderBody rebuilds the whole panel body from scratch — restore
+      // where the reader was scrolled to, or an update mid-scroll (Extend
+      // finishing, another station's session changing) yanks them back to
+      // the top of the panel.
+      var scrollTop = panel.body.scrollTop;
       renderBody();
+      panel.body.scrollTop = scrollTop;
     }
 
     /* ---------- live updates ---------- */
@@ -851,8 +857,36 @@
       t.classList.toggle("is-warn", run.remaining <= 300 && run.remaining > 60);
       t.classList.toggle("is-danger", run.remaining <= 60);
     }));
-    offs.push(Store.on("running", renderAll));
-    offs.push(Store.on("sessions", renderAll));
+    /*
+     * "running" and "sessions" are broadcast for the whole café — every
+     * station's launch/session state lives in one shared object, and the
+     * event fires whenever ANY of them changes, not just this panel's own
+     * pcName. Re-rendering unconditionally meant this panel rebuilt itself
+     * — losing scroll position and flickering the buttons under the
+     * pointer — every time a completely different station started, paused
+     * or ended a session, and again right after this panel's own buttons
+     * did the same thing (which fires the identical broadcast).
+     *
+     * Both dictionaries are only ever updated by replacing the entry for
+     * the station that actually changed (see afterSessionChange /
+     * pauseSession's optimistic update), so a reference check tells "my
+     * station moved" apart from "someone else's did" without needing the
+     * event to carry a pcName itself.
+     */
+    var lastRun = Store.state.running[pcName];
+    var lastSession = Store.sessionFor(pcName);
+    offs.push(Store.on("running", function () {
+      var run = Store.state.running[pcName];
+      if (run === lastRun) return;
+      lastRun = run;
+      renderAll();
+    }));
+    offs.push(Store.on("sessions", function () {
+      var session = Store.sessionFor(pcName);
+      if (session === lastSession) return;
+      lastSession = session;
+      renderAll();
+    }));
     offs.push(Store.on("session-tick", function () {
       var s = Store.sessionFor(pcName);
       var t = document.getElementById("sessionTimer");

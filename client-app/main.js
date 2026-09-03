@@ -983,20 +983,6 @@ function createWindow() {
     closeApplication(appName);
   });
 
-  /* The player tapped Extend on the timer card. Relay it to the console, which
-     holds the session and the staff token; it extends the session and pushes
-     an EXTEND_TIMER back so the card's clock grows. Fire-and-forget: if the
-     console is not connected, the tap simply does nothing rather than erroring
-     on the station. */
-  ipcMain.on('request-extend', () => {
-    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
-      serverConnection.send(JSON.stringify({ type: "EXTEND_REQUEST", simId: SIM_ID, blocks: 1 }));
-      log("Sent EXTEND_REQUEST to console");
-    } else {
-      log("Extend requested but console not connected");
-    }
-  });
-
   /* The block ran out and the game was left running. Tell the console so it can
      flag the station (over time, possibly low balance) for staff to settle. */
   ipcMain.on('session-overtime', (event, appName) => {
