@@ -173,12 +173,13 @@ caught because neither app had ever actually been packaged before:
    `electron-builder` refuses to build with it there — it must be in
    `devDependencies` (the binary is never bundled into the app; it *is* the
    installer). Fixed in both.
-2. `server-app/Images/icon.png` is 212×148 — `electron-builder` requires at
-   least 256×256 for a Windows icon. **This is not yet fixed** — a properly
-   sized, square "CafeXP Console" icon still needs to be supplied (not
-   invented here, since choosing the console's icon is a product decision).
-   Until it is, `server-app`'s `dist`/`release.yml` build will fail at the
-   icon-conversion step. `client-app/Images/icon.png` (1254×1254) is fine.
+2. `server-app/Images/icon.png` was 212×148 — `electron-builder` requires at
+   least 256×256 for a Windows icon. **Fixed**: replaced with a 1024×1024
+   crop of `cxp-cafe-icon.png` from `Manager-XP-Website/frontend/src/assets`
+   — the existing "SXP SERVER" app-icon artwork for this exact app, already
+   designed but never copied into `server-app/Images/`. Not a new branding
+   choice; the matching `clxp-client-icon.png` in that same folder is the
+   source client-app's own icon was already cropped from.
 
 Also worth knowing: `client-app`'s packaging config (the `build` block,
 `electron-updater` dependency, `dist` scripts) existed only on the `feature`
