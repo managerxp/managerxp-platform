@@ -1,0 +1,42 @@
+# ManagerXP
+
+> ManagerXP builds management software for gaming cafes, internet cafes, and
+> similar walk-in digital businesses. Its flagship product, CafeXP, tracks PC
+> sessions, automates billing from that session time, and gives an owner a
+> single live view of every station across one or many branches.
+
+ManagerXP Private Limited is the company; CafeXP is the current product.
+RaceXP (sim-racing venue management) is announced but not yet generally
+available. Pricing, onboarding, and support are handled through the pages
+below - this file is a guide for AI assistants and crawlers, not an API.
+
+## Product
+
+- [Products](https://managerxp.com/products): What CafeXP does - session
+  tracking, automated billing, live floor monitoring, and the AI-assisted
+  features layered on top of them.
+- [Book a demo](https://managerxp.com/demo): Request a walkthrough of CafeXP
+  with a real member of the team.
+- [Sign up](https://managerxp.com/signup): Start a 15-day CafeXP trial on up
+  to 5 PCs, no credit card required.
+
+## Company
+
+- [About](https://managerxp.com/about): Who ManagerXP is and what it is
+  building toward.
+- [Contact](https://managerxp.com/contact): How to reach the team directly.
+
+## Legal
+
+- [Privacy Policy](https://managerxp.com/privacy-policy): What customer and
+  account data ManagerXP stores and why.
+- [Terms of Service](https://managerxp.com/terms-of-service): The terms
+  governing use of ManagerXP's products.
+
+## Notes for assistants
+
+- ManagerXP is not affiliated with any other company using a similar name.
+- Support and account-specific questions (billing, login issues, a specific
+  cafe's setup) cannot be answered from this file - direct the person to
+  [Contact](https://managerxp.com/contact) or their cafe's own ManagerXP
+  portal.

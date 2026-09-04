@@ -14,10 +14,10 @@ class AuthContext {
     this.isAuthenticated = false;
     this.listeners = [];
     this.authFilePath = null;
-    
+
     // Initialize file path
     this.initAuthFilePath();
-    
+
     // Restore from file
     this.restoreFromStorage();
   }
@@ -45,9 +45,16 @@ class AuthContext {
       if (fs.existsSync(this.authFilePath)) {
         const data = fs.readFileSync(this.authFilePath, 'utf-8');
         const { user, token } = JSON.parse(data);
-        this.user = user;
-        this.token = token;
-        this.isAuthenticated = !!token && !!user;
+        /* Re-derived through setAuth rather than assigned straight across, so
+           a session saved before the café was read from the token gains it on
+           the next start instead of staying broken until a fresh sign-in. */
+        if (token && user) {
+          this.setAuth(user, token);
+        } else {
+          this.user = user || null;
+          this.token = token || null;
+          this.isAuthenticated = false;
+        }
       }
     } catch (error) {
       console.error('Failed to restore auth from storage:', error);
@@ -62,16 +69,47 @@ class AuthContext {
    * @param {Object} userData - User object from backend
    * @param {string} token - JWT token from backend
    */
+  /**
+   * Read the claims out of a JWT without verifying it.
+   *
+   * The backend verifies; this only needs to know what it was told. The token
+   * is the better source for identity than the user object beside it: the
+   * login response's `user` varies by which login path answered, while the
+   * token's claims are what every guard on the server actually reads.
+   */
+  decodeToken(token) {
+    try {
+      const part = String(token).split('.')[1];
+      if (!part) return {};
+      const json = Buffer.from(part.replace(/-/g, '+').replace(/_/g, '/'), 'base64')
+        .toString('utf8');
+      return JSON.parse(json) || {};
+    } catch (error) {
+      return {};
+    }
+  }
+
   setAuth(userData, token) {
+    /*
+     * The café comes from the token when the user object does not carry it.
+     *
+     * Café logins put `cafe_id` in the token but the `user` object that comes
+     * back varies by login path — the admin branch returns only an email and a
+     * role. Trusting the user object alone left the console signed in with no
+     * café, so every station query bailed before it was sent and the floor
+     * showed an empty room.
+     */
+    const claims = token ? this.decodeToken(token) : {};
+
     this.user = {
-      id: userData.id,
-      user_id: userData.id, // Alias for compatibility
-      email: userData.email,
-      name: userData.name,
+      id: userData.id || claims.id || claims.staff_id || null,
+      user_id: userData.id || claims.id || claims.staff_id || null, // Alias for compatibility
+      email: userData.email || claims.email,
+      name: userData.name || claims.name,
       phone_number: userData.phone_number,
       address: userData.address,
-      role: userData.role,
-      cafe_id: userData.cafe_id || null,
+      role: userData.role || claims.role,
+      cafe_id: userData.cafe_id || claims.cafe_id || null,
       created_at: userData.created_at
     };
     
@@ -127,6 +165,15 @@ class AuthContext {
   /**
    * Get cafe ID for current user
    * @returns {string|null} Cafe ID or null
+   */
+  /*
+   * The café this console works for, as claimed by the token.
+   *
+   * Deliberately not choosable here. An earlier attempt let the operator pick
+   * from a list of cafés when the account named none — which meant showing one
+   * café's staff the names of every other café on the platform, and let a
+   * console point itself at books it had no business opening. Which café a
+   * console serves follows from who signed in, and nothing else.
    */
   getCafeId() {
     return this.user?.cafe_id || null;
@@ -245,7 +292,7 @@ class AuthContext {
       token: this.token,
       isAuthenticated: this.isAuthenticated,
       userId: this.user?.id || null,
-      cafeId: this.user?.cafe_id || null,
+      cafeId: this.getCafeId(),
       userEmail: this.user?.email || null,
       userRole: this.user?.role || null
     };

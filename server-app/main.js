@@ -4,13 +4,23 @@ const path = require("path");
 const http = require("http");
 const fs = require("fs");
 const os = require("os");
+const dgram = require("dgram");   // Wake-on-LAN magic packets
 const authContext = require("./authContext");
+
+// .env is optional — a fresh checkout or a machine where it was never copied
+// still runs on the defaults below, exactly as it did before this existed.
+try { process.loadEnvFile(path.join(__dirname, ".env")); } catch (e) { /* no .env on this machine */ }
 
 let win;
 let tokenServer; // HTTP token server instance
 let clientConnections = new Map(); // simId -> ws connection to client
 let handlersRegistered = false;
 const clients = new Map(); // simId -> { ws, apps }
+/* Which game launchers each station reported having installed. Kept in memory
+   only: it is a live fact about a machine, re-sent on every reconnect, and a
+   stale answer from a previous run would be worse than none. */
+const stationLaunchers = new Map(); // pcName -> { Steam: {installed, path}, ... }
+const stationSteamAuth = new Map(); // pcName -> { state, account, at }
 let allRegisteredPCs = new Map(); // Track all registered PCs with their config for heartbeat
 let discoveredPCs = new Map(); // Track auto-discovered PCs: ip_address -> { ip, mac, hostname, port, discovered_at }
 let pcConnectionStats = new Map(); // Track connection failures: pcName -> { failures, lastError, lastAttempt }
@@ -31,6 +41,8 @@ function createLoginWindow() {
       height: 600,
       minWidth: 400,
       minHeight: 500,
+      frame: false,
+      backgroundColor: '#07070b',
       show: false,
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -48,6 +60,15 @@ function createLoginWindow() {
       console.error('[Navigation] Error loading login page:', err);
     });
     
+    // Keep the login window's maximise icon in step with the real state.
+    const pushLoginMaximizeState = () => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('window:maximized-changed', win.isMaximized());
+      }
+    };
+    win.on('maximize', pushLoginMaximizeState);
+    win.on('unmaximize', pushLoginMaximizeState);
+
     // Show window when content is ready
     win.webContents.once('did-finish-load', () => {
       console.log('[Navigation] Login window content loaded, showing window');
@@ -64,6 +85,8 @@ function createLoginWindow() {
     });
   } else {
     console.log('[Navigation] Window exists, navigating to login page');
+    // Relax the console's minimum before shrinking back to the login size.
+    win.setMinimumSize(400, 500);
     win.setSize(500, 600);
     win.center();
     
@@ -86,10 +109,12 @@ function createWindow() {
   if (!win || win.isDestroyed()) {
     console.log('[Navigation] Creating main window with home page');
     win = new BrowserWindow({
-      width: 950,
-      height: 700,
-      minWidth: 800,
-      minHeight: 600,
+      width: 1440,
+      height: 900,
+      minWidth: 1120,
+      minHeight: 720,
+      frame: false, // custom CafeXP title bar drawn in the topbar
+      backgroundColor: '#07070b', // matches the console background, avoids a white flash
       show: false, // Don't show until ready
       webPreferences: {
         preload: path.join(__dirname, "preload.js"),
@@ -123,6 +148,15 @@ function createWindow() {
       }
     });
     
+    // Keep the custom title bar's maximise icon in step with the real state.
+    const pushMaximizeState = () => {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('window:maximized-changed', win.isMaximized());
+      }
+    };
+    win.on('maximize', pushMaximizeState);
+    win.on('unmaximize', pushMaximizeState);
+
     // Handle window close event
     win.on('closed', () => {
       console.log('[Navigation] Window closed');
@@ -131,7 +165,8 @@ function createWindow() {
     });
   } else {
     console.log('[Navigation] Window exists, navigating to home page');
-    win.setSize(950, 700);
+    win.setMinimumSize(1120, 720);
+    win.setSize(1440, 900);
     win.center();
     
     // Load the home page
@@ -159,6 +194,122 @@ function createWindow() {
 
 function log(msg) {
   if (win) win.webContents.send("log", msg);
+}
+
+/*
+ * A station asked for something only the console can do (it holds the session
+ * and the staff token). Rather than reach the backend from the main process —
+ * which has no token — the request is handed to the renderer, which already
+ * signs its API calls, resolves the session for that station and acts.
+ *
+ * Shared by every station connection handler so the three of them stay in
+ * step. Returns true when the message was one of ours, so a caller can skip
+ * the rest of its checks.
+ */
+function handleStationRequest(msg, ws) {
+  const pcName = (ws && ws.simId) || msg.simId || null;
+  if (!pcName) return false;
+
+  if (msg.type === "EXTEND_REQUEST") {
+    log(`[Extend] ${pcName} requested +${msg.blocks || 1} block`);
+    if (win) win.webContents.send("station:extend-request", { pcName, blocks: msg.blocks || 1 });
+    return true;
+  }
+  if (msg.type === "SESSION_OVERTIME") {
+    log(`[Overtime] ${pcName} is past its block`);
+    if (win) win.webContents.send("station:overtime", { pcName, appName: msg.appName || null });
+    return true;
+  }
+  /* A customer tapped "Call staff" on the Help menu. No session or billing
+     state is touched here — this is purely "a person needs a person",
+     handed straight to the renderer to toast and flag on the floor. */
+  if (msg.type === "CALL_STAFF") {
+    log(`[Help] ${pcName} called staff`);
+    if (win) win.webContents.send("station:call-staff", { pcName });
+    return true;
+  }
+  /* A logged-in customer opened the "choose a game" screen while idle — send
+     what they need to start their own session (the café's games and prices
+     for this station), independent of whether one is already running. */
+  if (msg.type === "REQUEST_START_OPTIONS") {
+    if (win) win.webContents.send("station:start-options-request", { pcName });
+    return true;
+  }
+  /* The customer picked a game and a price and tapped Start. */
+  if (msg.type === "START_SESSION_REQUEST") {
+    log(`[Self-start] ${pcName} requested a session (price #${msg.gaming_price_id}, customer #${msg.customer_id})`);
+    if (win) win.webContents.send("station:start-request", {
+      pcName, customer_id: msg.customer_id || null,
+      gaming_price_id: msg.gaming_price_id || null,
+      game_id: msg.game_id || null,
+      game_platform_id: msg.game_platform_id || null,
+      game_account_id: msg.game_account_id || null,
+      use_venue_account: !!msg.use_venue_account
+    });
+    return true;
+  }
+  /*
+   * The game this station's session just started for could not actually be
+   * launched — no launch configuration, the launcher unreachable, the
+   * executable missing. A session with nobody playing it must not run up a
+   * bill nobody asked for, so this is handed to the renderer the same way a
+   * self-start request is: it holds the session and the token to cancel it.
+   */
+  if (msg.type === "LAUNCH_FAILED") {
+    log(`[Launch] ${pcName} could not start ${msg.appName || "the game"}: ${msg.error || "unknown error"}`);
+    if (win) win.webContents.send("station:launch-failed", { pcName, appName: msg.appName || null, error: msg.error || null });
+    return true;
+  }
+  /* A station finished its end-of-session cleanup. */
+  if (msg.type === "CLEANUP_DONE") {
+    log(`[Cleanup] ${pcName} is clean and ready`);
+    if (win) win.webContents.send("station:cleanup-done", { pcName });
+    return true;
+  }
+  /* A station reporting which launchers it has. Sent unprompted on connect and
+     again whenever the console asks, so the answer tracks the machine. */
+  if (msg.type === "LAUNCHERS") {
+    const launchers = msg.launchers || {};
+    stationLaunchers.set(pcName, launchers);
+    const on = Object.keys(launchers).filter((k) => launchers[k] && launchers[k].installed);
+    log(`[Launchers] ${pcName}: ${on.length ? on.join(", ") : "none"}`);
+    if (win) win.webContents.send("station:launchers", { pcName, launchers });
+    return true;
+  }
+  /* A station's venue-Steam sign-in, moving through CHECKING ->
+     AUTHENTICATING -> AUTHENTICATED/FAILED ahead of a game launch — never
+     the credential itself, only the state name and a masked account. */
+  if (msg.type === "STEAM_AUTH_STATUS") {
+    stationSteamAuth.set(pcName, { state: msg.state, account: msg.account || null, at: Date.now() });
+    log(`[Steam] ${pcName}: ${msg.state}${msg.account ? ` (${msg.account})` : ""}`);
+    if (win) win.webContents.send("station:steam-auth", { pcName, state: msg.state, account: msg.account || null });
+    return true;
+  }
+  /* A station reporting its own CafeXP Client build, sent unprompted on
+     connect. Handed to the renderer rather than pushed to the backend from
+     here — the renderer already holds this café's staff token and the pc_id
+     each station maps to, and this console has neither. */
+  if (msg.type === "CLIENT_VERSION") {
+    const version = String(msg.version || "").slice(0, 32);
+    log(`[Update] ${pcName} is running client ${version}`);
+    if (win) win.webContents.send("station:client-version", { pcName, version });
+    return true;
+  }
+  return false;
+}
+
+/*
+ * Tell a station's timer card to grow its clock by `minutes`. The renderer
+ * calls this after it has extended the session, so the visible countdown
+ * matches the block the customer just added.
+ */
+function pushExtendTimer(pcName, minutes) {
+  const client = clients.get(pcName);
+  if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+    return { success: false, error: "Station is not connected" };
+  }
+  client.ws.send(JSON.stringify({ type: "EXTEND_TIMER", minutes: Number(minutes) || 0 }));
+  return { success: true };
 }
 
 // Track connection failure and update UI with status
@@ -204,20 +355,46 @@ function recordConnectionSuccess(pcName) {
   }
 }
 
+/*
+ * Does this station have anything to connect to?
+ *
+ * A café sells time on two different kinds of thing. Most are PCs running the
+ * client agent, which register over a WebSocket and can be locked, launched
+ * into and monitored. The rest are *not computers we talk to*: a pool table,
+ * a dartboard, a VR rig, a console on a big screen. They are physical assets
+ * with a timer against them — the café still runs sessions and bills for
+ * them, there is simply nothing on the other end of a socket.
+ *
+ * Those are registered with no IP address, and having no address is the whole
+ * definition. Everything network-shaped keys off this one predicate rather
+ * than off a station's category, because "Pool" is a label an owner types and
+ * could be anything, while a missing address is a fact.
+ */
+function isNetworked(pcConfig) {
+  return !!(pcConfig && pcConfig.ip && pcConfig.port);
+}
+
 // Get connection status for all PCs
 function getConnectionStatus() {
   const status = {};
   allRegisteredPCs.forEach((pcConfig, pcName) => {
+    const networked = isNetworked(pcConfig);
     const isConnected = clients.has(pcName);
     const stats = pcConnectionStats.get(pcName);
     status[pcName] = {
       name: pcName,
       ip: pcConfig.ip,
       port: pcConfig.port,
-      connected: isConnected,
-      failures: stats?.failures || 0,
-      lastError: stats?.lastError || null,
-      lastAttempt: stats?.lastAttempt || null
+      /* An addressless station is never "connected", but it is never offline
+         either — a pool table is ready whenever somebody wants to play on it.
+         Reporting it as disconnected would light the floor up with faults
+         that no amount of troubleshooting could ever clear. */
+      networked: networked,
+      connected: networked ? isConnected : false,
+      available: networked ? isConnected : true,
+      failures: networked ? (stats?.failures || 0) : 0,
+      lastError: networked ? (stats?.lastError || null) : null,
+      lastAttempt: networked ? (stats?.lastAttempt || null) : null
     };
   });
   return status;
@@ -273,6 +450,41 @@ function getMacAddress() {
   }
 }
 
+/*
+ * The backend this console talks to.
+ *
+ * `Store.API_BASE` is `http://localhost:5000` because the backend runs on the
+ * same machine as this console — true in every deployment so far, so nobody
+ * had to say it out loud. A station is a different machine, so "localhost"
+ * means something different to it: itself, not the backend. It has to be told
+ * the console's real address instead, and the console is the one that knows
+ * it — SET_NAME already introduces this station to the console; this rides
+ * along on the same message rather than inventing a second round trip.
+ *
+ * Same interface-selection rule as getMacAddress, for the same reason: the
+ * first non-internal IPv4 address is the one actually reachable from another
+ * machine on the network.
+ */
+const BACKEND_PORT = Number(process.env.BACKEND_PORT) || 5000;
+const BACKEND_LOCAL = `http://localhost:${BACKEND_PORT}`;
+const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
+function getServerLocalIP() {
+  try {
+    const interfaces = os.networkInterfaces();
+    for (const name of Object.keys(interfaces)) {
+      for (const addr of interfaces[name] || []) {
+        if (addr.family === 'IPv4' && !addr.internal) return addr.address;
+      }
+    }
+  } catch (error) {
+    console.error('Error getting local IP:', error);
+  }
+  return '127.0.0.1';
+}
+function backendBaseUrl() {
+  return `http://${getServerLocalIP()}:${BACKEND_PORT}`;
+}
+
 // Start token receiver HTTP server
 function startTokenServer() {
   const server = http.createServer((req, res) => {
@@ -321,7 +533,7 @@ function startTokenServer() {
                 if (authState && authState.token) {
                   console.log(`[PC Auto-Update] Checking if MAC ${mac_address} exists in database...`);
                   
-                  const checkResponse = await fetch('http://localhost:5000/api/pcs/check-exists', {
+                  const checkResponse = await fetch(`${BACKEND_LOCAL}/api/pcs/check-exists`, {
                     method: 'POST',
                     headers: {
                       'Content-Type': 'application/json',
@@ -338,7 +550,16 @@ function startTokenServer() {
                     
                     if (checkResult.exists) {
                       console.log(`[PC Auto-Update] ✅ PC found in database with MAC ${mac_address}`);
-                      const pcName = checkResult.pc_name || checkResult.name || `PC-${mac_address.substring(mac_address.length - 5)}`;
+                      // /api/pcs/check-exists returns the station under `data`.
+                      // Reading the name off the top level always missed, so
+                      // every discovered station was renamed to an invented
+                      // PC-xx:xx and no longer matched its own record — which
+                      // is why its telemetry and sessions never attached.
+                      const pcName =
+                        (checkResult.data && (checkResult.data.name || checkResult.data.pc_name)) ||
+                        checkResult.pc_name ||
+                        checkResult.name ||
+                        `PC-${mac_address.substring(mac_address.length - 5)}`;
                       
                       if (checkResult.ip_updated) {
                         console.log(`[PC Auto-Update] 🔄 IP auto-updated for MAC ${mac_address}`);
@@ -498,8 +719,8 @@ function startTokenServer() {
   });
   
   tokenServer = server;
-  server.listen(3334, () => {
-    console.log('Token receiver server listening on port 3334 with CORS enabled');
+  server.listen(TOKEN_SERVER_PORT, () => {
+    console.log(`Token receiver server listening on port ${TOKEN_SERVER_PORT} with CORS enabled`);
   });
 }
 
@@ -606,10 +827,344 @@ app.whenReady().then(() => {
   }
 });
 
+/* ==========================================================================
+   TELEMETRY RELAY
+   Stations sample their own hardware and push it here. This process keeps the
+   newest reading per station for the live view, and flushes the accumulated
+   samples to the backend in batches so a brief outage costs a gap in the
+   history rather than a station's worth of metrics.
+   ========================================================================== */
+const latestTelemetry = new Map();   // pcName -> sample
+const telemetryQueue = [];           // samples waiting to be persisted
+const heartbeatSentAt = new Map();   // pcName -> ms, for round-trip latency
+const pingLatency = new Map();       // pcName -> ms
+let telemetryFlushInterval = null;
+
+const TELEMETRY_FLUSH_MS = 20000;
+const TELEMETRY_QUEUE_MAX = 500;
+
+function recordTelemetry(pcName, sample) {
+  if (!pcName || !sample) return;
+
+  // Latency is measured here, not on the station: only this side knows when
+  // the ping left and when the pong came back.
+  const enriched = {
+    ...sample,
+    pc_name: pcName,
+    latency_ms: pingLatency.has(pcName) ? pingLatency.get(pcName) : null
+  };
+
+  latestTelemetry.set(pcName, enriched);
+  telemetryQueue.push(enriched);
+
+  // Drop the oldest rather than grow without bound if the backend is down.
+  while (telemetryQueue.length > TELEMETRY_QUEUE_MAX) telemetryQueue.shift();
+
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("telemetry-updated", { pcName, sample: enriched });
+  }
+}
+
+async function flushTelemetry() {
+  if (!telemetryQueue.length) return;
+
+  const token = authContext.getToken();
+  if (!token) return;   // Not signed in yet; keep the samples for later.
+
+  const batch = telemetryQueue.splice(0, TELEMETRY_QUEUE_MAX);
+  try {
+    const response = await fetch(`${BACKEND_LOCAL}/api/telemetry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ samples: batch })
+    });
+
+    if (!response.ok) {
+      // Put them back — a 500 or a restart should not lose the history.
+      telemetryQueue.unshift(...batch);
+      log(`[Telemetry] Flush failed: HTTP ${response.status}`);
+      return;
+    }
+
+    const result = await response.json();
+    if (result.unregistered_stations && result.unregistered_stations.length) {
+      log(`[Telemetry] Samples from unregistered station(s): ${result.unregistered_stations.join(", ")}`);
+    }
+  } catch (error) {
+    telemetryQueue.unshift(...batch);
+    log(`[Telemetry] Flush error: ${error.message}`);
+  }
+}
+
+function startTelemetryFlush() {
+  if (telemetryFlushInterval) return;
+  telemetryFlushInterval = setInterval(flushTelemetry, TELEMETRY_FLUSH_MS);
+  log(`[Telemetry] Persisting samples every ${TELEMETRY_FLUSH_MS / 1000}s`);
+}
+
+/**
+ * Round-trip time for the last heartbeat. Measured here because only this
+ * side knows when the ping left; the station has no clock we can trust
+ * against ours.
+ */
+function noteHeartbeatPong(pcName) {
+  const sentAt = heartbeatSentAt.get(pcName);
+  if (!sentAt) return;
+  heartbeatSentAt.delete(pcName);
+  const rtt = Date.now() - sentAt;
+  // A pong that arrives after several heartbeats is a stale match, not a
+  // measurement — discard it rather than report a wild number.
+  if (rtt >= 0 && rtt < HEARTBEAT_INTERVAL) pingLatency.set(pcName, rtt);
+}
+
+/** Ask a station for a sample now, rather than waiting for its next tick. */
+function requestTelemetry(pcName) {
+  const client = clients.get(pcName);
+  if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) return false;
+  client.ws.send(JSON.stringify({ type: "GET_TELEMETRY" }));
+  return true;
+}
+
 // Register all IPC handlers (call only once)
 function registerIPCHandlers() {
   if (handlersRegistered) return;
-  
+
+  /* Synchronous on purpose: the renderer's Store needs this before its first
+     API call, which can happen before any async IPC round trip would have
+     resolved. preload.js reads it once, at script-evaluation time, and hands
+     the renderer a plain string — not a promise it would have to thread
+     through every caller of Store.request(). */
+  ipcMain.on("system:get-backend-local-sync", (event) => {
+    event.returnValue = BACKEND_LOCAL;
+  });
+
+  /** The live wall reads from this process; history comes from the backend. */
+  ipcMain.handle("telemetry:get-latest", async () => ({
+    success: true,
+    data: Array.from(latestTelemetry.entries()).map(([pcName, sample]) => ({ pcName, sample }))
+  }));
+
+  ipcMain.handle("telemetry:request", async (_, { pcName }) => ({
+    success: requestTelemetry(pcName)
+  }));
+
+  /*
+   * Send a power action to a station.
+   *
+   * The renderer authorises with the backend first — that is where the
+   * permission check and the audit entry happen — and only calls this once it
+   * has a yes. This handler is purely the delivery mechanism.
+   */
+  ipcMain.handle("station:power", async (_, { pcName, action, delaySeconds }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({
+      type: "POWER",
+      action: action,
+      delaySeconds: delaySeconds === undefined ? 10 : delaySeconds
+    }));
+    log(`[Power] Sent ${action} to ${pcName}`);
+    return { success: true };
+  });
+
+  /*
+   * Wake-on-LAN.
+   *
+   * Every other power action is a message to the running client. Powering a
+   * station ON cannot be — the machine is off, so there is nothing listening.
+   * The only thing that reaches it is a magic packet on the local network,
+   * which is why this lives in the console and not in the cloud backend: the
+   * console is the one component sitting on the café's own LAN.
+   *
+   * The packet is six 0xFF bytes followed by the target MAC repeated sixteen
+   * times. It is broadcast, so it needs no IP for a machine that has none yet.
+   */
+  ipcMain.handle("station:wake", async (_, { pcName, macAddress }) => {
+    const mac = String(macAddress || "").replace(/[^a-fA-F0-9]/g, "");
+    if (mac.length !== 12) {
+      return { success: false, error: "This station has no usable MAC address on record" };
+    }
+
+    const macBytes = Buffer.from(mac, "hex");
+    const packet = Buffer.alloc(102);
+    packet.fill(0xff, 0, 6);
+    for (let i = 0; i < 16; i += 1) macBytes.copy(packet, 6 + i * 6);
+
+    return new Promise((resolve) => {
+      const socket = dgram.createSocket("udp4");
+
+      socket.once("error", (err) => {
+        socket.close();
+        resolve({ success: false, error: err.message });
+      });
+
+      socket.bind(() => {
+        socket.setBroadcast(true);
+        /*
+         * Ports 9 and 7 are both used by WoL implementations and NICs differ
+         * on which they listen to, so both are sent — an unheard packet costs
+         * nothing, a station that fails to wake costs a seat.
+         */
+        let pending = 2;
+        const done = () => { if (--pending === 0) { socket.close(); resolve({ success: true }); } };
+
+        socket.send(packet, 0, packet.length, 9, "255.255.255.255", done);
+        socket.send(packet, 0, packet.length, 7, "255.255.255.255", done);
+      });
+
+      // A broadcast is fire-and-forget: nothing acknowledges it, so a station
+      // that never wakes must not leave the console waiting.
+      setTimeout(() => { try { socket.close(); } catch (e) { /* already closed */ } resolve({ success: true }); }, 2500);
+    }).then((result) => {
+      log(`[Power] Wake packet ${result.success ? "sent to" : "failed for"} ${pcName}`);
+      return result;
+    });
+  });
+
+  /** Push a new sample rate to every connected station. */
+  ipcMain.handle("telemetry:set-interval", async (_, { seconds }) => {
+    let sent = 0;
+    clients.forEach((client, key) => {
+      if (client && client.ws && client.ws.readyState === WebSocket.OPEN) {
+        client.ws.send(JSON.stringify({ type: "TELEMETRY_CONFIG", sample_seconds: seconds }));
+        sent += 1;
+      }
+    });
+    log(`[Telemetry] Sample interval set to ${seconds}s on ${sent} connection(s)`);
+    return { success: true, stations: sent };
+  });
+
+  /**
+   * Push the current session state to a station so its portal can show the
+   * customer's name and countdown. Display only — the backend remains the
+   * source of truth and the station never talks back about sessions.
+   */
+  ipcMain.handle("session:push-state", async (_, { pcName, session }) => {
+    /* A station with no address has no portal to show anything on — the
+       session is tracked entirely on the counter's screen. Not an error and
+       not worth logging every tick: there was never a display to push to. */
+    const registered = allRegisteredPCs.get(pcName);
+    if (registered && !isNetworked(registered)) {
+      return { success: true, displayed: false };
+    }
+
+    const client = clients.get(pcName);
+    if (!client || client.ws.readyState !== WebSocket.OPEN) {
+      console.log(`[Session] Push skipped, ${pcName} not connected`);
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "SESSION_STATE", session: session || null }));
+    const summary = session ? `${session.status} for ${session.customer_name}` : "cleared";
+    log(`Sent session state to ${pcName}: ${summary}`);
+    console.log(`[Session] Pushed to ${pcName}: ${summary}`);
+    return { success: true };
+  });
+
+  /* After the renderer extends a station's session it calls this, so the
+     station's floating timer card grows its clock to match. */
+  ipcMain.handle("session:push-extend-timer", async (_, { pcName, minutes }) => {
+    return pushExtendTimer(pcName, minutes);
+  });
+
+  /* checkForSoftwareUpdate() found a station running an older client build
+     than what ManagerXP has published — tell it directly, the same way a
+     session push reaches one specific station. */
+  ipcMain.handle("update:push-available", async (_, { pcName, payload }) => {
+    const client = clients.get(pcName);
+    if (!client || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "UPDATE_AVAILABLE", ...payload }));
+    log(`Sent update notice to ${pcName}: v${payload.version}`);
+    return { success: true };
+  });
+
+  /* The games a station may offer its customer. The renderer resolves the list
+     (only this PC's installed, enabled titles) and hands it here to send down
+     the station's connection, the same channel session state travels on. An
+     empty list clears the customer's game menu — used when a session ends. */
+  /* What launchers each station has. Returns everything known when no station
+     is named, so the floor can badge them all from one call. */
+  ipcMain.handle("station:get-launchers", async (_, { pcName } = {}) => {
+    if (pcName) return { success: true, data: stationLaunchers.get(pcName) || null };
+    return {
+      success: true,
+      data: Array.from(stationLaunchers.entries()).map(([name, launchers]) => ({ pcName: name, launchers }))
+    };
+  });
+
+  /* A station's most recent Steam sign-in state, for a console opened after
+     the fact rather than one watching live. Cleared naturally by the next
+     launch attempt overwriting it — nothing here ever needs expiring. */
+  ipcMain.handle("station:get-steam-auth", async (_, { pcName } = {}) => {
+    if (pcName) return { success: true, data: stationSteamAuth.get(pcName) || null };
+    return {
+      success: true,
+      data: Array.from(stationSteamAuth.entries()).map(([name, s]) => ({ pcName: name, ...s }))
+    };
+  });
+
+  /* Ask a station to look again — used after staff install a launcher on it. */
+  ipcMain.handle("station:refresh-launchers", async (_, { pcName }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "GET_LAUNCHERS" }));
+    return { success: true };
+  });
+
+  /* Tell a station to clean itself up after a session — close the game, sign
+     the configured launchers out, free the machine. The config travels with
+     the command so the café's current policy always wins. */
+  ipcMain.handle("session:cleanup", async (_, { pcName, config, games }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "SESSION_CLEANUP", config: config || {}, games: games || [] }));
+    const outs = Object.keys((config && config.signout) || {}).filter((k) => config.signout[k]);
+    log(`Cleanup sent to ${pcName}${outs.length ? " — signing out " + outs.join(", ") : ""}`);
+    return { success: true };
+  });
+
+  ipcMain.handle("session:push-games", async (_, { pcName, games }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "GAMES_LIST", games: games || [] }));
+    log(`Sent ${(games || []).length} games to ${pcName}`);
+    return { success: true };
+  });
+
+  /* What a customer can self-start with — this café's games and prices for
+     the requesting station — sent whether or not a session is already
+     running there, unlike GAMES_LIST which only carries a title once one is. */
+  ipcMain.handle("session:push-start-options", async (_, { pcName, games, prices }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "START_OPTIONS", games: games || [], prices: prices || [] }));
+    log(`Sent start options to ${pcName}: ${(games || []).length} games, ${(prices || []).length} prices`);
+    return { success: true };
+  });
+
+  /* The self-start the customer asked for could not begin — station or
+     wallet issue, station or price no longer valid. Told to the station
+     itself since nobody at the counter is watching this one start. */
+  ipcMain.handle("session:push-start-failed", async (_, { pcName, message }) => {
+    const client = clients.get(pcName);
+    if (!client || !client.ws || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "START_SESSION_FAILED", message: message || "Could not start the session" }));
+    return { success: true };
+  });
+
   // Handle launch request from UI
   ipcMain.handle("launch-app", async (_, data) => {
     const { simId, appName, appPath, timerMinutes } = data;
@@ -702,7 +1257,7 @@ function registerIPCHandlers() {
         return { success: false, error: 'Not authenticated', data: [] };
       }
 
-      const response = await fetch(`http://localhost:5000/api/pc-software/pc/${pcId}`, {
+      const response = await fetch(`${BACKEND_LOCAL}/api/pc-software/pc/${pcId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -949,12 +1504,20 @@ function registerIPCHandlers() {
       const cafeId = authContext.getCafeId();
       const token = authContext.getToken();
       
-      if (!cafeId || !token) {
-        console.log("Missing cafeId or token for PC fetch");
+      /* These are two different failures and were reported as one. Without a
+         token the console is signed out; with a token but no café it is signed
+         in as somebody who belongs to no café — and the fix for that is to
+         choose one, not to sign in again. */
+      if (!token) {
+        console.log("No token for PC fetch — signed out");
         return { success: false, data: [], error: "Not authenticated" };
       }
+      if (!cafeId) {
+        console.log("No cafe id for PC fetch — principal has no cafe and none chosen");
+        return { success: false, data: [], error: "NO_CAFE" };
+      }
 
-      const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {
+      const response = await fetch(`${BACKEND_LOCAL}/api/pcs/cafe/${cafeId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -977,13 +1540,35 @@ function registerIPCHandlers() {
     }
   });
 
+  // ---- Custom window controls (the frame is drawn by the renderer) ----
+  ipcMain.on("window:minimize", () => {
+    if (win && !win.isDestroyed()) win.minimize();
+  });
+
+  ipcMain.on("window:toggle-maximize", () => {
+    if (!win || win.isDestroyed()) return;
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+
+  ipcMain.on("window:close", () => {
+    if (win && !win.isDestroyed()) win.close();
+  });
+
+  ipcMain.handle("window:is-maximized", () => {
+    return !!win && !win.isDestroyed() && win.isMaximized();
+  });
+
   ipcMain.on("auth:open-web-app", (event) => {
-    shell.openExternal('http://localhost:5173/gamingxp-login');
+    shell.openExternal('http://localhost:5173/cafexp-login');
   });
 
   ipcMain.on("auth:open-web-app-signup", (event) => {
     shell.openExternal('http://localhost:5173/signup');
   });
+
+  // This console's own build, read from package.json via Electron.
+  ipcMain.handle("system:get-app-version", async () => app.getVersion());
 
   // Get system MAC address
   ipcMain.handle("system:get-mac-address", async (event) => {
@@ -1035,7 +1620,11 @@ function registerIPCHandlers() {
       console.log(`[IPC] Received request to reconnect all PCs. Currently tracking: ${allRegisteredPCs.size} PCs`);
       
       let reconnectCount = 0;
+      let skipped = 0;
       allRegisteredPCs.forEach((pcConfig, pcName) => {
+        // Addressless stations are not disconnected, so "reconnect all" has
+        // no work to do for them.
+        if (!isNetworked(pcConfig)) { skipped++; return; }
         if (!clients.has(pcName)) {
           console.log(`[IPC] Attempting to reconnect: ${pcName}`);
           connectToSpecificPC(pcConfig.ip, pcConfig.port, pcName);
@@ -1043,7 +1632,8 @@ function registerIPCHandlers() {
         }
       });
 
-      log(`[IPC] Reconnection attempt initiated for ${reconnectCount} disconnected PCs`);
+      log(`[IPC] Reconnection attempt initiated for ${reconnectCount} disconnected PCs` +
+        (skipped ? ` (${skipped} station(s) have no address and were left alone)` : ''));
       return { success: true, message: `Reconnection initiated for ${reconnectCount} PCs`, reconnected: reconnectCount };
     } catch (error) {
       console.error('[IPC] Error in pc:reconnect-all handler:', error);
@@ -1052,6 +1642,20 @@ function registerIPCHandlers() {
   });
 
   // New IPC handler: Get connection status for all PCs
+  /*
+   * Which stations are connected right now.
+   *
+   * The "clients" event is only pushed when a station registers or drops. The
+   * main process connects to stations during startup — before the window has
+   * finished loading — so a renderer that starts up afterwards misses that
+   * event entirely and shows every station as offline while the sockets are
+   * perfectly alive. This lets it ask instead of waiting.
+   */
+  ipcMain.handle("pc:get-connected", async () => ({
+    success: true,
+    data: getConnectedPCNames()
+  }));
+
   ipcMain.handle("pc:get-connection-status", async (event) => {
     try {
       const status = getConnectionStatus();
@@ -1108,6 +1712,50 @@ function loadConfig() {
 }
 
 // Fetch PCs from API instead of config.json
+/*
+ * The café's staff-unlock PIN, pushed down to each station as it registers.
+ *
+ * The PIN gates the Ctrl+Alt+Shift+Q escape hatch on a client kiosk. It has
+ * to live on the station rather than be checked here, because the whole point
+ * of that hatch is the case where this console cannot be reached — a station
+ * that had to phone home to verify a PIN would be locked exactly when it
+ * matters. So it is sent once on connect and the client caches it.
+ *
+ * Only this console can read it: the settings endpoint is staff-authenticated
+ * and the client has no staff credentials of its own.
+ */
+let cachedUnlockPin = null;
+
+async function fetchStaffUnlockPin() {
+  try {
+    const token = authContext.getToken();
+    if (!token) return null;
+    const res = await fetch(`${BACKEND_LOCAL}/api/settings?category=client`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    if (!res.ok) return null;
+    const body = await res.json();
+    const row = (body.data || []).find((s) => s.setting_key === 'client.staff_unlock_pin');
+    cachedUnlockPin = row ? String(row.setting_value || '') : '';
+    return cachedUnlockPin;
+  } catch (error) {
+    log(`Could not read the staff unlock PIN: ${error.message}`);
+    return null;
+  }
+}
+
+/** Send a freshly registered station the settings it needs to hold locally. */
+async function pushStationConfig(ws) {
+  if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  const pin = cachedUnlockPin !== null ? cachedUnlockPin : await fetchStaffUnlockPin();
+  if (pin === null) return;
+  try {
+    ws.send(JSON.stringify({ type: 'STATION_CONFIG', staffUnlockPin: pin }));
+  } catch (error) {
+    log(`Could not send station config: ${error.message}`);
+  }
+}
+
 async function fetchClientsFromAPI() {
   try {
     const cafeId = authContext.getCafeId();
@@ -1118,7 +1766,7 @@ async function fetchClientsFromAPI() {
       return [];
     }
 
-    const response = await fetch(`http://localhost:5000/api/pcs/cafe/${cafeId}`, {
+    const response = await fetch(`${BACKEND_LOCAL}/api/pcs/cafe/${cafeId}`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -1165,18 +1813,43 @@ async function refreshPCList() {
       
       // Check if this PC is new (not in our registry)
       if (!allRegisteredPCs.has(pcName)) {
+        // Still registered and still billable — just never dialled.
+        if (!isNetworked(cfg)) {
+          console.log(`[PC Refresh] 🎱 New station without an address: ${pcName} — registered, no connection attempted`);
+          allRegisteredPCs.set(pcName, cfg);
+          return;
+        }
+
         console.log(`[PC Refresh] 🆕 New PC detected: ${pcName} at ${cfg.ip}:${cfg.port}`);
-        
+
         // Add to registry
         allRegisteredPCs.set(pcName, cfg);
         newPCsCount++;
-        
+
         // Attempt to connect immediately
         console.log(`[PC Refresh] Attempting connection to new PC: ${pcName}`);
         connectToSpecificPC(cfg.ip, cfg.port, pcName);
       } else {
         // Check if IP changed
         const existingPC = allRegisteredPCs.get(pcName);
+
+        /* An address being removed is a station being converted to something
+           we do not talk to. Drop any live socket and stop there — do not
+           then try to dial the address that is no longer set. */
+        if (!isNetworked(cfg)) {
+          if (isNetworked(existingPC)) {
+            console.log(`[PC Refresh] ${pcName} no longer has an address — releasing its connection`);
+            const existingClient = clients.get(pcName);
+            if (existingClient && existingClient.ws) {
+              try { existingClient.ws.close(); } catch (e) {}
+            }
+            clients.delete(pcName);
+            pcConnectionStats.delete(pcName);
+          }
+          allRegisteredPCs.set(pcName, cfg);
+          return;
+        }
+
         if (existingPC.ip !== cfg.ip || existingPC.port !== cfg.port) {
           console.log(`[PC Refresh] 🔄 IP updated for ${pcName}: ${existingPC.ip}:${existingPC.port} → ${cfg.ip}:${cfg.port}`);
           
@@ -1240,6 +1913,7 @@ async function heartbeat() {
     clients.forEach((client, simId) => {
       if (client && client.ws && client.ws.readyState === WebSocket.OPEN) {
         try {
+          heartbeatSentAt.set(simId, Date.now());
           client.ws.send(JSON.stringify({
             type: "HEARTBEAT_PING"
           }));
@@ -1254,6 +1928,12 @@ async function heartbeat() {
       const connectedPCNames = new Set(clients.keys());
       
       allRegisteredPCs.forEach((pcConfig, pcName) => {
+        /* Nothing to reconnect to. A pool table will never appear in the
+           connected list, so without this it would be retried every five
+           seconds forever and its failure count would climb without limit —
+           a permanent red mark against a station that is working perfectly. */
+        if (!isNetworked(pcConfig)) return;
+
         // If this PC is not in the connected clients list, try to reconnect
         if (!connectedPCNames.has(pcName)) {
           // Check if this PC has failed too many times
@@ -1274,10 +1954,16 @@ async function heartbeat() {
               try {
                 const msg = JSON.parse(raw);
 
+                // Station-initiated requests (extend, overtime) are handed to
+                // the renderer to act on with its staff token.
+                if (handleStationRequest(msg, ws)) return;
+
                 if (msg.type === "REGISTER") {
                   ws.simId = msg.simId;
                   clients.set(msg.simId, { ws, apps: [], pcName: pcName });
                   clients.set(pcName, { ws, apps: [], pcName: pcName });
+                  // Hand it the settings it must hold locally (the staff unlock PIN).
+                  pushStationConfig(ws);
                   log(`[Heartbeat Reconnect] ✅ Registered: ${msg.simId} (${msg.hostname})`);
                   
                   // Record success
@@ -1302,6 +1988,11 @@ async function heartbeat() {
                 if (msg.type === "HEARTBEAT_PONG") {
                   // Client is alive
                   log(`Heartbeat response from ${msg.simId}`);
+                  noteHeartbeatPong(msg.simId || pcName);
+                }
+
+                if (msg.type === "TELEMETRY") {
+                  recordTelemetry(msg.simId || pcName, msg.sample);
                 }
 
                 if (msg.type === "APPS_LIST") {
@@ -1351,7 +2042,8 @@ async function heartbeat() {
             log(`[Heartbeat] Connected to ${pcName}`);
             ws.send(JSON.stringify({
               type: "SET_NAME",
-              name: pcName
+              name: pcName,
+              apiBase: backendBaseUrl()
             }));
             setupClientHandlers();
             clientConnections.set(pcName, ws);
@@ -1371,6 +2063,16 @@ async function heartbeat() {
 
 // Connect to a specific PC dynamically (used for auto-discovered/updated PCs)
 function connectToSpecificPC(ip, port, pcName) {
+  /* The single place every connection attempt funnels through, so the guard
+     lives here too rather than only at each call site. `new WebSocket` throws
+     on a malformed URL *before* any handler is attached, so an unguarded call
+     is not a failed connection — it is an exception that takes down whatever
+     loop was making it. */
+  if (!isNetworked({ ip, port })) {
+    log(`[Dynamic Connect] ${pcName} has no network address — nothing to connect to`);
+    return;
+  }
+
   // Check if we're already connected to this PC
   if (clients.has(pcName)) {
     log(`PC ${pcName} is already connected`);
@@ -1387,10 +2089,15 @@ function connectToSpecificPC(ip, port, pcName) {
       try {
         const msg = JSON.parse(raw);
 
+        // Station-initiated requests (extend, overtime) go to the renderer.
+        if (handleStationRequest(msg, ws)) return;
+
         if (msg.type === "REGISTER") {
           ws.simId = msg.simId;
           clients.set(msg.simId, { ws, apps: [], pcName: pcName });
           clients.set(pcName, { ws, apps: [], pcName: pcName });
+          // Hand it the settings it must hold locally (the staff unlock PIN).
+          pushStationConfig(ws);
           log(`[Dynamic Connect] ✅ Registered: ${msg.simId} (${msg.hostname})`);
           
           // Record success
@@ -1414,6 +2121,11 @@ function connectToSpecificPC(ip, port, pcName) {
 
         if (msg.type === "HEARTBEAT_PONG") {
           log(`[Dynamic Connect] Heartbeat response from ${msg.simId}`);
+          noteHeartbeatPong(msg.simId || pcName);
+        }
+
+        if (msg.type === "TELEMETRY") {
+          recordTelemetry(msg.simId || pcName, msg.sample);
         }
 
         if (msg.type === "APPS_LIST") {
@@ -1463,7 +2175,8 @@ function connectToSpecificPC(ip, port, pcName) {
     log(`[Dynamic Connect] Connected to ${pcName}, sending SET_NAME...`);
     ws.send(JSON.stringify({
       type: "SET_NAME",
-      name: pcName
+      name: pcName,
+      apiBase: backendBaseUrl()
     }));
     setupClientHandlers();
     clientConnections.set(pcName, ws);
@@ -1517,13 +2230,25 @@ async function connectToClients() {
   });
   log(`Stored ${allRegisteredPCs.size} PCs for heartbeat monitoring`);
 
-  // Connect to each client from API
-  clients_list.forEach(clientConfig => {
+  /* Only the stations that actually have an address.
+   *
+   * This used to run over every registered station, so a pool table or a VR
+   * rig — deliberately registered without an IP — produced `ws://null:null`,
+   * which throws before any error handler is attached and took the whole
+   * connect sweep down with it. The stations after it in the list never got
+   * connected at all. */
+  const networked = clients_list.filter(isNetworked);
+  const offline = clients_list.length - networked.length;
+  if (offline > 0) {
+    log(`${offline} station(s) have no network address — nothing to connect to, which is expected for pool tables, VR rigs and consoles`);
+  }
+
+  networked.forEach(clientConfig => {
     const { simId, ip, port } = clientConfig;
     const clientUrl = `ws://${ip}:${port}`;
-    
+
     log(`Connecting to client ${simId} at ${clientUrl}...`);
-    
+
     const ws = new WebSocket(clientUrl);
     
     const setupClientHandlers = () => {
@@ -1531,11 +2256,16 @@ async function connectToClients() {
         try {
           const msg = JSON.parse(raw);
 
+          // Station-initiated requests (extend, overtime) go to the renderer.
+          if (handleStationRequest(msg, ws)) return;
+
           if (msg.type === "REGISTER") {
             ws.simId = msg.simId;
             // Store with both the registered simId and the PC name as keys
             clients.set(msg.simId, { ws, apps: [], pcName: simId });
-            clients.set(simId, { ws, apps: [], pcName: simId }); // Also store by PC name for lookup
+            clients.set(simId, { ws, apps: [], pcName: simId });
+            // Hand it the settings it must hold locally (the staff unlock PIN).
+            pushStationConfig(ws); // Also store by PC name for lookup
             log(`Registered: ${msg.simId} (${msg.hostname})`);
             
             // Remove this PC from discovered list since it's now connected
@@ -1557,6 +2287,11 @@ async function connectToClients() {
           if (msg.type === "HEARTBEAT_PONG") {
             // Client responded to heartbeat - it's alive
             log(`Heartbeat response from ${msg.simId}`);
+            noteHeartbeatPong(msg.simId || simId);
+          }
+
+          if (msg.type === "TELEMETRY") {
+            recordTelemetry(msg.simId || simId, msg.sample);
           }
 
           if (msg.type === "APPS_LIST") {
@@ -1608,7 +2343,8 @@ async function connectToClients() {
       // Send the expected PC name from API to client
       ws.send(JSON.stringify({
         type: "SET_NAME",
-        name: simId
+        name: simId,
+        apiBase: backendBaseUrl()
       }));
       log(`Sent PC name to client: ${simId}`);
       setupClientHandlers();
@@ -1623,9 +2359,12 @@ async function connectToClients() {
 
   // Start heartbeat after initial connection attempt
   startHeartbeat();
-  
+
   // Start periodic PC list refresh to detect newly added PCs
   startPCListRefresh();
+
+  // Persist whatever the stations have reported since the last flush
+  startTelemetryFlush();
 }
 
 app.on('window-all-closed', () => {
@@ -1642,7 +2381,14 @@ app.on('window-all-closed', () => {
     clearInterval(pcRefreshInterval);
     pcRefreshInterval = null;
   }
-  
+
+  // One last flush, so the closing minutes of the shift are not lost
+  if (telemetryFlushInterval) {
+    clearInterval(telemetryFlushInterval);
+    telemetryFlushInterval = null;
+  }
+  flushTelemetry().catch(() => {});
+
   if (process.platform !== 'darwin') app.quit();
 });
 

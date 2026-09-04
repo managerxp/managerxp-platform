@@ -10,8 +10,6 @@ try {
 const loginForm = document.getElementById('loginForm');
 const webBtn = document.getElementById('webBtn');
 const checkBtn = document.getElementById('checkBtn');
-const tokenBtn = document.getElementById('tokenBtn');
-const tokenInput = document.getElementById('tokenInput');
 const errorMsg = document.getElementById('errorMsg');
 const loadingMsg = document.getElementById('loadingMsg');
 
@@ -24,11 +22,9 @@ document.body.appendChild(checkMessage);
 // Reset button states on page load
 function resetButtonStates() {
   checkBtn.disabled = false;
-  tokenBtn.disabled = false;
   webBtn.disabled = false;
   loadingMsg.classList.remove('show');
   errorMsg.classList.remove('show');
-  tokenInput.value = '';
 }
 
 // Initialize button states
@@ -90,53 +86,15 @@ checkBtn.addEventListener('click', async (e) => {
   }
 });
 
-// Handle token submission
-tokenBtn.addEventListener('click', async (e) => {
-  e.preventDefault();
-
-  const token = tokenInput.value.trim();
-
-  if (!token) {
-    showError('Please paste a valid token');
-    return;
-  }
-
-  tokenBtn.disabled = true;
-  loadingMsg.classList.add('show');
-  errorMsg.classList.remove('show');
-
-  try {
-    const response = await fetch('http://localhost:5000/api/auth/verify-token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      }
-    });
-
-    if (response.ok) {
-      const data = await response.json();
-      
-      if (data.success && data.data && data.data.user) {
-        handleLoginSuccess(data.data.user, token);
-      } else {
-        showError('Invalid token. Please try again.');
-        tokenBtn.disabled = false;
-        loadingMsg.classList.remove('show');
-      }
-    } else {
-      const error = await response.json();
-      showError(error.message || 'Invalid token. Please check and try again.');
-      tokenBtn.disabled = false;
-      loadingMsg.classList.remove('show');
-    }
-  } catch (error) {
-    console.error('Token verification error:', error);
-    showError('Failed to verify token. Please try again.');
-    tokenBtn.disabled = false;
-    loadingMsg.classList.remove('show');
-  }
-});
+/*
+ * Signing in happens through the web platform only.
+ *
+ * There was a "paste a token" box here as a development shortcut. It asked an
+ * operator to handle a raw bearer token by hand — the one credential that
+ * grants everything this console can do — which is both a habit worth not
+ * teaching and an obvious thing to phish for. The web sign-in hands the token
+ * over directly, so nobody needs to see it.
+ */
 
 // Handle successful login
 function handleLoginSuccess(user, token) {
@@ -158,18 +116,9 @@ function showError(message) {
   errorMsg.classList.add('show');
 }
 
-// Handle keyboard shortcuts
+// Enter continues, the same as clicking the button.
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    if (document.activeElement === tokenInput && !tokenBtn.disabled) {
-      tokenBtn.click();
-    } else if (!checkBtn.disabled) {
-      checkBtn.click();
-    }
+  if (e.key === 'Enter' && !checkBtn.disabled) {
+    checkBtn.click();
   }
-});
-
-// Clear error on input
-tokenInput.addEventListener('focus', () => {
-  errorMsg.classList.remove('show');
 });

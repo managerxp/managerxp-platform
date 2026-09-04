@@ -36,14 +36,83 @@ contextBridge.exposeInMainWorld("api", {
   
   // PC data
   getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),
+
+  // Session state push to a station
+  pushSessionState: (pcName, session) => ipcRenderer.invoke("session:push-state", { pcName, session }),
+  // Grow a station's floating timer card after its session was extended.
+  pushExtendTimer: (pcName, minutes) => ipcRenderer.invoke("session:push-extend-timer", { pcName, minutes }),
+  // Tell one connected station a newer client build is available.
+  pushUpdateAvailable: (pcName, payload) => ipcRenderer.invoke("update:push-available", { pcName, payload }),
+  // Send a station the games its customer may choose from (installed + enabled).
+  pushGames: (pcName, games) => ipcRenderer.invoke("session:push-games", { pcName, games }),
+  // End-of-session cleanup on a station (close game, sign launchers out, free PC).
+  cleanupStation: (pcName, config, games) =>
+    ipcRenderer.invoke("session:cleanup", { pcName, config, games }),
+  onStationCleanupDone: (cb) => ipcRenderer.on("station:cleanup-done", (_, d) => cb(d)),
+  // Which game launchers a station has installed (Steam, Riot, EA, …).
+  getStationLaunchers: (pcName) => ipcRenderer.invoke("station:get-launchers", { pcName }),
+  refreshStationLaunchers: (pcName) => ipcRenderer.invoke("station:refresh-launchers", { pcName }),
+  onStationLaunchers: (cb) => ipcRenderer.on("station:launchers", (_, d) => cb(d)),
+  getStationSteamAuth: (pcName) => ipcRenderer.invoke("station:get-steam-auth", { pcName }),
+  onStationSteamAuth: (cb) => ipcRenderer.on("station:steam-auth", (_, d) => cb(d)),
+  // A player tapped Extend at the station; the console acts with its token.
+  onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
+  // A station's block ran out with the game still running.
+  onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
+  // A customer tapped "Call staff" on the Help menu at their station.
+  onStationCallStaff: (cb) => ipcRenderer.on("station:call-staff", (_, d) => cb(d)),
+  // A self-started session's game failed to launch — nobody is playing it.
+  onStationLaunchFailed: (cb) => ipcRenderer.on("station:launch-failed", (_, d) => cb(d)),
+  // A logged-in customer opened the game picker while idle — send this
+  // station's games and prices so they can choose without staff.
+  onStationStartOptionsRequest: (cb) => ipcRenderer.on("station:start-options-request", (_, d) => cb(d)),
+  pushStartOptions: (pcName, games, prices) =>
+    ipcRenderer.invoke("session:push-start-options", { pcName, games, prices }),
+  // The customer picked a game and a price and tapped Start.
+  onStationStartRequest: (cb) => ipcRenderer.on("station:start-request", (_, d) => cb(d)),
+  pushStartFailed: (pcName, message) => ipcRenderer.invoke("session:push-start-failed", { pcName, message }),
+
+  // Telemetry — live readings live in the main process, history in the backend
+  getLatestTelemetry: () => ipcRenderer.invoke("telemetry:get-latest"),
+  requestTelemetry: (pcName) => ipcRenderer.invoke("telemetry:request", { pcName }),
+  setTelemetryInterval: (seconds) => ipcRenderer.invoke("telemetry:set-interval", { seconds }),
+  onTelemetry: (cb) => ipcRenderer.on("telemetry-updated", (_, payload) => cb(payload)),
+
+  // Remote power — authorise with the backend first, then deliver
+  stationPower: (pcName, action, delaySeconds) =>
+    ipcRenderer.invoke("station:power", { pcName, action, delaySeconds }),
+
+  /* Powering ON is the one action that cannot go through the client, because
+     the machine is off. It goes out as a Wake-on-LAN broadcast instead. */
+  stationWake: (pcName, macAddress) =>
+    ipcRenderer.invoke("station:wake", { pcName, macAddress }),
   
   // PC connection management (NEW)
   connectToPC: (ip, port, pcName) => ipcRenderer.invoke("pc:connect-to-pc", { ip, port, pcName }),
   reconnectAllPCs: () => ipcRenderer.invoke("pc:reconnect-all"),
   getConnectionStatus: () => ipcRenderer.invoke("pc:get-connection-status"),
+  // Pull the live connected list, for when the pushed event was missed
+  getConnectedPCs: () => ipcRenderer.invoke("pc:get-connected"),
   clearPCFailures: (pcName) => ipcRenderer.invoke("pc:clear-failures", { pcName }),
   refreshPCList: () => ipcRenderer.invoke("pc:refresh-list"),
   
   // System info
-  getMacAddress: () => ipcRenderer.invoke("system:get-mac-address")
+  getMacAddress: () => ipcRenderer.invoke("system:get-mac-address"),
+  getAppVersion: () => ipcRenderer.invoke("system:get-app-version"),
+
+  /* Read once, synchronously, before the page's own scripts run — Store.js
+     needs this to build its API base at module-load time, not after an
+     async round trip resolves. Reflects BACKEND_PORT from this install's
+     .env, defaulting to 5000. */
+  backendLocal: ipcRenderer.sendSync("system:get-backend-local-sync"),
+
+  // A station reported its own CafeXP Client build on connect.
+  onStationClientVersion: (cb) => ipcRenderer.on("station:client-version", (_, d) => cb(d)),
+
+  // Custom window controls
+  windowMinimize: () => ipcRenderer.send("window:minimize"),
+  windowToggleMaximize: () => ipcRenderer.send("window:toggle-maximize"),
+  windowClose: () => ipcRenderer.send("window:close"),
+  windowIsMaximized: () => ipcRenderer.invoke("window:is-maximized"),
+  onWindowMaximizedChanged: (cb) => ipcRenderer.on("window:maximized-changed", (_, v) => cb(v))
 });

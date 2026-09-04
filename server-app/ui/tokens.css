@@ -1,0 +1,165 @@
+/* ==========================================================================
+   CafeXP Design System — Tokens
+   Single source of truth for colour, type, spacing, radius, elevation, motion.
+   ========================================================================== */
+
+:root {
+  /* Tells Chromium every native control on this page — the date/time picker
+     popup, its calendar icon, scrollbars, the default checkbox — should
+     render for a dark background. Without it, `<input type="date">` still
+     draws its little calendar icon in near-black (invisible against this
+     app's own near-black fields) and, worse, opens the *picker itself* in
+     Chromium's plain light theme: a white month grid popping out of a dark
+     card. This one line is what switches that popup to Chromium's actual
+     dark-mode calendar — rounded, dark-surfaced, accent-highlighted "today" —
+     which is the "modern" one already built into the browser, not something
+     to hand-roll per input. */
+  color-scheme: dark;
+
+  /* ---------- Surface ramp (near-black, cool-neutral) ---------- */
+  --bg-base:        #07070b;   /* app background, behind everything */
+  --bg-surface:     #0d0d13;   /* page canvas */
+  --bg-raised:      #12121a;   /* cards */
+  --bg-raised-2:    #171722;   /* nested cards, table headers */
+  --bg-inset:       #0a0a10;   /* wells, inputs, code */
+  --bg-hover:       #1c1c28;   /* hover fill */
+  --bg-active:      #22222f;   /* pressed fill */
+
+  /* ---------- Accent (CafeXP red) ---------- */
+  --accent:         #ff1744;
+  --accent-hot:     #ff4569;
+  --accent-deep:    #c40f31;
+  --accent-soft:    rgba(255, 23, 68, 0.12);
+  --accent-softer:  rgba(255, 23, 68, 0.06);
+  --accent-line:    rgba(255, 23, 68, 0.28);
+  --accent-glow:    rgba(255, 23, 68, 0.35);
+
+  /* ---------- Status ---------- */
+  --ok:             #00e676;   /* available / healthy / online */
+  --ok-soft:        rgba(0, 230, 118, 0.12);
+  --ok-line:        rgba(0, 230, 118, 0.30);
+  --ok-glow:        rgba(0, 230, 118, 0.28);
+
+  --warn:           #ffab00;   /* maintenance / attention */
+  --warn-soft:      rgba(255, 171, 0, 0.12);
+  --warn-line:      rgba(255, 171, 0, 0.30);
+
+  --danger:         #ff3b30;   /* offline / error */
+  --danger-soft:    rgba(255, 59, 48, 0.12);
+  --danger-line:    rgba(255, 59, 48, 0.30);
+
+  --info:           #00b0ff;   /* in-session / informational */
+  --info-soft:      rgba(0, 176, 255, 0.12);
+  --info-line:      rgba(0, 176, 255, 0.30);
+
+  --idle:           #6b7280;   /* unknown / disabled / not configured */
+  --idle-soft:      rgba(107, 114, 128, 0.12);
+  --idle-line:      rgba(107, 114, 128, 0.28);
+
+  /* ---------- Text ---------- */
+  --text:           #f4f4f7;
+  --text-2:         #a5a5b6;
+  --text-3:         #6f6f81;
+  --text-on-accent: #ffffff;
+
+  /* ---------- Lines ---------- */
+  --line:           rgba(255, 255, 255, 0.07);
+  --line-strong:    rgba(255, 255, 255, 0.12);
+  --line-faint:     rgba(255, 255, 255, 0.04);
+
+  /* ---------- Elevation ---------- */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-2: 0 4px 16px rgba(0, 0, 0, 0.45);
+  --shadow-3: 0 12px 40px rgba(0, 0, 0, 0.55);
+  --shadow-4: 0 24px 80px rgba(0, 0, 0, 0.65);
+  --ring:     0 0 0 3px rgba(255, 23, 68, 0.28);
+
+  /* ---------- Radius ---------- */
+  --r-xs: 4px;
+  --r-sm: 6px;
+  --r-md: 10px;
+  --r-lg: 14px;
+  --r-xl: 20px;
+  --r-pill: 999px;
+
+  /* ---------- Spacing (4px base) ---------- */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+  --s-8: 32px;
+  --s-10: 40px;
+  --s-12: 48px;
+
+  /* ---------- Typography ---------- */
+  --font: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --t-display: 28px;   /* page title */
+  --t-h1: 21px;        /* section title */
+  --t-h2: 16px;        /* card title */
+  --t-h3: 14px;        /* sub head */
+  --t-body: 13px;      /* default UI text */
+  --t-sm: 12px;        /* secondary */
+  --t-xs: 11px;        /* meta, badges */
+  --t-metric: 32px;    /* KPI number */
+  --t-metric-lg: 40px;
+
+  --lh-tight: 1.15;
+  --lh: 1.45;
+
+  --track-caps: 0.09em;  /* letter-spacing for uppercase labels */
+
+  /* ---------- Layout ---------- */
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 64px;
+  --topbar-h: 60px;
+  --drawer-w: 460px;
+  --page-max: 2400px;
+
+  /* ---------- Motion ---------- */
+  --dur-instant: 90ms;
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 340ms;
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --ease-snap: cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+
+/* Status helper: map a status name to its colour set via one attribute.
+   Usage: <element data-status="online"> then use var(--st), var(--st-soft) … */
+[data-status="online"],
+[data-status="available"],
+[data-status="active"],
+[data-status="ok"] {
+  --st: var(--ok); --st-soft: var(--ok-soft); --st-line: var(--ok-line); --st-glow: var(--ok-glow);
+}
+[data-status="gaming"],
+[data-status="in-session"],
+[data-status="running"] {
+  --st: var(--info); --st-soft: var(--info-soft); --st-line: var(--info-line); --st-glow: rgba(0,176,255,.28);
+}
+[data-status="maintenance"],
+[data-status="paused"],
+[data-status="warning"],
+[data-status="reserved"],
+[data-status="pending"] {
+  --st: var(--warn); --st-soft: var(--warn-soft); --st-line: var(--warn-line); --st-glow: rgba(255,171,0,.28);
+}
+[data-status="offline"],
+[data-status="error"],
+[data-status="failed"] {
+  --st: var(--danger); --st-soft: var(--danger-soft); --st-line: var(--danger-line); --st-glow: rgba(255,59,48,.28);
+}
+[data-status="unknown"],
+[data-status="idle"],
+[data-status="disabled"],
+[data-status="inactive"] {
+  --st: var(--idle); --st-soft: var(--idle-soft); --st-line: var(--idle-line); --st-glow: rgba(107,114,128,.22);
+}
+[data-status="accent"] {
+  --st: var(--accent); --st-soft: var(--accent-soft); --st-line: var(--accent-line); --st-glow: var(--accent-glow);
+}

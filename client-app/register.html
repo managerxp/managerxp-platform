@@ -1,610 +1,342 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>ConnectXP - Registration</title>
-  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;500;700;900&family=Rajdhani:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --primary-red: #ff0033;
-      --dark-red: #8a001c;
-      --accent-green: #00ff41;
-      --bg-dark: #050505;
-      --text-main: #ffffff;
-      --text-dim: #888888;
-      --border-tech: #222222;
-    }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: 'Rajdhani', sans-serif;
-      background-color: var(--bg-dark);
-      color: var(--text-main);
-      height: 100vh;
-      overflow: hidden; /* Prevent scroll on body */
-      display: flex;
-      position: relative;
-    }
-
-    /* --- Background Effects --- */
-    body::before {
-      content: "";
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background-image: 
-        linear-gradient(rgba(255, 0, 51, 0.03) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255, 0, 51, 0.03) 1px, transparent 1px);
-      background-size: 50px 50px;
-      z-index: 0;
-    }
-
-    /* --- Split Layout Containers --- */
-    .brand-panel {
-      flex: 1;
-      background: linear-gradient(135deg, #0a0a0a 0%, #000000 100%);
-      display: flex;
-      flex-direction: column;
-      justify-content: center;
-      align-items: center;
-      border-right: 1px solid var(--border-tech);
-      position: relative;
-      z-index: 1;
-      padding: 40px;
-      clip-path: polygon(0 0, 100% 0, 95% 100%, 0 100%); /* Slight angle */
-    }
-    
-    /* Decorative glowing line on split */
-    .brand-panel::after {
-      content: "";
-      position: absolute;
-      right: 0;
-      top: 0;
-      height: 100%;
-      width: 2px;
-      background: linear-gradient(to bottom, transparent, var(--primary-red), transparent);
-      box-shadow: 0 0 15px var(--primary-red);
-    }
-
-    .form-panel {
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      position: relative;
-      z-index: 1;
-      padding: 40px;
-      overflow-y: auto; /* Scroll for form if needed */
-    }
-
-    /* --- Branding Section (Left) --- */
-    .brand-content {
-      text-align: center;
-      max-width: 400px;
-    }
-
-    .brand-logo {
-      font-size: 80px;
-      margin-bottom: 20px;
-      filter: drop-shadow(0 0 20px var(--primary-red));
-      animation: float 6s ease-in-out infinite;
-    }
-
-    .brand-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 56px;
-      font-weight: 900;
-      text-transform: uppercase;
-      line-height: 1;
-      color: #fff;
-      text-shadow: 0 0 20px var(--primary-red);
-      margin-bottom: 10px;
-    }
-
-    .brand-subtitle {
-      font-family: 'Orbitron', sans-serif;
-      color: #444;
-      letter-spacing: 4px;
-      font-size: 14px;
-      margin-bottom: 50px;
-    }
-
-    /* HUD Stats decorations */
-    .hud-stats {
-      width: 100%;
-      border-top: 1px solid #222;
-      padding-top: 30px;
-      display: flex;
-      justify-content: space-around;
-    }
-
-    .stat-item {
-      text-align: center;
-    }
-    .stat-value {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 24px;
-      color: var(--primary-red);
-      font-weight: 700;
-    }
-    .stat-label {
-      font-size: 12px;
-      color: #555;
-      letter-spacing: 1px;
-      text-transform: uppercase;
-    }
-
-    /* --- Form Section (Right) --- */
-    .register-form-wrapper {
-      width: 100%;
-      max-width: 500px;
-      padding: 20px;
-    }
-
-    .form-header {
-      margin-bottom: 30px;
-      border-left: 3px solid var(--primary-red);
-      padding-left: 20px;
-    }
-
-    .form-title {
-      font-family: 'Orbitron', sans-serif;
-      font-size: 28px;
-      font-weight: 700;
-      text-transform: uppercase;
-      color: #fff;
-      margin-bottom: 5px;
-    }
-
-    .form-desc {
-      color: #555;
-      font-size: 14px;
-    }
-
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-    }
-
-    .form-group {
-      margin-bottom: 5px;
-      position: relative;
-    }
-    
-    .full-width {
-        grid-column: span 2;
-    }
-
-    label {
-      display: block;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 10px;
-      font-weight: 500;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      margin-bottom: 8px;
-      color: #666;
-    }
-
-    input {
-      width: 100%;
-      padding: 14px 16px;
-      background: #0a0a0a;
-      border: 1px solid #222;
-      color: var(--text-main);
-      font-size: 16px;
-      font-family: 'Rajdhani', sans-serif;
-      font-weight: 600;
-      transition: all 0.3s ease;
-      border-radius: 0;
-    }
-
-    input:focus {
-      outline: none;
-      background: #000;
-      border-color: var(--primary-red);
-      box-shadow: 0 0 10px rgba(255, 0, 51, 0.2);
-    }
-
-    /* Password Requirements - Inline Style for PC */
-    .password-requirements {
-      grid-column: span 2;
-      background: rgba(0, 0, 0, 0.5);
-      border: 1px solid #1a1a1a;
-      padding: 15px;
-      display: none;
-      margin-bottom: 15px;
-      border-left: 2px solid var(--primary-red);
-    }
-    
-    .password-requirements.show { display: block; }
-
-    .req-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-    }
-
-    .requirement {
-      font-family: 'Courier New', monospace;
-      font-size: 11px;
-      color: #555;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-    .requirement.met { color: var(--accent-green); }
-    .requirement-icon { width: 10px; }
-
-    /* Checkboxes & Buttons */
-    .terms-checkbox {
-      grid-column: span 2;
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      margin: 10px 0 20px 0;
-    }
-
-    input[type="checkbox"] {
-      -webkit-appearance: none;
-      width: 16px;
-      height: 16px;
-      background: #111;
-      border: 1px solid #333;
-      cursor: pointer;
-      flex-shrink: 0;
-    }
-    input[type="checkbox"]:checked {
-      background: var(--primary-red);
-      border-color: var(--primary-red);
-    }
-    input[type="checkbox"]:checked::after {
-      content: "✓";
-      display: block;
-      text-align: center;
-      color: #fff;
-      font-size: 10px;
-      line-height: 16px;
-    }
-
-    .btn-primary {
-      grid-column: span 2;
-      padding: 16px;
-      border: none;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 16px;
-      font-weight: 700;
-      letter-spacing: 2px;
-      text-transform: uppercase;
-      cursor: pointer;
-      background: linear-gradient(90deg, var(--primary-red), var(--dark-red));
-      color: white;
-      box-shadow: 0 0 20px rgba(255, 0, 51, 0.3);
-      transition: all 0.3s ease;
-      clip-path: polygon(0 0, 100% 0, 98% 100%, 0% 100%);
-    }
-
-    .btn-primary:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 0 30px rgba(255, 0, 51, 0.6);
-    }
-
-    .btn-primary:disabled {
-      opacity: 0.6;
-      cursor: not-allowed;
-      transform: none;
-    }
-
-    .login-link {
-      grid-column: span 2;
-      text-align: center;
-      margin-top: 20px;
-      font-size: 14px;
-      color: #555;
-    }
-    .login-link a {
-      color: #fff;
-      text-decoration: none;
-      font-weight: 700;
-      border-bottom: 1px solid transparent;
-      transition: all 0.3s;
-    }
-    .login-link a:hover {
-      color: var(--primary-red);
-      border-bottom: 1px solid var(--primary-red);
-    }
-
-    /* Messages */
-    .error-message, .success-message {
-      grid-column: span 2;
-      padding: 12px;
-      margin-bottom: 10px;
-      font-size: 13px;
-      display: none;
-      text-align: center;
-    }
-    .error-message {
-      border: 1px solid rgba(255, 0, 51, 0.3);
-      color: #ff4d4d;
-      background: rgba(255, 0, 51, 0.05);
-    }
-    .success-message {
-      border: 1px solid rgba(0, 255, 65, 0.3);
-      color: var(--accent-green);
-      background: rgba(0, 255, 65, 0.05);
-    }
-    .show { display: block; }
-
-    /* Back Button */
-    .back-button {
-      position: absolute;
-      top: 30px;
-      left: 30px;
-      background: transparent;
-      border: 1px solid #333;
-      color: #888;
-      padding: 10px 20px;
-      font-family: 'Orbitron', sans-serif;
-      font-size: 12px;
-      z-index: 10;
-      cursor: pointer;
-      transition: 0.3s;
-    }
-    .back-button:hover {
-      border-color: var(--primary-red);
-      color: var(--primary-red);
-    }
-
-    /* Animations */
-    @keyframes float {
-      0%, 100% { transform: translateY(0); }
-      50% { transform: translateY(-15px); }
-    }
-
-    /* Responsive */
-    @media (max-width: 900px) {
-        .brand-panel { display: none; }
-        .form-panel { flex: 1; }
-        .form-grid { grid-template-columns: 1fr; }
-        .full-width, .password-requirements, .terms-checkbox, .btn-primary, .login-link, .error-message, .success-message { grid-column: span 1; }
-    }
-  </style>
+  <title>CafeXP — Create account</title>
+  <link rel="stylesheet" href="ui/tokens.css" />
+  <link rel="stylesheet" href="ui/base.css" />
+  <link rel="stylesheet" href="ui/components.css" />
+  <link rel="stylesheet" href="ui/portal.css" />
 </head>
 <body>
-  <button class="back-button" id="backBtn">← Back</button>
+  <div class="backdrop"></div>
 
-  <!-- Left Side: Branding -->
-  <div class="brand-panel">
-    <div class="brand-content">
-      <div class="brand-logo">🔗</div>
-      <div class="brand-title">ConnectXP</div>
-      <div class="brand-subtitle">Gaming Network</div>
-      
-      <div class="hud-stats">
-        <div class="stat-item">
-          <div class="stat-value">24/7</div>
-          <div class="stat-label">Uptime</div>
-        </div>
-        <div class="stat-item">
-          <div class="stat-value">256-Bit</div>
-          <div class="stat-label">Encryption</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Right Side: Form -->
-  <div class="form-panel">
-    <div class="register-form-wrapper">
-      <div class="form-header">
-        <div class="form-title">Create Account</div>
-        <div class="form-desc">Join the network. Fill in your details below.</div>
+  <main class="stage">
+    <section class="auth-card" id="authCard" style="max-width:520px">
+      <div class="auth-mark">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="8" r="4"></circle>
+          <path d="M4 21a8 8 0 0 1 16 0"></path>
+        </svg>
       </div>
 
-      <form id="registerForm">
-        <!-- Messages -->
-        <div class="error-message" id="errorMessage"></div>
-        <div class="success-message" id="successMessage"></div>
+      <h1 class="auth-title">Join CafeXP</h1>
+      <p class="auth-sub">One account for your games, your session and your orders.</p>
 
-        <div class="form-grid">
-          <!-- Row 1 -->
-          <div class="form-group">
-            <label for="customer_name">Full Name</label>
-            <input type="text" id="customer_name" name="customer_name" placeholder="John Doe" required />
-          </div>
-          <div class="form-group">
-            <label for="email">Email Address</label>
-            <input type="email" id="email" name="email" placeholder="you@example.com" required />
-          </div>
+      <form class="auth-form" id="registerForm" novalidate>
+        <div class="field">
+          <label class="field-label" for="name">Your name</label>
+          <input class="input" type="text" id="name" placeholder="Abdul" autocomplete="name" autofocus />
+        </div>
 
-          <!-- Row 2 -->
-          <div class="form-group full-width">
-            <label for="phone_number">Phone Number</label>
-            <input type="tel" id="phone_number" name="phone_number" placeholder="10-15 digit number" required />
+        <div class="grid grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4)">
+          <div class="field">
+            <label class="field-label" for="email">Email</label>
+            <input class="input" type="email" id="email" placeholder="you@example.com" autocomplete="email" />
           </div>
-
-          <!-- Row 3 -->
-          <div class="form-group full-width">
-            <label for="address">Address</label>
-            <input type="text" id="address" name="address" placeholder="Street, city, state" required />
-          </div>
-
-          <!-- Row 4 -->
-          <div class="form-group full-width">
-            <label for="password">Password</label>
-            <input type="password" id="password" name="password" placeholder="Create password" required />
-          </div>
-
-          <!-- Requirements Box -->
-          <div class="password-requirements" id="passwordReqs">
-            <div style="font-family: 'Orbitron'; font-size: 10px; margin-bottom: 8px; color: #888;">SECURITY PROTOCOL:</div>
-            <div class="req-grid">
-                <div class="requirement" id="req-length">
-                  <span class="requirement-icon">✗</span> 6+ Characters
-                </div>
+          <div class="field">
+            <label class="field-label" for="phoneNumber">Mobile</label>
+            <div style="display:flex;gap:8px">
+              <select class="input" id="dialCode" aria-label="Country dialling code" style="flex:0 0 92px"></select>
+              <input class="input" type="tel" id="phoneNumber" placeholder="9876543210" autocomplete="tel"
+                     style="flex:1;min-width:0">
             </div>
           </div>
-
-          <button type="submit" class="btn btn-primary" id="registerBtn">
-            <span class="spinner" style="display: none;"></span>
-            <span id="registerText">Initialize Account</span>
-          </button>
-
-          <div class="login-link">
-            Already have an account? <a href="#" id="loginLink">Sign in</a>
-          </div>
         </div>
+
+        <div class="field">
+          <label class="field-label" for="address">Address</label>
+          <input class="input" type="text" id="address" placeholder="City or area" autocomplete="address-level2" />
+        </div>
+
+        <div class="field">
+          <label class="field-label" for="password">Password</label>
+          <input class="input" type="password" id="password" placeholder="At least 6 characters"
+                 autocomplete="new-password" />
+          <div class="field-hint">Minimum 6 characters.</div>
+        </div>
+
+        <label class="field-check" for="consentCheck">
+          <input type="checkbox" id="consentCheck" />
+          <span>I agree to the Privacy Policy, and consent to CafeXP collecting and processing my personal data to create this account.</span>
+        </label>
+
+        <div class="notice hidden" data-status="error" id="errorMessage" role="alert"></div>
+        <div class="notice hidden" data-status="online" id="successMessage" role="status"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block" id="registerBtn">
+          <span class="btn-label" id="registerText">Create account</span>
+        </button>
       </form>
-    </div>
-  </div>
 
+      <!-- Shown once the account is created but not yet usable — see
+           customer.Controller.js's register(), which sends a code instead of
+           a token now. -->
+      <form class="auth-form hidden" id="verifyForm" novalidate>
+        <div class="notice" data-status="online" id="verifyNotice"></div>
+
+        <div class="field">
+          <label class="field-label" for="regOtp">6-digit code</label>
+          <input class="input mono" type="text" id="regOtp" placeholder="000000"
+                 inputmode="numeric" maxlength="6" autocomplete="one-time-code"
+                 style="text-align:center;letter-spacing:0.5em;font-size:18px" />
+        </div>
+
+        <div class="notice hidden" data-status="error" id="verifyError" role="alert"></div>
+
+        <button type="submit" class="btn btn-primary btn-lg btn-block" id="verifyBtn">
+          <span class="btn-label" id="verifyText">Verify email</span>
+        </button>
+
+        <button type="button" class="btn btn-ghost btn-sm btn-block" id="resendBtn" style="margin-top:8px">
+          Didn't get a code? Send another
+        </button>
+      </form>
+
+      <div class="auth-alt" id="authAlt">
+        Already have an account? <button type="button" id="toLogin">Sign in</button>
+        <div style="margin-top:10px">
+          <button type="button" id="toWelcome">Back</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="vendor/motion.min.js"></script>
+  <script src="app/motion-kit.js"></script>
+  <script src="app/window-controls.js"></script>
   <script>
-    const form = document.getElementById('registerForm');
-    const nameInput = document.getElementById('customer_name');
-    const emailInput = document.getElementById('email');
-    const phoneInput = document.getElementById('phone_number');
-    const addressInput = document.getElementById('address');
-    const passwordInput = document.getElementById('password');
-    const errorMessage = document.getElementById('errorMessage');
-    const successMessage = document.getElementById('successMessage');
-    const registerBtn = document.getElementById('registerBtn');
-    const registerText = document.getElementById('registerText');
-    const spinner = registerBtn.querySelector('.spinner');
-    const passwordReqs = document.getElementById('passwordReqs');
+    (function () {
+      "use strict";
+      var Motion = window.CXMotion;
 
-    document.getElementById('backBtn').addEventListener('click', () => {
-      window.api.navigateTo('welcome');
-    });
+      var form = document.getElementById("registerForm");
+      var errorMessage = document.getElementById("errorMessage");
+      var successMessage = document.getElementById("successMessage");
+      var registerBtn = document.getElementById("registerBtn");
+      var registerText = document.getElementById("registerText");
+      var card = document.getElementById("authCard");
+      var consentCheck = document.getElementById("consentCheck");
 
-    document.getElementById('loginLink').addEventListener('click', (e) => {
-      e.preventDefault();
-      window.api.navigateTo('login');
-    });
+      var verifyForm = document.getElementById("verifyForm");
+      var verifyNotice = document.getElementById("verifyNotice");
+      var regOtp = document.getElementById("regOtp");
+      var verifyError = document.getElementById("verifyError");
+      var verifyBtn = document.getElementById("verifyBtn");
+      var verifyText = document.getElementById("verifyText");
+      var resendBtn = document.getElementById("resendBtn");
+      var authAlt = document.getElementById("authAlt");
+      var dialCode = document.getElementById("dialCode");
+      var registeredEmail = "";
 
-    passwordInput.addEventListener('input', validatePasswordRequirements);
+      Motion.enter(card, { y: 18, duration: 0.4 });
 
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
+      /* Same table the website's signup form uses (frontend/src/lib/geo.js)
+         — kept in sync by hand since this is a plain HTML page with no
+         module system, but the numbers themselves rarely change. Stored as
+         "+<dial> <digits>", matching how the website already stores an
+         owner's phone number, so the format is one convention across the
+         whole platform rather than two. */
+      var DIAL_CODES = [
+        ["IN", "91"], ["US", "1"], ["GB", "44"], ["AE", "971"], ["CA", "1"],
+        ["AU", "61"], ["SG", "65"], ["MY", "60"], ["ID", "62"], ["PH", "63"],
+        ["TH", "66"], ["VN", "84"], ["BD", "880"], ["LK", "94"], ["NP", "977"],
+        ["PK", "92"], ["SA", "966"], ["QA", "974"], ["KW", "965"], ["OM", "968"],
+        ["BH", "973"], ["ZA", "27"], ["NG", "234"], ["KE", "254"], ["EG", "20"],
+        ["DE", "49"], ["FR", "33"], ["ES", "34"], ["IT", "39"], ["NL", "31"],
+        ["IE", "353"], ["PT", "351"], ["PL", "48"], ["TR", "90"], ["BR", "55"],
+        ["MX", "52"], ["AR", "54"], ["CL", "56"], ["JP", "81"], ["KR", "82"],
+        ["CN", "86"], ["HK", "852"], ["NZ", "64"], ["CH", "41"], ["SE", "46"],
+        ["NO", "47"], ["DK", "45"]
+      ];
 
-      const name = nameInput.value.trim();
-      const email = emailInput.value.trim();
-      const phoneNumber = phoneInput.value.trim();
-      const address = addressInput.value.trim();
-      const password = passwordInput.value;
-
-      errorMessage.classList.remove('show');
-      successMessage.classList.remove('show');
-
-      if (!name || !email || !phoneNumber || !address || !password) {
-        showError('Please fill in all fields');
-        return;
+      function flagOf(code) {
+        return String.fromCodePoint(
+          0x1f1e6 + code.charCodeAt(0) - 65,
+          0x1f1e6 + code.charCodeAt(1) - 65
+        );
       }
 
-      if (!isValidEmail(email)) {
-        showError('Please enter a valid email address');
-        return;
+      DIAL_CODES.forEach(function (pair) {
+        var opt = document.createElement("option");
+        opt.value = pair[1];
+        opt.textContent = flagOf(pair[0]) + " +" + pair[1];
+        dialCode.appendChild(opt);
+      });
+      dialCode.value = "91"; // India — this café network's default market
+
+      /* Defaults to this machine, corrected to the console's real address once
+         this station has been told it — see main.js's SET_NAME handler. */
+      var API_BASE = "http://localhost:5000";
+      if (window.api.getBackendBase) window.api.getBackendBase(function (b) { if (b) API_BASE = b; });
+      if (window.api.onBackendBase) window.api.onBackendBase(function (b) { if (b) API_BASE = b; });
+
+      /* Which station this is, so the backend can work out which café a new
+         account belongs to — a public signup form cannot be trusted to say so
+         itself. See customer.Controller.js's register() for the lookup. */
+      var pcName = "";
+      window.api.getPcName(function (name) { pcName = name || ""; });
+      if (window.api.onPcName) window.api.onPcName(function (name) { pcName = name || pcName; });
+
+      document.getElementById("toWelcome").addEventListener("click", function () {
+        window.api.navigateTo("welcome");
+      });
+      document.getElementById("toLogin").addEventListener("click", function () {
+        window.api.navigateTo("login");
+      });
+
+      function showError(message) {
+        successMessage.classList.add("hidden");
+        errorMessage.textContent = message;
+        errorMessage.classList.remove("hidden");
+        Motion.shake(card);
       }
-
-      if (!isValidPhone(phoneNumber)) {
-        showError('Please enter a valid phone number (10-15 digits)');
-        return;
+      function showSuccess(message) {
+        errorMessage.classList.add("hidden");
+        successMessage.textContent = message;
+        successMessage.classList.remove("hidden");
       }
-
-      if (!isValidPassword(password)) {
-        showError('Password must be at least 6 characters long');
-        return;
+      function busy(on) {
+        registerBtn.disabled = on || !consentCheck.checked;
+        registerText.textContent = on ? "Creating your account…" : "Create account";
       }
+      // Unchecked until the box is ticked — a submit button that starts
+      // enabled and only gets disabled during the request would let someone
+      // through before ever agreeing to anything.
+      consentCheck.addEventListener("change", function () { busy(false); });
+      busy(false);
 
-      registerBtn.disabled = true;
-      spinner.style.display = 'inline-block';
-      registerText.textContent = 'Processing...';
+      function val(id) { return document.getElementById(id).value.trim(); }
+      function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
+      function isValidPhone(v) { return /^\d{10,15}$/.test(v.replace(/\D/g, "")); }
 
-      try {
-        const response = await fetch('http://localhost:5000/api/customers/register', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            customer_name: name, 
-            email, 
-            phone_number: phoneNumber,
-            password,
-            address
-          })
-        });
+      form.addEventListener("submit", async function (e) {
+        e.preventDefault();
 
-        const data = await response.json();
+        var name = val("name");
+        var email = val("email");
+        var phoneNumber = val("phoneNumber");
+        var address = val("address");
+        var password = document.getElementById("password").value;
 
-        if (!response.ok) {
-          showError(data.message || 'Registration failed');
-          return;
+        if (!name || !email || !phoneNumber || !address || !password) {
+          showError("Please fill in every field."); return;
         }
+        if (!isValidEmail(email)) { showError("That email address doesn't look right."); return; }
+        if (!isValidPhone(phoneNumber)) { showError("Enter a mobile number with 10–15 digits."); return; }
+        if (password.length < 6) { showError("Your password needs at least 6 characters."); return; }
+        if (!consentCheck.checked) { showError("Please agree to the Privacy Policy to continue."); return; }
 
-        showSuccess('Account created successfully! Redirecting...');
-        
-        setTimeout(() => {
-          window.api.navigateTo('login');
-        }, 2000);
-      } catch (error) {
-        showError('Connection error. Please try again.');
-        console.error('Registration error:', error);
-      } finally {
-        registerBtn.disabled = false;
-        spinner.style.display = 'none';
-        registerText.textContent = 'Initialize Account';
-      }
-    });
+        // Stored as "+<dial> <digits>" — the same format the website's own
+        // signup form saves an owner's phone number in.
+        var fullPhone = "+" + dialCode.value + " " + phoneNumber.replace(/\D/g, "");
 
-    function validatePasswordRequirements() {
-      const password = passwordInput.value;
-      passwordReqs.classList.add('show');
+        busy(true);
+        try {
+          // Unchanged endpoint and payload shape.
+          var response = await fetch(API_BASE + "/api/customers/register", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              customer_name: name,
+              email: email,
+              phone_number: fullPhone,
+              password: password,
+              address: address,
+              pc_name: pcName
+            })
+          });
 
-      const requirements = {
-        'req-length': password.length >= 6
-      };
+          var data = await response.json();
 
-      Object.entries(requirements).forEach(([id, met]) => {
-        const element = document.getElementById(id);
-        if (met) {
-          element.classList.add('met');
-          element.querySelector('.requirement-icon').textContent = '✓';
-        } else {
-          element.classList.remove('met');
-          element.querySelector('.requirement-icon').textContent = '✗';
+          if (!response.ok) {
+            showError(data.message || "We couldn't create your account.");
+            return;
+          }
+
+          if (data.data && data.data.verification_required) {
+            registeredEmail = email;
+            verifyNotice.textContent = "We sent a six-digit code to " + email + ". Enter it to finish setting up your account.";
+            form.classList.add("hidden");
+            authAlt.classList.add("hidden");
+            verifyForm.classList.remove("hidden");
+            regOtp.focus();
+            return;
+          }
+
+          // Defensive fallback — the backend always sends a code today, but a
+          // response that somehow skipped it should still land somewhere sane.
+          showSuccess("Account created. Taking you to sign in…");
+          setTimeout(function () { window.api.navigateTo("login"); }, 1600);
+        } catch (error) {
+          console.error("Registration error:", error);
+          showError("Can't reach the café server. Please ask a staff member for help.");
+        } finally {
+          busy(false);
         }
       });
-    }
 
-    function showError(message) {
-      errorMessage.textContent = message;
-      errorMessage.classList.add('show');
-    }
+      function post(path, body) {
+        return fetch(API_BASE + path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body)
+        }).then(function (res) {
+          return res.json().then(function (data) {
+            if (!res.ok || data.success === false) {
+              throw new Error(data.message || "Something went wrong. Please try again.");
+            }
+            return data;
+          });
+        });
+      }
 
-    function showSuccess(message) {
-      successMessage.textContent = message;
-      successMessage.classList.add('show');
-    }
+      function showVerifyError(message) {
+        verifyError.textContent = message;
+        verifyError.classList.remove("hidden");
+        Motion.shake(card);
+      }
 
-    function isValidEmail(email) {
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      return emailRegex.test(email);
-    }
+      verifyForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        verifyError.classList.add("hidden");
 
-    function isValidPhone(phone) {
-      const phoneRegex = /^[0-9]{10,15}$/;
-      return phoneRegex.test(phone.replace(/[-\s]/g, ''));
-    }
+        var code = regOtp.value.trim();
+        if (!/^\d{6}$/.test(code)) { showVerifyError("Enter the six-digit code from your email."); return; }
 
-    function isValidPassword(password) {
-      return password.length >= 6;
-    }
+        verifyBtn.disabled = true;
+        verifyText.textContent = "Verifying…";
+
+        post("/api/customers/verify-email", { email: registeredEmail, code: code })
+          .then(function () {
+            // successMessage lives inside registerForm, which is already
+            // hidden at this point — reusing verifyNotice (still on screen,
+            // inside verifyForm) instead of a message nobody would see.
+            verifyBtn.disabled = true;
+            resendBtn.disabled = true;
+            verifyNotice.textContent = "Email verified. Taking you to sign in…";
+            regOtp.disabled = true;
+            setTimeout(function () { window.api.navigateTo("login"); }, 1400);
+          })
+          .catch(function (err) {
+            showVerifyError(err.message);
+            verifyBtn.disabled = false;
+            verifyText.textContent = "Verify email";
+          });
+      });
+
+      resendBtn.addEventListener("click", function () {
+        verifyError.classList.add("hidden");
+        resendBtn.disabled = true;
+        post("/api/customers/resend-verification", { email: registeredEmail })
+          .then(function () { regOtp.value = ""; regOtp.focus(); })
+          .catch(function (err) { showVerifyError(err.message); })
+          .finally(function () { resendBtn.disabled = false; });
+      });
+
+      regOtp.addEventListener("input", function () { verifyError.classList.add("hidden"); });
+    })();
   </script>
 </body>
 </html>
