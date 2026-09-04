@@ -20,6 +20,7 @@ const clients = new Map(); // simId -> { ws, apps }
    only: it is a live fact about a machine, re-sent on every reconnect, and a
    stale answer from a previous run would be worse than none. */
 const stationLaunchers = new Map(); // pcName -> { Steam: {installed, path}, ... }
+const stationSteamAuth = new Map(); // pcName -> { state, account, at }
 let allRegisteredPCs = new Map(); // Track all registered PCs with their config for heartbeat
 let discoveredPCs = new Map(); // Track auto-discovered PCs: ip_address -> { ip, mac, hostname, port, discovered_at }
 let pcConnectionStats = new Map(); // Track connection failures: pcName -> { failures, lastError, lastAttempt }
@@ -273,6 +274,15 @@ function handleStationRequest(msg, ws) {
     const on = Object.keys(launchers).filter((k) => launchers[k] && launchers[k].installed);
     log(`[Launchers] ${pcName}: ${on.length ? on.join(", ") : "none"}`);
     if (win) win.webContents.send("station:launchers", { pcName, launchers });
+    return true;
+  }
+  /* A station's venue-Steam sign-in, moving through CHECKING ->
+     AUTHENTICATING -> AUTHENTICATED/FAILED ahead of a game launch — never
+     the credential itself, only the state name and a masked account. */
+  if (msg.type === "STEAM_AUTH_STATUS") {
+    stationSteamAuth.set(pcName, { state: msg.state, account: msg.account || null, at: Date.now() });
+    log(`[Steam] ${pcName}: ${msg.state}${msg.account ? ` (${msg.account})` : ""}`);
+    if (win) win.webContents.send("station:steam-auth", { pcName, state: msg.state, account: msg.account || null });
     return true;
   }
   /* A station reporting its own CafeXP Client build, sent unprompted on
@@ -1082,6 +1092,17 @@ function registerIPCHandlers() {
     return {
       success: true,
       data: Array.from(stationLaunchers.entries()).map(([name, launchers]) => ({ pcName: name, launchers }))
+    };
+  });
+
+  /* A station's most recent Steam sign-in state, for a console opened after
+     the fact rather than one watching live. Cleared naturally by the next
+     launch attempt overwriting it — nothing here ever needs expiring. */
+  ipcMain.handle("station:get-steam-auth", async (_, { pcName } = {}) => {
+    if (pcName) return { success: true, data: stationSteamAuth.get(pcName) || null };
+    return {
+      success: true,
+      data: Array.from(stationSteamAuth.entries()).map(([name, s]) => ({ pcName: name, ...s }))
     };
   });
 

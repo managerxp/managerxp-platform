@@ -47,7 +47,7 @@ const GoogleCallback = () => {
       }
       completeGoogleLogin(token, user);
       navigate('/dashboard', { replace: true });
-    } catch (e) {
+    } catch {
       setError('Could not read the sign-in response. Please try again.');
     }
   }, [completeGoogleLogin, navigate]);

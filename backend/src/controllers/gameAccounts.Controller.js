@@ -36,6 +36,11 @@ const shape = (r) => ({
   profile_identifier: r.profile_identifier || null,
   status: r.status,
   current_session_id: r.current_session_id || null,
+  // Only present when listAccounts' join found a live session for it —
+  // undefined (not null) elsewhere so this stays absent from every other
+  // shape() caller's response instead of adding a column nobody asked for.
+  assigned_pc_name: r.assigned_pc_name === undefined ? undefined : (r.assigned_pc_name || null),
+  session_started_at: r.session_started_at === undefined ? undefined : (r.session_started_at || null),
   created_at: r.created_at,
   updated_at: r.updated_at
 });
@@ -62,8 +67,16 @@ export const listAccounts = async (req, res) => {
     const platform = await loadPlatform(cafeId, platformId);
     if (!platform) return res.status(404).json({ success: false, message: 'Not found' });
 
+    // The pc/session columns only ever resolve for a row that is actually
+    // IN_USE — current_session_id is NULL otherwise, so the join finds
+    // nothing and shape() below leaves those fields off entirely.
     const { rows } = await pool.query(
-      `SELECT * FROM game_accounts WHERE cafe_id IS NOT DISTINCT FROM $1 AND game_platform_id = $2 ORDER BY account_name`,
+      `SELECT ga.*, p.name AS assigned_pc_name, s.started_at AS session_started_at
+         FROM game_accounts ga
+         LEFT JOIN sessions s ON s.session_id = ga.current_session_id
+         LEFT JOIN pcs p ON p.pc_id = s.pc_id
+        WHERE ga.cafe_id IS NOT DISTINCT FROM $1 AND ga.game_platform_id = $2
+        ORDER BY ga.account_name`,
       [cafeId, platformId]);
     res.json({ success: true, data: rows.map(shape) });
   } catch (error) {

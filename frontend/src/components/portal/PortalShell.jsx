@@ -18,6 +18,7 @@ import logo from '../../assets/whitelogo.png';
  */
 
 const PortalContext = createContext(null);
+// eslint-disable-next-line react-refresh/only-export-components -- the hook belongs beside the context/provider it reads, same as React's own Context docs pattern
 export const usePortal = () => useContext(PortalContext);
 
 const NAV = [

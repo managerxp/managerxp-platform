@@ -43,6 +43,7 @@
     sessions: {},               // pcName -> live session from /api/sessions
     helpRequests: {},           // pcName -> { at } — customer tapped Call staff, cleared once staff open that station
     launchers: {},              // pcName -> { Steam: {installed, path}, ... } reported by the station
+    steamAuth: {},              // pcName -> { state, account, at } — live venue-Steam sign-in progress
     me: null,                   // signed-in principal from /api/staff/me
     permissions: null,          // permission keys, or null for full access
     loading: { pcs: false, subscription: false },
@@ -1849,6 +1850,26 @@
         if (!d || !d.pcName) return;
         state.launchers[d.pcName] = d.launchers || {};
         emit("launchers", state.launchers);
+      });
+    }
+
+    /* A station's venue-Steam sign-in moving through CHECKING ->
+       AUTHENTICATING -> AUTHENTICATED/FAILED ahead of a game launch. Seeded
+       from whatever the main process already has (a launch may have started
+       before this renderer/dialog did), then kept live. */
+    if (api.getStationSteamAuth) {
+      api.getStationSteamAuth().then(function (r) {
+        (r && r.data ? r.data : []).forEach(function (row) {
+          state.steamAuth[row.pcName] = { state: row.state, account: row.account, at: row.at };
+        });
+        emit("steamAuth", state.steamAuth);
+      }).catch(function () {});
+    }
+    if (api.onStationSteamAuth) {
+      api.onStationSteamAuth(function (d) {
+        if (!d || !d.pcName) return;
+        state.steamAuth[d.pcName] = { state: d.state, account: d.account || null, at: Date.now() };
+        emit("steamAuth", state.steamAuth);
       });
     }
 

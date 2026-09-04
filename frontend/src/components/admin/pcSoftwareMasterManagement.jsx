@@ -147,7 +147,7 @@ const SoftwareMasterManagement = () => {
           toast.success('Software deleted successfully');
           fetchSoftware(currentPage);
         }
-      } catch (error) {
+      } catch {
         toast.error('Failed to delete software');
       }
     }

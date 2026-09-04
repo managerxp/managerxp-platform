@@ -191,6 +191,25 @@
     var listHost = body.querySelector("#vaList");
     var platSel = body.querySelector("#vaPlatform");
 
+    /* Live venue-Steam sign-in progress for whichever PC an account is
+       currently assigned to — see game-credentials.js's identical block for
+       why this is matched by PC name rather than account. */
+    var LIVE_LABEL = { CHECKING: "Checking…", AUTHENTICATING: "Signing in…", AUTHENTICATED: "Signed in", FAILED: "Failed" };
+    var LIVE_TONE = { CHECKING: "idle", AUTHENTICATING: "accent", AUTHENTICATED: "online", FAILED: "offline" };
+
+    var offAuth = Store.on("steamAuth", function (map) {
+      if (!listHost.isConnected) { offAuth(); return; }
+      Object.keys(map).forEach(function (pcName) {
+        var el = listHost.querySelector('[data-pc="' + CSS.escape(pcName) + '"]');
+        if (!el) return;
+        var s = map[pcName];
+        var label = LIVE_LABEL[s.state];
+        el.hidden = !label;
+        el.textContent = label || "";
+        el.dataset.status = LIVE_TONE[s.state] || "idle";
+      });
+    });
+
     function paint(rows) {
       UI.clear(listHost);
       if (!rows.length) {
@@ -212,7 +231,20 @@
           '<td class="faint mono" style="font-size:11px">' + UI.esc(a.username || "—") + "</td>" +
           '<td class="faint" style="font-size:11px">' + UI.esc(a.profile_identifier || "—") + "</td>" +
           '<td><span class="badge" data-status="' + tone + '">' +
-            (a.status === "IN_USE" ? "In use" : a.status === "AVAILABLE" ? "Available" : "Disabled") + "</span></td>" +
+            (a.status === "IN_USE" ? "In use" : a.status === "AVAILABLE" ? "Available" : "Disabled") + "</span>" +
+            (a.status === "IN_USE" && a.assigned_pc_name
+              ? (function () {
+                  var live = Store.state.steamAuth[a.assigned_pc_name];
+                  var label = live && LIVE_LABEL[live.state];
+                  return '<div class="faint" style="font-size:10px;margin-top:2px">' + UI.esc(a.assigned_pc_name) +
+                    (a.session_started_at ? " · since " + UI.esc(new Date(a.session_started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })) : "") +
+                    '<span class="badge" data-pc="' + UI.esc(a.assigned_pc_name) + '" data-status="' + (LIVE_TONE[live && live.state] || "idle") + '"' +
+                      (label ? "" : " hidden") + ' style="margin-left:6px;font-size:9px">' +
+                      UI.esc(label || "") +
+                    "</span></div>";
+                })()
+              : "") +
+            "</td>" +
           '<td class="td-actions"></td>';
 
         var actions = tr.querySelector(".td-actions");

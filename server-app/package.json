@@ -1,13 +1,58 @@
 {
   "name": "vms-server",
+  "productName": "CafeXP Console",
   "version": "1.0.0",
   "author": "ManagerXP",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "dist": "electron-builder --win --publish never"
   },
   "dependencies": {
-    "electron": "^41.2.0",
     "ws": "^8.16.0"
+  },
+  "devDependencies": {
+    "electron": "^41.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.managerxp.cafexp.console",
+    "productName": "CafeXP Console",
+    "artifactName": "CafeXP-Console-Setup-${version}.${ext}",
+    "icon": "Images/icon.png",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!legacy/**",
+      "!output/**",
+      "!**/*.log"
+    ],
+    "win": {
+      "icon": "Images/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": true,
+      "allowElevation": true,
+      "deleteAppDataOnUninstall": false,
+      "installerIcon": "Images/icon.png",
+      "uninstallerIcon": "Images/icon.png"
+    }
   }
 }

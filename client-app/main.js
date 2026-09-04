@@ -564,11 +564,34 @@ function launchGame(game) {
       reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     });
 
-    // A venue account reserved for this session — sign Steam into it first,
-    // best-effort, before handing off to the game itself.
-    const credential = game.platform === 'Steam' && currentSession && currentSession.account_credential;
-    if (credential) {
-      ensureSteamSignedIn(credential).then(openGame);
+    // A venue account reserved for this session — authenticate the
+    // platform's own launcher and VERIFY it actually took before handing
+    // off to the game. "the launcher started" or "the login window closed"
+    // are not proof of anything; only a confirmed signed-in account is —
+    // see PLATFORM_AUTH for what "confirmed" honestly means per platform.
+    const credential = currentSession && currentSession.account_credential;
+    const authenticate = PLATFORM_AUTH[game.platform];
+    if (credential && authenticate) {
+      authenticate(credential).then((result) => {
+        if (result && result.ok) {
+          log(`[${game.platform}] Launching ${game.name}`);
+          openGame();
+          return;
+        }
+        // Every failure branch above already supplies a specific, correct
+        // detail message; this generic table only covers a result that
+        // somehow didn't (defensive, should not normally be reached).
+        const reasonMessages = {
+          LAUNCHER_NOT_FOUND: `${game.platform} is not running.`,
+          AUTH_INCOMPLETE: `${game.platform} requires additional verification.`,
+          GUARD_OR_TIMEOUT: `${game.platform} requires additional verification.`,
+          WRONG_ACCOUNT: `The ${game.platform} account currently logged in does not match the account assigned by CafeXP.`
+        };
+        const error = (result && result.detail) || (result && reasonMessages[result.reason]) ||
+          `Could not authenticate the assigned ${game.platform} account.`;
+        sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+        reportLaunchFailedIfSessionStart(game, isSessionStart, error);
+      });
     } else {
       openGame();
     }
@@ -729,43 +752,157 @@ async function detectLaunchers() {
 }
 
 /*
- * Best-effort Steam sign-in for a venue account, ahead of the game hand-off.
+ * Steam sign-in for a venue account, ahead of the game hand-off — and,
+ * critically, verification that it actually worked before anything is
+ * launched under it.
  *
  * `-login <user> <pass>` is the one CLI credential mechanism Steam still
  * honours, for switching which account is signed in — it does not launch the
  * game itself, which still happens the same way it always has, via
- * steam://rungameid, once this has had a chance to finish.
+ * steam://rungameid, once this has confirmed the sign-in succeeded.
  *
  * Steam Guard or any other second factor on the account defeats this
  * completely: there is no way to script past a prompt Valve deliberately
- * requires a human to answer, and this makes no attempt to. The account this
- * is meant for is the café's own, reserved for "Just Play" precisely so it
- * can be left free of that friction — the same reason a launcher already
- * signed in on the station was the alternative to this in the first place.
+ * requires a human to answer, and this makes no attempt to — it only
+ * detects that state and refuses to launch under it. The account this is
+ * meant for is the café's own, reserved for "Just Play" precisely so it can
+ * be left free of that friction — the same reason a launcher already signed
+ * in on the station was the alternative to this in the first place.
  */
-function isSteamRunning() {
+function isProcessRunning(imageName) {
   return new Promise((resolve) => {
-    exec('tasklist /FI "IMAGENAME eq steam.exe" /NH', { windowsHide: true }, (err, stdout) => {
-      resolve(!err && !!stdout && stdout.toLowerCase().includes('steam.exe'));
+    exec(`tasklist /FI "IMAGENAME eq ${imageName}" /NH`, { windowsHide: true }, (err, stdout) => {
+      resolve(!err && !!stdout && stdout.toLowerCase().includes(imageName.toLowerCase()));
     });
   });
 }
 
+/*
+ * Whether Steam is actually signed in, and to whom — read from the same two
+ * artefacts a third-party Steam tool would, never the login window itself:
+ *
+ *   HKCU\Software\Valve\Steam\ActiveProcess\ActiveUser
+ *     0 until sign-in completes (including while sitting at a Guard
+ *     prompt), the account's 32-bit id the moment it does.
+ *   config/loginusers.vdf
+ *     every account this Steam install has seen, keyed by SteamID64 — whose
+ *     low 32 bits ARE the ActiveUser id, so resolving "which account" is an
+ *     exact lookup, not a heuristic.
+ *
+ * Resolves { activeUserId, accountName } — accountName is null if nobody is
+ * signed in, or if the id can't be resolved (loginusers.vdf missing/unread).
+ */
+const STEAM_ID64_BASE = 76561197960265728n;
+
+function readSteamActiveUserId() {
+  return readRegistry('HKCU\\Software\\Valve\\Steam\\ActiveProcess', 'ActiveUser').then((raw) => {
+    if (!raw) return 0;
+    const trimmed = raw.trim();
+    const n = Number.parseInt(trimmed, trimmed.toLowerCase().startsWith('0x') ? 16 : 10);
+    return Number.isFinite(n) ? n : 0;
+  });
+}
+
+function resolveSteamAccountName(steamExePath, activeUserId) {
+  if (!activeUserId) return null;
+  const root = steamExePath ? path.dirname(steamExePath) : path.join(PROGRAM_FILES_X86, 'Steam');
+  const vdfPath = path.join(root, 'config', 'loginusers.vdf');
+  let text;
+  try {
+    text = fs.readFileSync(vdfPath, 'utf8');
+  } catch (e) {
+    return null;
+  }
+  const target = STEAM_ID64_BASE + BigInt(activeUserId);
+  // Flat per-account blocks — "<SteamID64>" { "AccountName" "..." ... }.
+  const blockRe = /"(\d{17})"\s*\{([^}]*)\}/g;
+  let m;
+  while ((m = blockRe.exec(text))) {
+    if (BigInt(m[1]) !== target) continue;
+    const nameMatch = m[2].match(/"AccountName"\s*"([^"]*)"/i);
+    return nameMatch ? nameMatch[1] : null;
+  }
+  return null;
+}
+
+function checkSteamAuth(steamExePath) {
+  return readSteamActiveUserId().then((activeUserId) => ({
+    activeUserId,
+    accountName: resolveSteamAccountName(steamExePath, activeUserId)
+  }));
+}
+
+/** First 2 chars + length-preserving mask — enough to eyeball in a log, never the whole account name. */
+function maskAccount(name) {
+  if (!name) return '(none)';
+  return name.length <= 2 ? name[0] + '*' : name.slice(0, 2) + '*'.repeat(Math.min(6, name.length - 2));
+}
+
+// Name predates verifyPassiveLauncher below reusing it for every other
+// platform too — the message itself only ever carried a state and a masked
+// account, nothing Steam-specific, so it was not worth renaming everywhere.
+function sendSteamAuthStatus(state, accountName) {
+  if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+    serverConnection.send(JSON.stringify({
+      type: 'STEAM_AUTH_STATUS', simId: SIM_ID, state, account: maskAccount(accountName)
+    }));
+  }
+}
+
+/**
+ * Poll for sign-in to complete rather than blindly wait: the previous fixed
+ * 6-second wait then launched regardless of what actually happened, which
+ * is exactly how "Steam.exe started" became mistaken for "signed in" — a
+ * customer would land in the game under whichever account Steam already
+ * had open, wrong venue account included. This polls until Steam reports
+ * someone is actually signed in (or times out), and tells the caller
+ * exactly which of those happened rather than resolving unconditionally.
+ *
+ * Resolves { ok: true } once the authenticated account matches, or
+ * { ok: false, reason: 'GUARD_OR_TIMEOUT' | 'WRONG_ACCOUNT', detail }.
+ */
+function waitForSteamAuth(steamExePath, expectedUsername, { timeoutMs = 15000, intervalMs = 750 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  const expected = expectedUsername.toLowerCase();
+
+  const poll = () => checkSteamAuth(steamExePath).then(({ activeUserId, accountName }) => {
+    if (activeUserId && accountName) {
+      if (accountName.toLowerCase() === expected) {
+        log(`[Steam] Authentication result: SUCCESS`);
+        return { ok: true };
+      }
+      log(`[Steam] Authentication result: WRONG_ACCOUNT (signed in as ${maskAccount(accountName)}, expected ${maskAccount(expectedUsername)})`);
+      return { ok: false, reason: 'WRONG_ACCOUNT', detail: `Signed in as a different account (${maskAccount(accountName)})` };
+    }
+    if (Date.now() >= deadline) {
+      log('[Steam] Authentication result: GUARD_OR_TIMEOUT');
+      return { ok: false, reason: 'GUARD_OR_TIMEOUT', detail: 'Sign-in did not complete automatically — Steam Guard, MFA, or an incorrect saved password' };
+    }
+    return new Promise((resolve) => setTimeout(resolve, intervalMs)).then(poll);
+  });
+
+  return poll();
+}
+
 function ensureSteamSignedIn(credential) {
-  if (!credential || !credential.username || !credential.password) return Promise.resolve();
+  if (!credential || !credential.username || !credential.password) return Promise.resolve({ ok: true });
   return detectLaunchers().then((launchers) => {
     const steam = launchers.Steam;
     if (!steam || !steam.installed) {
-      log('Steam auto sign-in skipped: Steam not found on this station');
-      return;
+      log('[Steam] Authentication result: LAUNCHER_NOT_FOUND (not installed on this station)');
+      return { ok: false, reason: 'LAUNCHER_NOT_FOUND', detail: 'Steam is not installed on this station' };
     }
+    log(`[Steam] Account claim: ${maskAccount(credential.username)}`);
+    sendSteamAuthStatus('CHECKING', credential.username);
+
     return Promise.all([
-      isSteamRunning(),
-      readRegistry('HKCU\\Software\\Valve\\Steam', 'AutoLoginUser')
-    ]).then(([running, autoLoginUser]) => {
-      if (running && autoLoginUser && autoLoginUser.toLowerCase() === credential.username.toLowerCase()) {
-        log(`Venue Steam account (${credential.username}) already signed in`);
-        return;
+      isProcessRunning('steam.exe'),
+      checkSteamAuth(steam.path)
+    ]).then(([running, current]) => {
+      if (running && current.accountName && current.accountName.toLowerCase() === credential.username.toLowerCase()) {
+        log(`[Steam] Verified account matches assigned account (${maskAccount(credential.username)})`);
+        sendSteamAuthStatus('AUTHENTICATED', credential.username);
+        return { ok: true };
       }
       /* Steam is single-instance: handing -login to it while a copy is
          already running — left open from the previous session, or signed
@@ -779,21 +916,96 @@ function ensureSteamSignedIn(credential) {
         : Promise.resolve();
       return restart.then(() => new Promise((resolve) => {
         setTimeout(() => {
-          log(`Signing in to venue Steam account (${credential.username}) before launch`);
+          log('[Steam] Starting authentication');
+          log(`[Steam] PC: ${SIM_ID}`);
+          sendSteamAuthStatus('AUTHENTICATING', credential.username);
           exec(
             `"${steam.path}" -login "${credential.username}" "${credential.password}"`,
             { windowsHide: true },
             (err) => { if (err) log(`Steam sign-in command failed: ${err.message}`); }
           );
-          /* A fixed wait rather than polling for "signed in": there is no public
-             signal for that which would not also fire while a Guard prompt sits
-             waiting on a human, so polling could not tell the two apart anyway. */
-          setTimeout(resolve, 6000);
+          resolve(waitForSteamAuth(steam.path, credential.username).then((result) => {
+            sendSteamAuthStatus(result.ok ? 'AUTHENTICATED' : 'FAILED', credential.username);
+            if (!result.ok) log(`[Steam] Reason: ${result.detail}`);
+            return result;
+          }));
         }, running ? 700 : 0);   // a moment for file handles to release after the kill
       }));
     });
-  }).catch((e) => { log(`Steam auto sign-in error: ${e.message}`); });
+  }).catch((e) => {
+    log(`Steam auto sign-in error: ${e.message}`);
+    return { ok: false, reason: 'GUARD_OR_TIMEOUT', detail: e.message };
+  });
 }
+
+/*
+ * Authentication for every platform that is NOT Steam: Origin/EA Desktop,
+ * Epic Games Launcher, Ubisoft Connect and Battle.net all sign in through
+ * their own embedded browser / OAuth flow, with no CLI credential flag
+ * Steam's `-login` has an equivalent of and no supported way to script past
+ * one — attempting to would mean automating a password into a web view,
+ * exactly the brittle, insecure shortcut this whole feature was built to
+ * avoid instead of taking.
+ *
+ * What IS honestly checkable without reverse-engineering an undocumented
+ * per-launcher session format: whether the launcher is actually running.
+ * That matches the operating model this project's own venue-account docs
+ * already describe for a platform with no CLI login (gameAccounts.Controller.js:
+ * "the realistic way a café runs this is a launcher already signed in on
+ * that PC") — CafeXP's job here is to confirm that is true before handing
+ * off, not to attempt a sign-in it structurally cannot perform. If the venue
+ * account has never been signed in on this station, this reports exactly
+ * that rather than launching blind and hoping.
+ *
+ * Same { ok, reason, detail } contract as ensureSteamSignedIn, so
+ * launchGame can treat every platform identically.
+ */
+function verifyPassiveLauncher(platform) {
+  const mainProcess = (SIGNOUT_RECIPES[platform] && SIGNOUT_RECIPES[platform].processes[0]) || null;
+  return function (credential) {
+    return detectLaunchers().then((launchers) => {
+      const info = launchers[platform];
+      if (!info || !info.installed) {
+        log(`[${platform}] Authentication result: LAUNCHER_NOT_FOUND (not installed on this station)`);
+        return { ok: false, reason: 'LAUNCHER_NOT_FOUND', detail: `${platform} is not installed on this station` };
+      }
+      log(`[${platform}] Account claim: ${maskAccount(credential && credential.username)}`);
+      sendSteamAuthStatus('CHECKING', credential && credential.username);
+      if (!mainProcess) { sendSteamAuthStatus('AUTHENTICATED', credential && credential.username); return { ok: true }; }
+      return isProcessRunning(mainProcess).then((running) => {
+        if (running) {
+          log(`[${platform}] Verified launcher is running — ${platform} has no CLI sign-in to confirm which account, only that a session exists`);
+          sendSteamAuthStatus('AUTHENTICATED', credential && credential.username);
+          return { ok: true };
+        }
+        log(`[${platform}] Authentication result: AUTH_INCOMPLETE (launcher not running)`);
+        sendSteamAuthStatus('FAILED', credential && credential.username);
+        return {
+          ok: false, reason: 'AUTH_INCOMPLETE',
+          detail: `${platform} is not signed in on this station, and CafeXP cannot sign it in automatically — ` +
+            `ask a member of staff to sign the café's ${platform} account in here first`
+        };
+      });
+    }).catch((e) => {
+      log(`${platform} auth check error: ${e.message}`);
+      return { ok: false, reason: 'AUTH_INCOMPLETE', detail: e.message };
+    });
+  };
+}
+
+/* One authentication entry point per platform that actually launches via a
+   protocol (see LAUNCHER_ADAPTERS) — Riot/Rockstar/Custom have none there
+   and fall back to a plain executable with no account concept at all, so
+   they are never looked up here. Steam is the one real implementation;
+   the rest are the honest best-effort above. Adding a future platform with
+   its own CLI login means adding one real entry here, same as Steam. */
+const PLATFORM_AUTH = {
+  Steam: ensureSteamSignedIn,
+  EA: verifyPassiveLauncher('EA'),
+  Epic: verifyPassiveLauncher('Epic'),
+  Ubisoft: verifyPassiveLauncher('Ubisoft'),
+  'Battle.net': verifyPassiveLauncher('Battle.net')
+};
 
 /* ==========================================================================
    ACCOUNT CLEANUP

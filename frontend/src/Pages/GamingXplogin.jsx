@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import whiteLogo from '../assets/whitelogo.png';
 import { useAuth } from '../context/AuthContext';
 
@@ -13,7 +13,6 @@ const GamerXpLogin = () => {
   const [error, setError] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
-  const navigate = useNavigate();
   const { login: authLogin, staffLogin } = useAuth();
 
   // Send token to electron app

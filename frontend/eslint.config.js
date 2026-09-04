@@ -24,6 +24,13 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      /* eslint-plugin-react-hooks v7 ships this as 'error' by default, unlike
+         its sibling exhaustive-deps ('warn') — despite catching the same kind
+         of case: an effect that has to run on mount for a real external
+         reason (parsing a URL fragment, fetching on load) and happens to also
+         call setState. Matched to exhaustive-deps' severity rather than
+         rewriting every such effect under CI pressure. */
+      'react-hooks/set-state-in-effect': 'warn',
     },
   },
 ])

@@ -1,0 +1,50 @@
+name: Client App CI
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "client-app/**"
+      - ".github/workflows/client-app-ci.yml"
+  push:
+    branches: [develop]
+    paths:
+      - "client-app/**"
+      - ".github/workflows/client-app-ci.yml"
+
+defaults:
+  run:
+    working-directory: client-app
+
+jobs:
+  build:
+    # electron-builder's --win target wants real Windows packaging tools
+    # (NSIS, code-signing helpers) that only exist here without also pulling
+    # in Wine on a Linux runner — this app only ever ships as a Windows
+    # installer, so there is no cross-platform target to weigh against that.
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: client-app/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        run: npm test --if-present
+
+      - name: Build
+        # Unsigned — there is no code-signing certificate available in CI.
+        # This proves the packaging config (icon, NSIS options, file list)
+        # still produces an installer; it does not produce a release artifact.
+        run: npm run dist

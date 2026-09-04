@@ -80,6 +80,7 @@ export const Field = ({ label, hint, id, required, children }) => (
   </div>
 );
 
+// eslint-disable-next-line react-refresh/only-export-components -- shared non-component constant, deliberately kept beside the components that use it
 export const inputClass = authFieldClasses;
 
 export const Input = (props) => <input className={inputClass} {...props} />;

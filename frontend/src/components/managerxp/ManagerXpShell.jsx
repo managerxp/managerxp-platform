@@ -32,6 +32,7 @@ import logo from '../../assets/whitelogo.png';
  */
 
 const AdminContext = createContext(null);
+// eslint-disable-next-line react-refresh/only-export-components -- the hook belongs beside the context/provider it reads, same as React's own Context docs pattern
 export const useAdmin = () => useContext(AdminContext);
 
 const NAV = [

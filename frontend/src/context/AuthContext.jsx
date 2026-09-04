@@ -389,6 +389,7 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// eslint-disable-next-line react-refresh/only-export-components -- the hook belongs beside the context/provider it reads, same as React's own Context docs pattern
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
