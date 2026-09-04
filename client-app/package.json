@@ -22,7 +22,7 @@
     "appId": "com.managerxp.cafexp.client",
     "productName": "CafeXP Client",
     "artifactName": "CafeXP-Client-Setup-${version}.${ext}",
-    "icon": "Images/icon.png",
+    "icon": "Images/icon.ico",
     "directories": {
       "output": "dist"
     },
@@ -33,7 +33,7 @@
       "!**/*.log"
     ],
     "win": {
-      "icon": "Images/icon.png",
+      "icon": "Images/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -54,8 +54,8 @@
       "perMachine": true,
       "allowElevation": true,
       "deleteAppDataOnUninstall": false,
-      "installerIcon": "Images/icon.png",
-      "uninstallerIcon": "Images/icon.png"
+      "installerIcon": "Images/icon.ico",
+      "uninstallerIcon": "Images/icon.ico"
     },
     "publish": [
       {
