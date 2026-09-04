@@ -534,6 +534,134 @@ export const getMyProfile = async (req, res) => {
   }
 };
 
+/*
+ * GET /api/customers/me/export
+ *
+ * Everything ManagerXP holds about this customer, as one JSON document —
+ * the DPDP Act's data-portability right. Buffered rather than streamed:
+ * this is one person's own history, never a café's whole customer base, so
+ * the row counts involved are small enough that buffering costs nothing.
+ */
+export const exportMyData = async (req, res) => {
+  try {
+    const id = req.actor?.customer_id;
+    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
+
+    const [profile, wallet, transactions, sessions, bills, orders, reservations] = await Promise.all([
+      pool.query(
+        `SELECT customer_id, customer_name, email, phone_number, address, created_at, updated_at
+           FROM customers WHERE customer_id = $1`, [id]),
+      pool.query(
+        `SELECT wallet_id, balance, currency, created_at, updated_at
+           FROM wallets WHERE customer_id = $1`, [id]),
+      pool.query(
+        `SELECT transaction_id, direction, amount, balance_after, category, method, note, created_at
+           FROM wallet_transactions WHERE customer_id = $1 ORDER BY created_at`, [id]),
+      pool.query(
+        `SELECT session_id, cafe_id, pc_id, status, started_at, ended_at, billable_seconds,
+                rate_per_hour, amount_charged, payment_status
+           FROM sessions WHERE customer_id = $1 ORDER BY started_at`, [id]),
+      pool.query(
+        `SELECT bill_id, bill_number, cafe_id, session_id, subtotal, discount, tax, total,
+                paid_amount, currency, status, created_at
+           FROM bills WHERE customer_id = $1 ORDER BY created_at`, [id]),
+      pool.query(
+        `SELECT order_id, order_number, session_id, pc_name, subtotal, tax, total, currency,
+                status, payment_status, created_at
+           FROM orders WHERE customer_id = $1 ORDER BY created_at`, [id]),
+      pool.query(
+        `SELECT reservation_id, cafe_id, pc_id, category, start_time, end_time, status,
+                party_size, created_at
+           FROM reservations WHERE customer_id = $1 ORDER BY start_time`, [id])
+    ]);
+
+    if (profile.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        exported_at: new Date().toISOString(),
+        profile: profile.rows[0],
+        wallet: wallet.rows[0] || null,
+        wallet_transactions: transactions.rows,
+        sessions: sessions.rows,
+        bills: bills.rows,
+        orders: orders.rows,
+        reservations: reservations.rows
+      }
+    });
+  } catch (error) {
+    console.error('Customer data export failed:', error);
+    res.status(500).json({ success: false, message: 'Could not export your data' });
+  }
+};
+
+/*
+ * DELETE /api/customers/me
+ *
+ * Self-service erasure — anonymize rather than hard-delete. wallets,
+ * wallet_transactions, bills, orders and reservations all FK to
+ * customer_id and are financial/audit history a café may need to keep
+ * (tax records, dispute resolution); it is the name/email/phone tied to
+ * them that this right actually concerns, not the ledger rows themselves.
+ * The email is overwritten with a value nobody can collide with, freeing
+ * the original address for reuse — this is a real anonymization, not a
+ * status flag with the old data still sitting behind it.
+ */
+export const deleteMyAccount = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = req.actor?.customer_id;
+    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
+
+    await client.query('BEGIN');
+    const existing = (await client.query(
+      'SELECT customer_id, is_active FROM customers WHERE customer_id = $1 FOR UPDATE', [id]
+    )).rows[0];
+    if (!existing) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+    if (!existing.is_active) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ success: false, message: 'This account is already deleted' });
+    }
+
+    // Same "nobody can sign in with this" pattern a staff-created customer
+    // with no password gets — see createCustomer below.
+    const randomPassword = await bcrypt.hash(Math.random().toString(36).slice(2) + Date.now(), 10);
+    await client.query(
+      `UPDATE customers SET
+         customer_name = 'Deleted customer',
+         email = $2,
+         phone_number = '0000000000',
+         address = '{}'::jsonb,
+         password = $3,
+         is_active = FALSE,
+         anonymized_at = CURRENT_TIMESTAMP,
+         updated_at = CURRENT_TIMESTAMP
+       WHERE customer_id = $1`,
+      [id, `deleted-${id}@managerxp.invalid`, randomPassword]
+    );
+    await client.query('COMMIT');
+
+    await recordAudit(req, {
+      action: 'customer.delete', category: 'account', entity: 'customer', entity_id: id,
+      summary: `Customer ${id} deleted their own account (DPDP erasure request)`
+    });
+
+    res.json({ success: true, message: 'Your account has been deleted.' });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Customer self-delete failed:', error);
+    res.status(500).json({ success: false, message: 'Could not delete your account' });
+  } finally {
+    client.release();
+  }
+};
+
 // GET /api/customers/:id
 export const getCustomerById = async (req, res) => {
   try {

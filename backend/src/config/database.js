@@ -94,6 +94,16 @@ export const initializeDatabase = async () => {
         ON users (google_id) WHERE google_id IS NOT NULL
     `);
 
+    /* DPDP Act, 2023 self-service erasure. Anonymize-in-place rather than a
+       real DELETE — cafes.user_id, organization_users.user_id and audit rows
+       all FK to this table — so this is a flag, following the is_active
+       convention every other table here already uses, not a new pattern. */
+    await client.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ
+    `);
+
     // subscription plans table
     await client.query(`
       CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -262,6 +272,17 @@ export const initializeDatabase = async () => {
         ADD COLUMN IF NOT EXISTS verify_otp_attempts SMALLINT NOT NULL DEFAULT 0
     `);
     await client.query(`ALTER TABLE customers ALTER COLUMN email_verified SET DEFAULT FALSE`);
+
+    /* DPDP Act, 2023 self-service erasure — same is_active + anonymized_at
+       pair as `users`. wallets/wallet_transactions/sessions/bills/orders/
+       reservations all FK to customer_id and are financial or booking
+       history a café may need to retain, so this anonymizes the row rather
+       than deleting it. */
+    await client.query(`
+      ALTER TABLE customers
+        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
+        ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ
+    `);
 
     // wallet — one row per customer, holding the authoritative balance.
     // Money is NUMERIC, never floating point.

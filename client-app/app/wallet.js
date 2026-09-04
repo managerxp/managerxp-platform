@@ -70,12 +70,15 @@
     return Session.state.token || null;
   }
 
-  function request(path) {
+  function request(path, options) {
+    options = options || {};
     return fetch(API_BASE + path, {
+      method: options.method || "GET",
       headers: {
         "Content-Type": "application/json",
         "Authorization": "Bearer " + (token() || "")
-      }
+      },
+      body: options.body
     }).then(function (res) {
       return res.json().catch(function () { return {}; }).then(function (body) {
         if (!res.ok) {

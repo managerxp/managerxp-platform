@@ -1825,6 +1825,10 @@
         '<div class="card-foot row gap-2">' +
           '<button class="btn btn-danger btn-sm" id="signOutBtn">' + Icon("logout", 15) +
             '<span class="btn-label">Sign out</span></button>' +
+          '<button class="btn btn-outline btn-sm" id="exportDataBtn">' + Icon("download", 15) +
+            '<span class="btn-label">Export my data</span></button>' +
+          '<button class="btn btn-outline btn-sm" id="deleteAccountBtn" style="color:var(--danger)">' +
+            Icon("trash", 15) + '<span class="btn-label">Delete my account</span></button>' +
         "</div>";
 
       // Bills — real, from the café server. Read-only: staff take payment.
@@ -2006,6 +2010,45 @@
           confirmLabel: "Sign out",
           variant: "danger"
         }).then(function (ok) { if (ok) Session.signOut(); });
+      });
+
+      /* DPDP Act, 2023 — your own right to export or erase your data.
+         Downloaded straight in the renderer as a file, same as a browser
+         would: small enough (one customer, not a café's whole history) to
+         hold in memory with no server-side file to generate or clean up. */
+      profile.querySelector("#exportDataBtn").addEventListener("click", function (e) {
+        var btn = e.currentTarget;
+        btn.disabled = true;
+        Wallet.request("/api/customers/me/export")
+          .then(function (body) {
+            var blob = new Blob([JSON.stringify(body.data, null, 2)], { type: "application/json" });
+            var url = URL.createObjectURL(blob);
+            var a = document.createElement("a");
+            a.href = url;
+            a.download = "cafexp-account-data-" + new Date().toISOString().slice(0, 10) + ".json";
+            a.click();
+            URL.revokeObjectURL(url);
+          })
+          .catch(function (err) {
+            UI.toast({ title: "Couldn't export your data", message: err.message, status: "error", duration: 4000 });
+          })
+          .finally(function () { btn.disabled = false; });
+      });
+
+      profile.querySelector("#deleteAccountBtn").addEventListener("click", function () {
+        UI.confirm({
+          title: "Delete your account?",
+          message: "This cannot be undone — your name, email and phone number will be permanently erased.",
+          confirmLabel: "Delete my account",
+          variant: "danger"
+        }).then(function (ok) {
+          if (!ok) return;
+          return Wallet.request("/api/customers/me", { method: "DELETE" })
+            .then(function () { Session.signOut(); })
+            .catch(function (err) {
+              UI.toast({ title: "Couldn't delete your account", message: err.message, status: "error", duration: 5000 });
+            });
+        });
       });
 
       /* Total time actually played, across every ended session — live from

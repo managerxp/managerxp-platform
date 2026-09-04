@@ -74,6 +74,8 @@ export const portalApi = {
       .then((b) => b.data),
 
   me: () => request('/me', { noBranch: true }).then((b) => b.data),
+  exportMyData: () => request('/me/export', { noBranch: true }).then((b) => b.data),
+  deleteMyAccount: () => request('/me', { method: 'DELETE', noBranch: true }),
   dashboard: () => request('/dashboard').then((b) => b.data),
 
   /* For an account that has no business yet. Sent without a scope header,

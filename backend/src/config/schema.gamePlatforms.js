@@ -71,6 +71,17 @@ export const initializeGamePlatforms = async (client) => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  /* CREATE TABLE IF NOT EXISTS is a no-op on a `games` table that already
+     existed before these two columns were added here — it never widens an
+     existing table. On such a database, uploadCatalogLogo/uploadCatalogCover
+     (gameCatalog.Controller.js's saveAsset) would fail with "column
+     icon_url/banner_url does not exist" on every attempt, surfacing to the
+     admin as a generic "Could not save that logo/cover image". */
+  await client.query(`
+    ALTER TABLE games
+      ADD COLUMN IF NOT EXISTS icon_url VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS banner_url VARCHAR(255)
+  `);
 
   /* One row per (game, store). A game with no platform configured yet still
      exists in the catalog — ManagerXP can register "Hollow Knight" and add

@@ -22,6 +22,26 @@ export const authFieldClasses =
 export const authLabelClasses = 'block text-xs text-neutral-400 mb-1.5 uppercase tracking-wider font-mono';
 
 /**
+ * A mandatory, never-pre-checked consent checkbox for a form collecting
+ * someone's personal data for the first time (DPDP Act, 2023 requires
+ * informed consent captured this way — an unticked box the person actively
+ * checks, not a default-on one). `checked`/`onChange(boolean)` so it drops
+ * into the same `form` state object every other field on these pages uses.
+ */
+export const ConsentCheckbox = ({ id, checked, onChange, children }) => (
+  <label htmlFor={id} className="flex items-start gap-2.5 text-xs text-neutral-400 cursor-pointer select-none">
+    <input
+      id={id}
+      type="checkbox"
+      checked={checked}
+      onChange={(e) => onChange(e.target.checked)}
+      className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-white/20 bg-white/[0.03] accent-red-500"
+    />
+    <span>{children}</span>
+  </label>
+);
+
+/**
  * Branded shell for /login and /signup. Those routes hide the global navbar and
  * footer, so this supplies the logo, the back-to-site link and the ManagerXP
  * background treatment.

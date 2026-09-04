@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { usePortal } from '../../components/portal/PortalShell';
-import { portalAuth } from '../../lib/portalApi';
+import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Page, Card, Button, Field, Input, Banner, Pill } from '../../components/portal/ui';
 
 /*
@@ -57,6 +57,8 @@ export const Profile = () => {
 export const Security = () => {
   const [form, setForm] = useState({ current: '', next: '', confirm: '' });
   const [notice, setNotice] = useState(null);
+  const [exporting, setExporting] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
 
   const submit = (e) => {
@@ -66,6 +68,48 @@ export const Security = () => {
     /* The endpoint is not built. Saying so beats a spinner that resolves into
        a lie about having changed something. */
     setNotice({ tone: 'warn', text: 'Changing your password from the portal is not available yet — contact support and we will do it for you.' });
+  };
+
+  /* Downloads the JSON directly in the browser — no server-side file to
+     generate or clean up, since the export is small enough to hold in
+     memory (one account, not a café's whole customer base). */
+  const exportData = async () => {
+    setExporting(true);
+    setNotice(null);
+    try {
+      const data = await portalApi.exportMyData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `managerxp-account-data-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setNotice({ tone: 'bad', text: err.message });
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!window.confirm(
+      'Delete your ManagerXP account? This cannot be undone — your name, email and phone number will be permanently erased.'
+    )) return;
+
+    setDeleting(true);
+    setNotice(null);
+    try {
+      await portalApi.deleteMyAccount();
+      portalAuth.signOut();
+      window.location.href = '/login';
+    } catch (err) {
+      // A blocked deletion (owns an active business) comes back with a
+      // ticket reference in err.message — worth showing exactly as sent
+      // rather than a generic failure.
+      setNotice({ tone: err.status === 409 ? 'warn' : 'bad', text: err.message });
+      setDeleting(false);
+    }
   };
 
   return (
@@ -91,6 +135,22 @@ export const Security = () => {
         <Button variant="ghost" onClick={() => { portalAuth.signOut(); window.location.href = '/login'; }}>
           Sign out
         </Button>
+      </Card>
+
+      <Card title="Your data" description="Export everything ManagerXP holds about your account.">
+        <Button variant="ghost" onClick={exportData} disabled={exporting}>
+          {exporting ? 'Preparing export…' : 'Export my data'}
+        </Button>
+      </Card>
+
+      <Card title="Danger zone" description="Permanently delete your account and personal data.">
+        <Button variant="danger" onClick={deleteAccount} disabled={deleting}>
+          {deleting ? 'Deleting…' : 'Delete my account'}
+        </Button>
+        <p className="mt-3 text-xs text-neutral-500">
+          If your account owns an active business, this opens a support ticket instead of deleting
+          immediately — we will help you transfer ownership or close the business first.
+        </p>
       </Card>
     </Page>
   );

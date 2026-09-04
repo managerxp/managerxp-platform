@@ -5,7 +5,7 @@ import { portalApi, portalAuth } from '../lib/portalApi';
 import { adminAuth } from '../lib/adminApi';
 import { useAuth } from '../context/AuthContext';
 import { COUNTRIES, countryByCode, flagOf, joinPhone } from '../lib/geo';
-import AuthLayout, { authFieldClasses, authLabelClasses } from '../components/AuthLayout';
+import AuthLayout, { authFieldClasses, authLabelClasses, ConsentCheckbox } from '../components/AuthLayout';
 import LocationSelector from '../components/LocationSelector';
 import VerifyEmailStep from '../components/VerifyEmailStep';
 
@@ -62,7 +62,8 @@ const SignupPage = () => {
        their café stands are frequently not the same country. */
     dialCountry: DEFAULT_COUNTRY, dial: countryByCode(DEFAULT_COUNTRY).dial,
     organization_name: '', branch_name: '',
-    address_line_1: '', address_line_2: '', postal_code: '', pc_count: ''
+    address_line_1: '', address_line_2: '', postal_code: '', pc_count: '',
+    consent: false
   });
 
   /* Ids, plus the resolved rows the selector hands back, so currency and
@@ -89,7 +90,8 @@ const SignupPage = () => {
     form.name.trim() &&
     /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim()) &&
     form.password.length >= 8 &&
-    form.password === form.confirm;
+    form.password === form.confirm &&
+    form.consent;
 
   const next = (e) => {
     e.preventDefault();
@@ -99,6 +101,7 @@ const SignupPage = () => {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) return setError('Enter a valid email address');
     if (form.password.length < 8) return setError('Use a password of at least 8 characters');
     if (form.password !== form.confirm) return setError('Those passwords do not match');
+    if (!form.consent) return setError('Please agree to the Privacy Policy to continue');
     setStep(2);
   };
 
@@ -316,6 +319,23 @@ const SignupPage = () => {
                      onChange={set('confirm')} className={authFieldClasses} autoComplete="new-password" />
             </Field>
           </div>
+
+          <ConsentCheckbox
+            id="st-consent"
+            checked={form.consent}
+            onChange={(v) => setForm((f) => ({ ...f, consent: v }))}
+          >
+            I agree to the{' '}
+            <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer"
+                  className="text-white underline underline-offset-4 hover:text-red-400">
+              Privacy Policy
+            </Link>{' '}
+            and{' '}
+            <Link to="/terms-of-service" target="_blank" rel="noopener noreferrer"
+                  className="text-white underline underline-offset-4 hover:text-red-400">
+              Terms of Service
+            </Link>, and consent to ManagerXP collecting and processing my personal data as described.
+          </ConsentCheckbox>
 
           <button
             type="submit"

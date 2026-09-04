@@ -53,7 +53,7 @@ const provisionOrganization = async (client, {
       (name, slug, email, phone, address, address_line_1, address_line_2,
        city, state, country, postal_code, currency, timezone,
        country_id, state_id, city_id, status)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12,'INR'),$13,$14,$15,$16,'ACTIVE')
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,COALESCE($12,'INR'),COALESCE($13,'Asia/Kolkata'),$14,$15,$16,'ACTIVE')
     RETURNING *
   `, [
     orgName,
@@ -398,6 +398,144 @@ export const me = async (req, res) => {
   } catch (error) {
     console.error('Error loading me:', error);
     res.status(500).json({ success: false, message: 'Could not load your account' });
+  }
+};
+
+/* ==========================================================================
+   DATA RIGHTS — DPDP Act, 2023
+
+   A café owner's own right to export or erase their data. Deliberately not
+   scoped by organization — like /me, this is about the person, not any one
+   business they belong to.
+   ========================================================================== */
+
+// GET /api/portal/me/export
+export const exportMyData = async (req, res) => {
+  try {
+    const t = req.tenant;
+    const [user, orgs, branches] = await Promise.all([
+      pool.query(
+        `SELECT id, name, email, phone_number, address, created_at, updated_at
+           FROM users WHERE id = $1`, [t.userId]),
+      pool.query(
+        `SELECT ou.role, ou.status AS membership_status, ou.created_at AS joined_at,
+                o.organization_id, o.name, o.status AS organization_status,
+                o.email, o.phone, o.address, o.city, o.state, o.country, o.postal_code
+           FROM organization_users ou JOIN organizations o ON o.organization_id = ou.organization_id
+          WHERE ou.user_id = $1`, [t.userId]),
+      pool.query(
+        `SELECT bu.role, bu.status AS membership_status, b.branch_id, b.organization_id, b.name
+           FROM branch_users bu JOIN branches b ON b.branch_id = bu.branch_id
+          WHERE bu.user_id = $1`, [t.userId])
+    ]);
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Account not found' });
+    }
+
+    res.json({
+      success: true,
+      data: {
+        exported_at: new Date().toISOString(),
+        profile: user.rows[0],
+        organization_memberships: orgs.rows,
+        branch_memberships: branches.rows
+      }
+    });
+  } catch (error) {
+    console.error('Owner data export failed:', error);
+    res.status(500).json({ success: false, message: 'Could not export your data' });
+  }
+};
+
+/*
+ * DELETE /api/portal/me
+ *
+ * Self-service erasure for the account — except when it owns a live
+ * business. Deleting the one login an active organization depends on would
+ * strand its billing and its staff with no warning, so that case opens a
+ * support ticket for a human to sort out (transfer ownership, close the
+ * business) instead of anonymizing on the spot. Anyone not an active OWNER
+ * of an active organization can delete immediately.
+ */
+export const deleteMyAccount = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const t = req.tenant;
+    const user = (await client.query(
+      'SELECT id, name, email, is_active FROM users WHERE id = $1', [t.userId]
+    )).rows[0];
+    if (!user) return res.status(404).json({ success: false, message: 'Account not found' });
+    if (user.is_active === false) {
+      return res.status(409).json({ success: false, message: 'This account is already deleted' });
+    }
+
+    const blockedBy = t.organizations.find((o) => o.role === 'OWNER' && o.org_status === 'ACTIVE');
+    if (blockedBy) {
+      await client.query('BEGIN');
+      const ticket = (await client.query(
+        `INSERT INTO support_tickets
+           (organization_id, subject, category, priority,
+            created_by_user_id, created_by_name, created_by_email, last_reply_by)
+         VALUES ($1,$2,'ACCOUNT','HIGH',$3,$4,$5,'customer')
+         RETURNING ticket_id`,
+        [blockedBy.organization_id, 'Account deletion request', user.id, user.name, user.email]
+      )).rows[0];
+      await client.query(
+        `UPDATE support_tickets SET reference = 'TKT-' || LPAD(ticket_id::text, 6, '0') WHERE ticket_id = $1`,
+        [ticket.ticket_id]
+      );
+      await client.query(
+        `INSERT INTO support_messages (ticket_id, author_type, author_id, author_name, body)
+         VALUES ($1, 'customer', $2, $3, $4)`,
+        [ticket.ticket_id, user.id, user.name,
+         `This account requested self-service deletion but owns an active organization ` +
+         `(${blockedBy.name}). Please help them transfer ownership or close the business, ` +
+         `then complete the deletion.`]
+      );
+      const ref = (await client.query(
+        'SELECT reference FROM support_tickets WHERE ticket_id = $1', [ticket.ticket_id]
+      )).rows[0].reference;
+      await client.query('COMMIT');
+
+      return res.status(409).json({
+        success: false,
+        message: `Your account owns an active organization (${blockedBy.name}), so it can't be ` +
+          `deleted immediately. We've opened ticket ${ref} — our team will help you transfer ` +
+          `ownership or close the business first.`,
+        data: { ticket_reference: ref }
+      });
+    }
+
+    await client.query('BEGIN');
+    // Same "nobody can sign in with this" pattern createCustomer uses for an
+    // account given no password of its own.
+    const randomPassword = await bcrypt.hash(Math.random().toString(36).slice(2) + Date.now(), 10);
+    // google_id is cleared too — otherwise "Sign in with Google" would still
+    // find this row by that id (it doesn't check a password at all) and log
+    // the deleted account straight back in, even with its email overwritten.
+    await client.query(
+      `UPDATE users SET
+         name = 'Deleted user', email = $2, phone_number = '0000000000',
+         address = '{}'::jsonb, password = $3, google_id = NULL, auth_provider = 'local',
+         is_active = FALSE, anonymized_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [user.id, `deleted-${user.id}@managerxp.invalid`, randomPassword]
+    );
+    await client.query('COMMIT');
+
+    await recordTenantAudit(req, {
+      action: 'account.delete', resource_type: 'user', resource_id: user.id,
+      metadata: { reason: 'DPDP self-service erasure' }
+    });
+
+    res.json({ success: true, message: 'Your account has been deleted.' });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    console.error('Owner self-delete failed:', error);
+    res.status(500).json({ success: false, message: 'Could not delete your account' });
+  } finally {
+    client.release();
   }
 };
 

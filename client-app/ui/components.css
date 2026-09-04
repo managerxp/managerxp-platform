@@ -224,6 +224,27 @@
 .field-error { font-size: var(--t-xs); color: var(--danger); }
 .field-req::after { content: " *"; color: var(--accent); }
 
+/* A mandatory, never-pre-checked consent checkbox — DPDP Act, 2023 requires
+   informed consent captured this way before collecting someone's personal
+   data, not a default-on box. */
+.field-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: var(--t-xs);
+  color: var(--text-3);
+  cursor: pointer;
+  user-select: none;
+}
+.field-check input[type="checkbox"] {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 .input, .select, .textarea {
   width: 100%;
   height: 34px;

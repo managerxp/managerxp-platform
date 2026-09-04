@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { AlertCircle, CheckCircle2, Loader2, CalendarCheck } from 'lucide-react';
-import AuthLayout, { authFieldClasses, authLabelClasses } from '../components/AuthLayout';
+import AuthLayout, { authFieldClasses, authLabelClasses, ConsentCheckbox } from '../components/AuthLayout';
 import DatePicker from '../components/ui/DatePicker';
 import TimePicker from '../components/ui/TimePicker';
 
@@ -47,6 +47,7 @@ const BookSlot = () => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [notes, setNotes] = useState('');
+  const [consent, setConsent] = useState(false);
 
   const [avail, setAvail] = useState(null);
   const [checking, setChecking] = useState(false);
@@ -276,6 +277,14 @@ const BookSlot = () => {
               placeholder="Anything the café should know" />
           </div>
 
+          <ConsentCheckbox id="book-consent" checked={consent} onChange={setConsent}>
+            I agree to the{' '}
+            <Link to="/privacy-policy" target="_blank" rel="noopener noreferrer"
+                  className="text-white underline underline-offset-4 hover:text-red-400">
+              Privacy Policy
+            </Link>, and consent to this café collecting and processing my personal data to hold this booking.
+          </ConsentCheckbox>
+
           {bookError && (
             <div className="flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -285,7 +294,7 @@ const BookSlot = () => {
 
           <button
             type="submit"
-            disabled={booking || !name.trim() || (avail ? !avail.available || (avail.total - avail.booked) < quantity : false)}
+            disabled={booking || !name.trim() || !consent || (avail ? !avail.available || (avail.total - avail.booked) < quantity : false)}
             className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
                        bg-gradient-to-br from-red-700 to-red-900 border border-white/10
                        py-2.5 text-sm font-semibold text-white

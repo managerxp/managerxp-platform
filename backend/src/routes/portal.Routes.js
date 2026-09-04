@@ -1,6 +1,6 @@
 import express from 'express';
 import {
-  signup, me, dashboard,
+  signup, me, dashboard, exportMyData, deleteMyAccount,
   getOrganization, updateOrganization, createOrganization,
   listBranches, createBranch, updateBranch,
   subscription, listDevices, listInstallations, revokeInstallation,
@@ -39,6 +39,10 @@ router.use(requirePortalUser);
 
 // Spans every organization the user belongs to, so it takes no org scope.
 router.get('/me', me);
+
+// DPDP Act, 2023 — export or erase this account. Same "no org scope" reason.
+router.get('/me/export', exportMyData);
+router.delete('/me', deleteMyAccount);
 
 // Same reason — the Downloads page is what gets you an installation in the
 // first place, so it can't be scoped to one you don't have yet.

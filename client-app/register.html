@@ -57,6 +57,11 @@
           <div class="field-hint">Minimum 6 characters.</div>
         </div>
 
+        <label class="field-check" for="consentCheck">
+          <input type="checkbox" id="consentCheck" />
+          <span>I agree to the Privacy Policy, and consent to CafeXP collecting and processing my personal data to create this account.</span>
+        </label>
+
         <div class="notice hidden" data-status="error" id="errorMessage" role="alert"></div>
         <div class="notice hidden" data-status="online" id="successMessage" role="status"></div>
 
@@ -112,6 +117,7 @@
       var registerBtn = document.getElementById("registerBtn");
       var registerText = document.getElementById("registerText");
       var card = document.getElementById("authCard");
+      var consentCheck = document.getElementById("consentCheck");
 
       var verifyForm = document.getElementById("verifyForm");
       var verifyNotice = document.getElementById("verifyNotice");
@@ -192,9 +198,14 @@
         successMessage.classList.remove("hidden");
       }
       function busy(on) {
-        registerBtn.disabled = on;
+        registerBtn.disabled = on || !consentCheck.checked;
         registerText.textContent = on ? "Creating your account…" : "Create account";
       }
+      // Unchecked until the box is ticked — a submit button that starts
+      // enabled and only gets disabled during the request would let someone
+      // through before ever agreeing to anything.
+      consentCheck.addEventListener("change", function () { busy(false); });
+      busy(false);
 
       function val(id) { return document.getElementById(id).value.trim(); }
       function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
@@ -215,6 +226,7 @@
         if (!isValidEmail(email)) { showError("That email address doesn't look right."); return; }
         if (!isValidPhone(phoneNumber)) { showError("Enter a mobile number with 10–15 digits."); return; }
         if (password.length < 6) { showError("Your password needs at least 6 characters."); return; }
+        if (!consentCheck.checked) { showError("Please agree to the Privacy Policy to continue."); return; }
 
         // Stored as "+<dial> <digits>" — the same format the website's own
         // signup form saves an owner's phone number in.
