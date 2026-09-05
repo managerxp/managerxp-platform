@@ -492,6 +492,13 @@ function getMacAddress() {
  * inventing a second round trip.
  */
 const BACKEND_LOCAL = process.env.BACKEND_URL || "http://localhost:5000";
+/* The website — a different address from the backend API, same distinction
+   as the backend's own PUBLIC_BASE_URL vs API_PUBLIC_URL. "Open web app" /
+   "Open signup" below send an operator's browser here, not to the API, so
+   pointing this at BACKEND_URL would open a JSON response instead of a
+   page. Same rules as BACKEND_URL: WEB_APP_URL in a .env for a repoint with
+   no rebuild, release.yml bakes in the real one for a fresh install. */
+const WEB_APP_URL = process.env.WEB_APP_URL || "http://localhost:5173";
 const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
@@ -1714,11 +1721,11 @@ function registerIPCHandlers() {
   });
 
   ipcMain.on("auth:open-web-app", (event) => {
-    shell.openExternal('http://localhost:5173/cafexp-login');
+    shell.openExternal(`${WEB_APP_URL}/cafexp-login`);
   });
 
   ipcMain.on("auth:open-web-app-signup", (event) => {
-    shell.openExternal('http://localhost:5173/signup');
+    shell.openExternal(`${WEB_APP_URL}/signup`);
   });
 
   // This console's own build, read from package.json via Electron.

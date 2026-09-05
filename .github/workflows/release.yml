@@ -69,15 +69,23 @@ jobs:
       # before electron-builder packages it. See main.js's own comment on
       # BACKEND_LOCAL for why every station also depends on this being
       # correct, not just this console.
-      - name: Bake in the production backend URL
+      # Two separate defaults, both dev-only localhost values: BACKEND_LOCAL
+      # (the API) and WEB_APP_URL (the website — "Open web app" / "Open
+      # signup" send a browser here, not to the API). Same domain serves
+      # both in this deployment, so one secret covers both literals.
+      - name: Bake in the production backend and web app URLs
         if: matrix.app == 'server-app'
         working-directory: ${{ matrix.app }}
         shell: pwsh
         run: |
-          $literal = '"http://localhost:5000"'
           $content = Get-Content main.js -Raw
-          if ($content -notlike "*$literal*") { throw "Expected literal not found in main.js — has BACKEND_LOCAL's definition changed?" }
-          $content.Replace($literal, '"${{ secrets.BACKEND_API_URL }}"') | Set-Content main.js -NoNewline
+          $backendLiteral = '"http://localhost:5000"'
+          $webAppLiteral = '"http://localhost:5173"'
+          if ($content -notlike "*$backendLiteral*") { throw "Expected literal not found in main.js — has BACKEND_LOCAL's definition changed?" }
+          if ($content -notlike "*$webAppLiteral*") { throw "Expected literal not found in main.js — has WEB_APP_URL's definition changed?" }
+          $content = $content.Replace($backendLiteral, '"${{ secrets.BACKEND_API_URL }}"')
+          $content = $content.Replace($webAppLiteral, '"${{ secrets.BACKEND_API_URL }}"')
+          $content | Set-Content main.js -NoNewline
 
       - name: Build installer
         working-directory: ${{ matrix.app }}
