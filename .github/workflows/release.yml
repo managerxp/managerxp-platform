@@ -61,6 +61,24 @@ jobs:
         working-directory: ${{ matrix.app }}
         run: npm ci
 
+      # A packaged, double-clicked desktop app has no environment variables
+      # of its own — main.js's BACKEND_LOCAL reads process.env.BACKEND_HOST
+      # for local dev, but a station or café installing the built .exe will
+      # never have that set. This is the one place the real backend URL
+      # actually reaches the shipped app: written straight into the source
+      # before electron-builder packages it. See main.js's own comment on
+      # BACKEND_LOCAL for why every station also depends on this being
+      # correct, not just this console.
+      - name: Bake in the production backend URL
+        if: matrix.app == 'server-app'
+        working-directory: ${{ matrix.app }}
+        shell: pwsh
+        run: |
+          $literal = '"http://localhost:5000"'
+          $content = Get-Content main.js -Raw
+          if ($content -notlike "*$literal*") { throw "Expected literal not found in main.js — has BACKEND_LOCAL's definition changed?" }
+          $content.Replace($literal, '"${{ secrets.BACKEND_API_URL }}"') | Set-Content main.js -NoNewline
+
       - name: Build installer
         working-directory: ${{ matrix.app }}
         run: npm run dist

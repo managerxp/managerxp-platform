@@ -454,22 +454,26 @@ function getMacAddress() {
 }
 
 /*
- * The backend this console talks to.
+ * The backend this console talks to — ManagerXP's own, not this machine.
  *
- * `Store.API_BASE` is `http://localhost:5000` because the backend runs on the
- * same machine as this console — true in every deployment so far, so nobody
- * had to say it out loud. A station is a different machine, so "localhost"
- * means something different to it: itself, not the backend. It has to be told
- * the console's real address instead, and the console is the one that knows
- * it — SET_NAME already introduces this station to the console; this rides
- * along on the same message rather than inventing a second round trip.
+ * BACKEND_LOCAL used to be a bare "http://localhost:<port>", true only in
+ * the single-machine dev setup where the backend happens to run alongside
+ * the console — every real café is a different machine from ManagerXP's
+ * backend entirely. release.yml overwrites the literal default below with
+ * the real production URL before packaging a release build (see its "Bake
+ * in the production backend URL" step) — a packaged, double-clicked
+ * desktop app has no environment variables of its own, so BACKEND_HOST is
+ * still read for local dev, but only a value actually written into the
+ * shipped source survives into what a café installs.
  *
- * Same interface-selection rule as getMacAddress, for the same reason: the
- * first non-internal IPv4 address is the one actually reachable from another
- * machine on the network.
+ * A station is a different machine again, so "localhost" would mean
+ * something different to it: itself, not the backend. It has to be told
+ * this same address instead, and the console is the one that knows it —
+ * SET_NAME already introduces a station to the console; that address rides
+ * along on the same message (see backendBaseUrl() below) rather than
+ * inventing a second round trip.
  */
-const BACKEND_PORT = Number(process.env.BACKEND_PORT) || 5000;
-const BACKEND_LOCAL = `http://localhost:${BACKEND_PORT}`;
+const BACKEND_LOCAL = process.env.BACKEND_HOST || "http://localhost:5000";
 const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
@@ -484,8 +488,14 @@ function getServerLocalIP() {
   }
   return '127.0.0.1';
 }
+/* What a station should reach the backend at — the same address this
+   console itself uses (BACKEND_LOCAL), NOT this console's own LAN address.
+   That used to be the same thing by coincidence, back when the backend
+   always ran on this machine too; now that BACKEND_LOCAL is ManagerXP's
+   real remote address, a station needs that exact value, not this
+   console's own IP with nothing listening on the backend's port. */
 function backendBaseUrl() {
-  return `http://${getServerLocalIP()}:${BACKEND_PORT}`;
+  return BACKEND_LOCAL;
 }
 
 /* ==========================================================================

@@ -1,4 +1,7 @@
-const BACKEND_URL = 'http://localhost:5000/api/auth';
+// window.api.backendLocal is ManagerXP's real backend address (see
+// main.js's BACKEND_LOCAL) — the fallback only matters if preload somehow
+// failed to expose it, not a real production address to rely on.
+const BACKEND_URL = `${(window.api && window.api.backendLocal) || 'http://localhost:5000'}/api/auth`;
 
 class AuthManager {
   constructor() {
