@@ -2,9 +2,12 @@
    CafeXP — Software updates
 
    What ManagerXP has published, and which systems — this console and every
-   connected station — are behind it. Visibility only: nothing here downloads
-   or installs anything yet. See update-schedule.js for the policy that will
-   decide *when* an apply step may run, once one exists.
+   connected station — are behind it. A station behind the latest client
+   build can be pushed one manually here ("Update now"), the same real
+   mechanism app/main.js's automatic 30-minute sweep already uses — this
+   just does not wait for the timer. Either way it only QUEUES the update;
+   see update-schedule.js for the policy deciding *when* it is actually safe
+   to apply (never while a session is running).
 
    Grouped with Settings, Receipt Template and Subscription rather than
    folded into the Settings page's own tabs — the same reason those three
@@ -109,17 +112,18 @@
 
     var wrap = UI.el("div", { class: "table-wrap" });
     var table = UI.el("table", { class: "tbl" });
-    table.innerHTML = "<thead><tr><th>Station</th><th>Client version</th><th>Last reported</th><th>Status</th></tr></thead>";
+    table.innerHTML = "<thead><tr><th>Station</th><th>Client version</th><th>Last reported</th><th>Status</th><th></th></tr></thead>";
     var tbody = UI.el("tbody");
 
     Store.state.pcs.forEach(function (pc) {
       var version = pc.client_version || null;
+      var behind = !!(version && latest && localVersionSort(version) < localVersionSort(latest));
       var status = "—";
       if (!version) {
         status = '<span class="badge badge-plain">Not reported yet</span>';
       } else if (!latest) {
         status = '<span class="badge badge-plain">Unknown</span>';
-      } else if (localVersionSort(version) < localVersionSort(latest)) {
+      } else if (behind) {
         status = '<span class="badge" data-status="warning">Update available</span>';
       } else {
         status = '<span class="badge" data-status="online">Up to date</span>';
@@ -131,7 +135,29 @@
         '<td class="mono faint" style="font-size:12px">' + UI.esc(version || "—") + "</td>" +
         '<td class="faint" style="font-size:12px">' +
           (pc.client_version_seen_at ? UI.esc(new Date(pc.client_version_seen_at).toLocaleString()) : "—") + "</td>" +
-        "<td>" + status + "</td>";
+        "<td>" + status + "</td>" +
+        '<td class="td-actions"></td>';
+
+      // Only offered when there is somewhere for it to go and someone
+      // connected to hand it to — a button that queues an update nobody can
+      // receive is worse than no button.
+      if (behind && Store.isConnected(pc.name)) {
+        var btn = UI.el("button", {
+          class: "btn btn-outline btn-sm",
+          html: Icon("download", 13) + '<span class="btn-label">Update now</span>'
+        });
+        btn.title = "Queue this station's update — it installs the moment the station is next free, same as the automatic check";
+        btn.addEventListener("click", function () {
+          UI.withBusy(btn, function () {
+            return Store.pushUpdateNow(pc.name).then(function (data) {
+              UI.toast.ok("Update queued", pc.name + " will update to " + data.latest_version + " once it is free");
+            }).catch(function (e) {
+              UI.toast.error("Could not queue the update", e.message);
+            });
+          });
+        });
+        tr.querySelector(".td-actions").appendChild(btn);
+      }
       tbody.appendChild(tr);
     });
 
