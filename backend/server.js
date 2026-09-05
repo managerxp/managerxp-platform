@@ -171,6 +171,18 @@ const startServer = async () => {
       console.log(`✅ Server is running on port ${PORT}`);
       console.log(`📍 Environment: ${process.env.NODE_ENV}`);
       console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+
+      // API_PUBLIC_URL is baked verbatim into every download link this
+      // backend hands out (release installers, catalogue art) — a stray
+      // http:// here ships broken links to every café, silently, since
+      // uploads still succeed. Catch it at boot, not by users reporting a
+      // "download button doesn't work" a release cycle later.
+      const apiUrl = process.env.API_PUBLIC_URL;
+      if (!apiUrl) {
+        console.warn('⚠️  API_PUBLIC_URL is not set — download links will fall back to the request host, which is wrong behind a reverse proxy.');
+      } else if (apiUrl.startsWith('http://') && process.env.NODE_ENV === 'production') {
+        console.warn(`⚠️  API_PUBLIC_URL is "${apiUrl}" — plain http:// in production. Download links built from it won't force-download from an https:// page. Did you mean https://?`);
+      }
     });
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);
