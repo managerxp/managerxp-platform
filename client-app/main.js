@@ -8,9 +8,19 @@ const http = require("http");
 const telemetry = require("./telemetry");
 const updater = require("./updater");
 
-// .env is optional — a fresh checkout or a machine where it was never copied
-// still runs on the defaults below, exactly as it did before this existed.
-try { process.loadEnvFile(path.join(__dirname, ".env")); } catch (e) { /* no .env on this machine */ }
+/* .env is optional — a machine without one runs on the defaults below.
+   Three locations, highest priority FIRST: loadEnvFile never overwrites a
+   key that is already set, so the first file to define one wins (and a real
+   environment variable beats all of them, which is what makes
+   `BACKEND_URL=... npm start` still work).
+     1. beside the exe   — what an operator edits on an installed station
+     2. userData         — survives reinstalls and updates
+     3. the source dir   — dev checkout only; once packaged this path is
+                           inside app.asar, which nobody can write to, so on
+                           its own it could never configure a real install. */
+for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __dirname]) {
+  try { process.loadEnvFile(path.join(dir, ".env")); } catch (e) { /* not here */ }
+}
 
 let SIM_ID = "SIM-01"; // Will be updated by server
 const CLIENT_PORT = Number(process.env.CLIENT_PORT) || 9090; // Port this client listens on
@@ -443,7 +453,7 @@ let pendingSelfStartGame = null; // The title chosen when self-starting, launche
  * moment it connects (see the SET_NAME handler below), which is what makes a
  * station on a second machine able to reach a backend on the first.
  */
-let BACKEND_BASE = process.env.BACKEND_BASE || "http://localhost:5000";
+let BACKEND_BASE = process.env.BACKEND_URL || process.env.BACKEND_BASE || "http://localhost:5000";
 
 /*
  * One adapter per platform, each turning a platform configuration from

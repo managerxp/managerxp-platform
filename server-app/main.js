@@ -8,6 +8,20 @@ const dgram = require("dgram");   // Wake-on-LAN magic packets
 const crypto = require("crypto");
 const { pipeline } = require("stream/promises");
 const { Readable } = require("stream");
+
+/* .env is optional — a machine without one runs on the defaults below.
+   Three locations, highest priority FIRST: loadEnvFile never overwrites a
+   key that is already set, so the first file to define one wins (and a real
+   environment variable beats all of them, which is what makes
+   `BACKEND_URL=... npm start` still work).
+     1. beside the exe   — what an operator edits on an installed console
+     2. userData         — survives reinstalls and updates
+     3. the source dir   — dev checkout only; once packaged this path is
+                           inside app.asar, which nobody can write to, so on
+                           its own it could never configure a real install. */
+for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __dirname]) {
+  try { process.loadEnvFile(path.join(dir, ".env")); } catch (e) { /* not here */ }
+}
 const authContext = require("./authContext");
 
 // .env is optional — a fresh checkout or a machine where it was never copied
@@ -459,12 +473,16 @@ function getMacAddress() {
  * BACKEND_LOCAL used to be a bare "http://localhost:<port>", true only in
  * the single-machine dev setup where the backend happens to run alongside
  * the console — every real café is a different machine from ManagerXP's
- * backend entirely. release.yml overwrites the literal default below with
- * the real production URL before packaging a release build (see its "Bake
- * in the production backend URL" step) — a packaged, double-clicked
- * desktop app has no environment variables of its own, so BACKEND_HOST is
- * still read for local dev, but only a value actually written into the
- * shipped source survives into what a café installs.
+ * backend entirely.
+ *
+ * Two ways to set it, either alone is enough:
+ *   BACKEND_URL in a .env beside the exe — what an already-installed
+ *     console is repointed with, no rebuild;
+ *   release.yml's "Bake in the production backend URL" step, which
+ *     rewrites the literal below before packaging, so a fresh install
+ *     works with no .env at all.
+ * The .env wins when both are present, which is what makes one café able
+ * to point at a staging backend without a build of its own.
  *
  * A station is a different machine again, so "localhost" would mean
  * something different to it: itself, not the backend. It has to be told
@@ -473,7 +491,7 @@ function getMacAddress() {
  * along on the same message (see backendBaseUrl() below) rather than
  * inventing a second round trip.
  */
-const BACKEND_LOCAL = process.env.BACKEND_HOST || "http://localhost:5000";
+const BACKEND_LOCAL = process.env.BACKEND_URL || "http://localhost:5000";
 const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
