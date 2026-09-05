@@ -1,0 +1,162 @@
+name: Release
+
+# Deliberately separate from client-app-ci.yml / server-app-ci.yml, which
+# build on every PR/push to prove the packaging config still works
+# (--publish never, nothing leaves the runner). This workflow is what
+# actually ships a build: it only runs when a version tag is pushed, and it
+# is the one thing in this repo allowed to call POST /api/platform/releases
+# for real — that route is gated by RELEASE_PUBLISH_TOKEN specifically so
+# only this workflow, not an ordinary PR build, can publish a release.
+#
+# The repo is private, so a GitHub Release's own asset links require a
+# GitHub login to fetch — no use to a café owner's browser. The installer
+# this workflow builds is instead uploaded straight to the backend's own
+# storage (POST /api/platform/releases/upload, served back out from
+# /uploads/releases), and THAT url is what gets registered and shown on the
+# café portal's Downloads page. The GitHub Release created below still gets
+# the same file attached, but only as an internal build archive for the
+# team — not the link a café owner ever sees or uses.
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write # softprops/action-gh-release needs this to create the release
+
+jobs:
+  release:
+    strategy:
+      matrix:
+        include:
+          - app: client-app
+            component: client
+          - app: server-app
+            component: server
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24.x"
+          cache: "npm"
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Derive version from the tag
+        id: version
+        shell: bash
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # electron-builder names the artifact and embeds the app version from
+      # package.json — without this it would keep shipping "1.0.0" forever
+      # regardless of which tag triggered the build.
+      - name: Sync package.json version to the tag
+        working-directory: ${{ matrix.app }}
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm ci
+
+      # A packaged, double-clicked desktop app has no environment variables
+      # of its own — main.js's BACKEND_LOCAL reads process.env.BACKEND_URL
+      # for local dev, but a station or café installing the built .exe will
+      # never have that set. This is the one place the real backend URL
+      # actually reaches the shipped app: written straight into the source
+      # before electron-builder packages it. See main.js's own comment on
+      # BACKEND_LOCAL for why every station also depends on this being
+      # correct, not just this console.
+      - name: Bake in the production backend URL
+        if: matrix.app == 'server-app'
+        working-directory: ${{ matrix.app }}
+        shell: pwsh
+        run: |
+          $literal = '"http://localhost:5000"'
+          $content = Get-Content main.js -Raw
+          if ($content -notlike "*$literal*") { throw "Expected literal not found in main.js — has BACKEND_LOCAL's definition changed?" }
+          $content.Replace($literal, '"${{ secrets.BACKEND_API_URL }}"') | Set-Content main.js -NoNewline
+
+      - name: Build installer
+        working-directory: ${{ matrix.app }}
+        run: npm run dist
+
+      - name: Locate the installer and hash it
+        id: artifact
+        working-directory: ${{ matrix.app }}
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist -Filter *.exe | Select-Object -First 1
+          if (-not $exe) { throw "No .exe found in dist/ — build did not produce an installer" }
+          $hash = Get-FileHash -Algorithm SHA512 -Path $exe.FullName
+          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "name=$($exe.Name)" >> $env:GITHUB_OUTPUT
+          "size=$($exe.Length)" >> $env:GITHUB_OUTPUT
+          "sha512=$($hash.Hash.ToLower())" >> $env:GITHUB_OUTPUT
+
+      - name: Upload installer to the backend
+        id: upload
+        shell: bash
+        # -F field order matters here: releaseUpload.js's multer storage
+        # reads req.body.component to pick the client/server subfolder, and
+        # multer only has form fields available in its destination callback
+        # if they arrived in the multipart stream BEFORE the file field.
+        run: |
+          response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.BACKEND_API_URL }}/api/platform/releases/upload" \
+            -H "Authorization: Bearer ${{ secrets.RELEASE_PUBLISH_TOKEN }}" \
+            -F "component=${{ matrix.component }}" \
+            -F "file=@${{ steps.artifact.outputs.path }}")
+          status="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "$body"
+          if [ "$status" -ge 400 ]; then echo "Upload failed with HTTP $status"; exit 1; fi
+          echo "download_url=$(echo "$body" | jq -r '.data.download_url')" >> "$GITHUB_OUTPUT"
+
+      # Only client-app carries a `build.publish` config (server-app never
+      # self-updates — see server-app/app/pages/updates.js), which is what
+      # makes electron-builder emit this manifest at all; skip quietly when
+      # it isn't there rather than failing the server-app leg over a file
+      # that was never going to exist for it.
+      - name: Upload update manifest to the backend
+        if: hashFiles(format('{0}/dist/latest.yml', matrix.app)) != ''
+        shell: bash
+        run: |
+          response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.BACKEND_API_URL }}/api/platform/releases/upload" \
+            -H "Authorization: Bearer ${{ secrets.RELEASE_PUBLISH_TOKEN }}" \
+            -F "component=${{ matrix.component }}" \
+            -F "file=@${{ matrix.app }}/dist/latest.yml")
+          status="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "$body"
+          if [ "$status" -ge 400 ]; then echo "Manifest upload failed with HTTP $status"; exit 1; fi
+
+      - name: Register the release
+        shell: bash
+        run: |
+          payload=$(jq -n \
+            --arg version "${{ steps.version.outputs.version }}" \
+            --arg component "${{ matrix.component }}" \
+            --arg download_url "${{ steps.upload.outputs.download_url }}" \
+            --arg file_name "${{ steps.artifact.outputs.name }}" \
+            --arg sha512 "${{ steps.artifact.outputs.sha512 }}" \
+            --argjson file_size ${{ steps.artifact.outputs.size }} \
+            '{version:$version, component:$component, channel:"stable", is_published:true,
+              download_url:$download_url, file_name:$file_name, file_size:$file_size, sha512:$sha512}')
+          response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.BACKEND_API_URL }}/api/platform/releases" \
+            -H "Authorization: Bearer ${{ secrets.RELEASE_PUBLISH_TOKEN }}" \
+            -H "Content-Type: application/json" -d "$payload")
+          status="${response##*$'\n'}"
+          body="${response%$'\n'*}"
+          echo "$body"
+          if [ "$status" -ge 400 ]; then echo "Registration failed with HTTP $status"; exit 1; fi
+
+      # Internal archive only — see the note at the top of this file. Both
+      # matrix legs attach to the SAME release (one per tag), since this
+      # action is safe to call more than once for the same tag.
+      - name: Attach installer to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.artifact.outputs.path }}
+          fail_on_unmatched_files: true

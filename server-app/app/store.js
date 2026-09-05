@@ -891,10 +891,64 @@
     });
   }
 
-  /** Tell one connected station a newer build exists and where to get it. */
+  /*
+   * Tell one connected station a newer build exists and where to get it —
+   * "where" being THIS console, never ManagerXP directly. Every station's
+   * updater fetches its build from whatever URL it is handed here (see
+   * client-app's UPDATE_AVAILABLE handler, which just strips the filename
+   * off download_url to get a feed URL — it has no idea, and does not need
+   * to, whether that address is ManagerXP's cloud or this café's own
+   * console); this is the one place that decides which.
+   *
+   * main.js's cacheRelease downloads the build from ManagerXP once (this
+   * console's own internet connection) and serves it back out from the
+   * token server already running for station discovery. If that caching
+   * fails, this refuses to push at all rather than falling back to a
+   * ManagerXP URL — the whole point is that a station never needs its own
+   * path to the internet for this, so handing one a link only reachable
+   * over an internet connection it may not have would be worse than simply
+   * retrying next time.
+   */
   function pushUpdateAvailable(pcName, payload) {
     if (!api.pushUpdateAvailable) return Promise.resolve();
-    return api.pushUpdateAvailable(pcName, payload);
+    if (!payload || !payload.download_url || !api.cacheRelease) {
+      return api.pushUpdateAvailable(pcName, payload);
+    }
+    return api.cacheRelease({ component: "client", download_url: payload.download_url, sha512: payload.sha512 })
+      .then(function (r) {
+        if (!r || !r.success || !r.data || !r.data.feedUrl) {
+          throw new Error((r && r.message) || "Could not cache the release on this console");
+        }
+        var relayed = Object.assign({}, payload, { download_url: r.data.feedUrl + "/" + payload.file_name });
+        return api.pushUpdateAvailable(pcName, relayed);
+      });
+  }
+
+  /*
+   * Staff manually asking one station to update right now, rather than
+   * waiting for the automatic 30-minute sweep (app/main.js's
+   * checkForSoftwareUpdate) to reach it. Same real mechanism, just fired on
+   * demand for one PC instead of swept across all of them on a timer.
+   *
+   * Still only QUEUES it: client-app's own session-aware updater decides
+   * when it is actually safe to apply, exactly as the automatic path
+   * already does — a manual trigger does not skip that safety.
+   */
+  function pushUpdateNow(pcName) {
+    var pc = getPC(pcName);
+    if (!pc) return Promise.reject(new Error("Unknown station"));
+    if (!isConnected(pcName)) return Promise.reject(new Error(pcName + " is not connected right now"));
+    return checkUpdate("client", pc.client_version || "0.0.0").then(function (data) {
+      if (!data || !data.update_available || !data.download || !data.download.url) {
+        throw new Error("No update is available for this station");
+      }
+      return pushUpdateAvailable(pcName, {
+        version: data.latest_version,
+        download_url: data.download.url,
+        file_name: data.download.file_name,
+        sha512: data.download.sha512
+      }).then(function () { return data; });
+    });
   }
 
   /*
@@ -2113,6 +2167,7 @@
     // software updates — visibility only
     checkUpdate: checkUpdate,
     pushUpdateAvailable: pushUpdateAvailable,
+    pushUpdateNow: pushUpdateNow,
     reportStationVersion: reportStationVersion,
 
     // derived

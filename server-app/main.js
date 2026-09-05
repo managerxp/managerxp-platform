@@ -5,6 +5,23 @@ const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const dgram = require("dgram");   // Wake-on-LAN magic packets
+const crypto = require("crypto");
+const { pipeline } = require("stream/promises");
+const { Readable } = require("stream");
+
+/* .env is optional — a machine without one runs on the defaults below.
+   Three locations, highest priority FIRST: loadEnvFile never overwrites a
+   key that is already set, so the first file to define one wins (and a real
+   environment variable beats all of them, which is what makes
+   `BACKEND_URL=... npm start` still work).
+     1. beside the exe   — what an operator edits on an installed console
+     2. userData         — survives reinstalls and updates
+     3. the source dir   — dev checkout only; once packaged this path is
+                           inside app.asar, which nobody can write to, so on
+                           its own it could never configure a real install. */
+for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __dirname]) {
+  try { process.loadEnvFile(path.join(dir, ".env")); } catch (e) { /* not here */ }
+}
 const authContext = require("./authContext");
 
 // .env is optional — a fresh checkout or a machine where it was never copied
@@ -451,22 +468,30 @@ function getMacAddress() {
 }
 
 /*
- * The backend this console talks to.
+ * The backend this console talks to — ManagerXP's own, not this machine.
  *
- * `Store.API_BASE` is `http://localhost:5000` because the backend runs on the
- * same machine as this console — true in every deployment so far, so nobody
- * had to say it out loud. A station is a different machine, so "localhost"
- * means something different to it: itself, not the backend. It has to be told
- * the console's real address instead, and the console is the one that knows
- * it — SET_NAME already introduces this station to the console; this rides
- * along on the same message rather than inventing a second round trip.
+ * BACKEND_LOCAL used to be a bare "http://localhost:<port>", true only in
+ * the single-machine dev setup where the backend happens to run alongside
+ * the console — every real café is a different machine from ManagerXP's
+ * backend entirely.
  *
- * Same interface-selection rule as getMacAddress, for the same reason: the
- * first non-internal IPv4 address is the one actually reachable from another
- * machine on the network.
+ * Two ways to set it, either alone is enough:
+ *   BACKEND_URL in a .env beside the exe — what an already-installed
+ *     console is repointed with, no rebuild;
+ *   release.yml's "Bake in the production backend URL" step, which
+ *     rewrites the literal below before packaging, so a fresh install
+ *     works with no .env at all.
+ * The .env wins when both are present, which is what makes one café able
+ * to point at a staging backend without a build of its own.
+ *
+ * A station is a different machine again, so "localhost" would mean
+ * something different to it: itself, not the backend. It has to be told
+ * this same address instead, and the console is the one that knows it —
+ * SET_NAME already introduces a station to the console; that address rides
+ * along on the same message (see backendBaseUrl() below) rather than
+ * inventing a second round trip.
  */
-const BACKEND_PORT = Number(process.env.BACKEND_PORT) || 5000;
-const BACKEND_LOCAL = `http://localhost:${BACKEND_PORT}`;
+const BACKEND_LOCAL = process.env.BACKEND_URL || "http://localhost:5000";
 const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
@@ -481,8 +506,121 @@ function getServerLocalIP() {
   }
   return '127.0.0.1';
 }
+/* What a station should reach the backend at — the same address this
+   console itself uses (BACKEND_LOCAL), NOT this console's own LAN address.
+   That used to be the same thing by coincidence, back when the backend
+   always ran on this machine too; now that BACKEND_LOCAL is ManagerXP's
+   real remote address, a station needs that exact value, not this
+   console's own IP with nothing listening on the backend's port. */
 function backendBaseUrl() {
-  return `http://${getServerLocalIP()}:${BACKEND_PORT}`;
+  return BACKEND_LOCAL;
+}
+
+/* ==========================================================================
+   UPDATE RELAY
+
+   Every station's client-app self-updates via electron-updater's generic
+   provider, which fetches "<feedUrl>/latest.yml" then whatever installer
+   that manifest names, both from the same directory. Pointing that feedUrl
+   at ManagerXP's own backend would work — but it means every station at a
+   café separately downloads the same 100+ MB installer over the café's own
+   internet connection. Instead, this console downloads it ONCE (over ITS
+   internet connection), caches it, and serves it back out to every station
+   from the token server already running for discovery — stations only ever
+   reach ManagerXP through this console, never directly, for an update.
+   ========================================================================== */
+const UPDATE_CACHE_DIR = path.join(app.getPath('userData'), 'update-cache');
+
+function localUpdateFeedUrl(component) {
+  return `http://${getServerLocalIP()}:${TOKEN_SERVER_PORT}/updates/${component}`;
+}
+
+async function downloadToFile(url, destPath) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed (HTTP ${response.status}): ${url}`);
+  await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destPath));
+}
+
+function sha512OfFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha512');
+    fs.createReadStream(filePath)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')))
+      .on('error', reject);
+  });
+}
+
+/*
+ * Make sure this component's latest release is cached locally, downloading
+ * it only if what's cached doesn't already match this exact download_url +
+ * checksum — repeat calls for the same version this console already fetched
+ * cost nothing.
+ */
+async function cacheRelease({ component, download_url, sha512 }) {
+  const comp = component === 'server' ? 'server' : 'client';
+  if (!download_url) throw new Error('No download URL given');
+
+  const dir = path.join(UPDATE_CACHE_DIR, comp);
+  fs.mkdirSync(dir, { recursive: true });
+
+  const fileName = decodeURIComponent(download_url.split('/').pop() || '');
+  if (!fileName) throw new Error('Could not read a filename from the download URL');
+  const filePath = path.join(dir, fileName);
+  const markerPath = path.join(dir, '.source.json');
+
+  let marker = null;
+  try { marker = JSON.parse(fs.readFileSync(markerPath, 'utf8')); } catch (e) { /* nothing cached yet */ }
+  if (marker && marker.download_url === download_url && marker.sha512 === sha512 && fs.existsSync(filePath)) {
+    return { feedUrl: localUpdateFeedUrl(comp) };
+  }
+
+  // Best-effort: not every component necessarily has a manifest (server-app
+  // has no auto-update config at all, so it never uploads one), and a
+  // station's updater only asks for it after this call succeeds anyway.
+  const feedRemote = download_url.slice(0, download_url.lastIndexOf('/'));
+  await downloadToFile(`${feedRemote}/latest.yml`, path.join(dir, 'latest.yml')).catch((e) => {
+    console.warn('[updates] no manifest to relay for', comp, '—', e.message);
+  });
+
+  await downloadToFile(download_url, filePath);
+
+  if (sha512) {
+    const actual = await sha512OfFile(filePath);
+    if (actual.toLowerCase() !== String(sha512).toLowerCase()) {
+      fs.unlinkSync(filePath);
+      throw new Error('Downloaded installer failed checksum verification');
+    }
+  }
+
+  fs.writeFileSync(markerPath, JSON.stringify({ download_url, sha512, file_name: fileName }));
+  return { feedUrl: localUpdateFeedUrl(comp) };
+}
+
+/* GET /updates/:component/:file — the local half of the relay above. Path
+   pieces come straight from the URL, so both are checked against a strict
+   allowlist/pattern before ever touching the filesystem — this is the one
+   route on this server that hands back a file, and it must never be made
+   to hand back something outside UPDATE_CACHE_DIR. */
+function serveUpdateFile(req, res) {
+  const parts = decodeURIComponent(req.url.split('?')[0]).split('/').filter(Boolean);
+  const [, component, fileName] = parts; // parts[0] is "updates"
+  if (!['client', 'server'].includes(component) || !fileName || /[\\/]|\.\./.test(fileName)) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, message: 'Invalid update path' }));
+  }
+  const filePath = path.join(UPDATE_CACHE_DIR, component, fileName);
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, message: 'Not cached on this console yet' }));
+    }
+    res.writeHead(200, {
+      'Content-Type': fileName.endsWith('.yml') ? 'text/yaml' : 'application/octet-stream',
+      'Content-Length': stat.size
+    });
+    fs.createReadStream(filePath).pipe(res);
+  });
 }
 
 // Start token receiver HTTP server
@@ -712,12 +850,14 @@ function startTokenServer() {
           res.end(JSON.stringify({ success: false, message: 'Invalid request' }));
         }
       });
+    } else if (req.method === 'GET' && req.url.startsWith('/updates/')) {
+      serveUpdateFile(req, res);
     } else {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, message: 'Not found' }));
     }
   });
-  
+
   tokenServer = server;
   server.listen(TOKEN_SERVER_PORT, () => {
     console.log(`Token receiver server listening on port ${TOKEN_SERVER_PORT} with CORS enabled`);
@@ -1104,6 +1244,20 @@ function registerIPCHandlers() {
       success: true,
       data: Array.from(stationSteamAuth.entries()).map(([name, s]) => ({ pcName: name, ...s }))
     };
+  });
+
+  /* The renderer's half of the update relay above: make sure this
+     component's latest build is cached here before it hands a station a
+     feed URL, and hand back that URL (this console's own address, not
+     ManagerXP's) once it's ready. */
+  ipcMain.handle("updates:cache-release", async (_, payload) => {
+    try {
+      const result = await cacheRelease(payload || {});
+      return { success: true, data: result };
+    } catch (err) {
+      console.error("[updates] cache-release failed:", err.message);
+      return { success: false, message: err.message };
+    }
   });
 
   /* Ask a station to look again — used after staff install a launcher on it. */

@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("api", {
   onStationLaunchers: (cb) => ipcRenderer.on("station:launchers", (_, d) => cb(d)),
   getStationSteamAuth: (pcName) => ipcRenderer.invoke("station:get-steam-auth", { pcName }),
   onStationSteamAuth: (cb) => ipcRenderer.on("station:steam-auth", (_, d) => cb(d)),
+  cacheRelease: (payload) => ipcRenderer.invoke("updates:cache-release", payload),
   // A player tapped Extend at the station; the console acts with its token.
   onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
   // A station's block ran out with the game still running.
