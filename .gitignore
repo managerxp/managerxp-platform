@@ -4,6 +4,11 @@ node_modules/
 !.env.example
 dist/
 build/
+# Runtime-uploaded content (catalogue art, release installers) — not source,
+# and now includes 100MB+ installer binaries that have no business in git
+# history. This is what let a runtime upload get swept into a commit on the
+# VPS by a broad `git add`, causing a divergent-branch pull failure there.
+backend/src/uploads/
 .next/
 out/
 coverage/
