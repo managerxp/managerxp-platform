@@ -6,6 +6,18 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
       "port": 5173
+    },
+    {
+      "name": "flowxp-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../flowxp/backend", "run", "start"],
+      "port": 5100
+    },
+    {
+      "name": "flowxp-web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../flowxp/frontend", "run", "dev"],
+      "port": 5174
     }
   ]
 }
