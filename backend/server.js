@@ -54,6 +54,18 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+/*
+ * One reverse proxy in front of this server (nginx) — trust exactly that
+ * one hop's X-Forwarded-* headers, not the whole chain a client could spoof
+ * (that's what `true` would do). Without this, two things break silently:
+ * express-rate-limit refuses to start (it sees X-Forwarded-For and assumes
+ * a misconfiguration, since Express hasn't said it trusts a proxy), and
+ * req.protocol always reports "http" — the scheme between nginx and Node —
+ * even when the actual visitor is on https, which is what made download
+ * links come out as http:// whenever API_PUBLIC_URL wasn't explicitly set.
+ */
+app.set('trust proxy', 1);
+
 // Middleware
 /*
  * Security headers. Tuned for a JSON API that lives on a different origin from
