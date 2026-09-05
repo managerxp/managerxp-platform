@@ -54,8 +54,11 @@ checkBtn.addEventListener('click', async (e) => {
   errorMsg.classList.remove('show');
 
   try {
-    // Try to verify authentication with backend
-    const response = await fetch('http://localhost:5000/api/auth/verify', {
+    // Try to verify authentication with backend — window.api.backendLocal is
+    // ManagerXP's real backend address (see main.js's BACKEND_LOCAL), not
+    // necessarily this machine, so it must be asked rather than assumed.
+    const backendBase = (window.api && window.api.backendLocal) || 'http://localhost:5000';
+    const response = await fetch(`${backendBase}/api/auth/verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -80,7 +83,7 @@ checkBtn.addEventListener('click', async (e) => {
     }
   } catch (error) {
     console.error('Verification error:', error);
-    showError('Connection error. Make sure the backend is running on localhost:5000');
+    showError('Connection error. Could not reach the ManagerXP backend.');
     checkBtn.disabled = false;
     loadingMsg.classList.remove('show');
   }
