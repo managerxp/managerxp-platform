@@ -32,6 +32,31 @@ const whatWeDo = [
   }
 ];
 
+const founders = [
+  {
+    name: "Abdul Hayyu",
+    role: "Founder",
+    initials: "AH",
+    origin: "Hyderabad",
+    bio: [
+      "I’m a Computer Science Engineer and developer driven by a passion for building technology that solves real-world problems. I founded ManagerXP with the vision of creating practical, scalable, and industry-focused software that makes business operations simpler and more efficient.",
+      "I’m deeply involved in the product, technology, and overall direction of ManagerXP. From understanding customer challenges to designing solutions, developing products, and continuously improving them, I remain closely connected to every stage of the journey. I believe in building with consistency, learning continuously, and staying committed until an idea becomes a reliable product that people can genuinely depend on.",
+      "My focus is not just on building software, but on creating technology that delivers real value, improves everyday operations, and can grow alongside the businesses that use it."
+    ]
+  },
+  {
+    name: "Mubashir Lone",
+    role: "Co-Founder",
+    initials: "ML",
+    origin: "Hyderabad",
+    bio: [
+      "I’m a Computer Science Engineer and co-founder of ManagerXP, passionate about technology, product development, and solving complex problems through software. I work closely with the team to turn ideas and business requirements into reliable, scalable, and practical technology solutions.",
+      "I’m committed to the continuous development of ManagerXP and contribute across product development, technology, and execution. I believe great products are built through attention to detail, continuous improvement, and a strong understanding of the people and businesses they are designed for.",
+      "As a co-founder, my focus is on supporting the company’s vision, strengthening its technology foundation, and helping transform ideas into products that businesses can use and rely on every day."
+    ]
+  }
+];
+
 const pillars = [
   {
     icon: <Eye className="w-6 h-6 text-red-500" />,
@@ -113,6 +138,48 @@ const AboutPage = () => {
               </div>
             </div>
           </Reveal>
+        </div>
+
+        {/* Section 1.5: Founders */}
+        <div className="mb-14 sm:mb-16">
+          <SectionHeading
+            title="Founders"
+            description="The people behind ManagerXP."
+            className="mb-10"
+          />
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
+            {founders.map((person, index) => (
+              <Reveal key={person.name} delay={index * 120} className="h-full">
+                <div className="bg-white/[0.02] border border-white/10 rounded-xl p-6 sm:p-8 backdrop-blur-sm hover:border-red-500/30 transition-all duration-500 h-full">
+                  <div className="flex items-start gap-4 mb-4">
+                    <div
+                      aria-hidden="true"
+                      className="shrink-0 w-14 h-14 rounded-full bg-gradient-to-br from-red-700 to-red-900 border border-white/10 flex items-center justify-center text-white font-semibold text-lg shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)]"
+                    >
+                      {person.initials}
+                    </div>
+                    <div>
+                      <h3 className="text-base sm:text-lg font-semibold text-white">{person.name}</h3>
+                      <div className="mt-1 flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-400">
+                          {person.role}
+                        </span>
+                        <span className="text-xs text-neutral-500">{person.origin}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-3">
+                    {person.bio.map((paragraph, i) => (
+                      <p key={i} className="text-neutral-400 text-sm leading-relaxed text-pretty">
+                        {paragraph}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
         </div>
 
         {/* Section 2: What We Do */}
