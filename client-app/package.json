@@ -30,7 +30,8 @@
       "**/*",
       "!legacy/**",
       "!output/**",
-      "!**/*.log"
+      "!**/*.log",
+      "!.env"
     ],
     "win": {
       "icon": "Images/icon.ico",

@@ -62,7 +62,7 @@ jobs:
         run: npm ci
 
       # A packaged, double-clicked desktop app has no environment variables
-      # of its own — main.js's BACKEND_LOCAL reads process.env.BACKEND_HOST
+      # of its own — main.js's BACKEND_LOCAL reads process.env.BACKEND_URL
       # for local dev, but a station or café installing the built .exe will
       # never have that set. This is the one place the real backend URL
       # actually reaches the shipped app: written straight into the source
