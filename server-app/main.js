@@ -5,6 +5,9 @@ const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const dgram = require("dgram");   // Wake-on-LAN magic packets
+const crypto = require("crypto");
+const { pipeline } = require("stream/promises");
+const { Readable } = require("stream");
 const authContext = require("./authContext");
 
 // .env is optional — a fresh checkout or a machine where it was never copied
@@ -485,6 +488,113 @@ function backendBaseUrl() {
   return `http://${getServerLocalIP()}:${BACKEND_PORT}`;
 }
 
+/* ==========================================================================
+   UPDATE RELAY
+
+   Every station's client-app self-updates via electron-updater's generic
+   provider, which fetches "<feedUrl>/latest.yml" then whatever installer
+   that manifest names, both from the same directory. Pointing that feedUrl
+   at ManagerXP's own backend would work — but it means every station at a
+   café separately downloads the same 100+ MB installer over the café's own
+   internet connection. Instead, this console downloads it ONCE (over ITS
+   internet connection), caches it, and serves it back out to every station
+   from the token server already running for discovery — stations only ever
+   reach ManagerXP through this console, never directly, for an update.
+   ========================================================================== */
+const UPDATE_CACHE_DIR = path.join(app.getPath('userData'), 'update-cache');
+
+function localUpdateFeedUrl(component) {
+  return `http://${getServerLocalIP()}:${TOKEN_SERVER_PORT}/updates/${component}`;
+}
+
+async function downloadToFile(url, destPath) {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`Download failed (HTTP ${response.status}): ${url}`);
+  await pipeline(Readable.fromWeb(response.body), fs.createWriteStream(destPath));
+}
+
+function sha512OfFile(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha512');
+    fs.createReadStream(filePath)
+      .on('data', (chunk) => hash.update(chunk))
+      .on('end', () => resolve(hash.digest('hex')))
+      .on('error', reject);
+  });
+}
+
+/*
+ * Make sure this component's latest release is cached locally, downloading
+ * it only if what's cached doesn't already match this exact download_url +
+ * checksum — repeat calls for the same version this console already fetched
+ * cost nothing.
+ */
+async function cacheRelease({ component, download_url, sha512 }) {
+  const comp = component === 'server' ? 'server' : 'client';
+  if (!download_url) throw new Error('No download URL given');
+
+  const dir = path.join(UPDATE_CACHE_DIR, comp);
+  fs.mkdirSync(dir, { recursive: true });
+
+  const fileName = decodeURIComponent(download_url.split('/').pop() || '');
+  if (!fileName) throw new Error('Could not read a filename from the download URL');
+  const filePath = path.join(dir, fileName);
+  const markerPath = path.join(dir, '.source.json');
+
+  let marker = null;
+  try { marker = JSON.parse(fs.readFileSync(markerPath, 'utf8')); } catch (e) { /* nothing cached yet */ }
+  if (marker && marker.download_url === download_url && marker.sha512 === sha512 && fs.existsSync(filePath)) {
+    return { feedUrl: localUpdateFeedUrl(comp) };
+  }
+
+  // Best-effort: not every component necessarily has a manifest (server-app
+  // has no auto-update config at all, so it never uploads one), and a
+  // station's updater only asks for it after this call succeeds anyway.
+  const feedRemote = download_url.slice(0, download_url.lastIndexOf('/'));
+  await downloadToFile(`${feedRemote}/latest.yml`, path.join(dir, 'latest.yml')).catch((e) => {
+    console.warn('[updates] no manifest to relay for', comp, '—', e.message);
+  });
+
+  await downloadToFile(download_url, filePath);
+
+  if (sha512) {
+    const actual = await sha512OfFile(filePath);
+    if (actual.toLowerCase() !== String(sha512).toLowerCase()) {
+      fs.unlinkSync(filePath);
+      throw new Error('Downloaded installer failed checksum verification');
+    }
+  }
+
+  fs.writeFileSync(markerPath, JSON.stringify({ download_url, sha512, file_name: fileName }));
+  return { feedUrl: localUpdateFeedUrl(comp) };
+}
+
+/* GET /updates/:component/:file — the local half of the relay above. Path
+   pieces come straight from the URL, so both are checked against a strict
+   allowlist/pattern before ever touching the filesystem — this is the one
+   route on this server that hands back a file, and it must never be made
+   to hand back something outside UPDATE_CACHE_DIR. */
+function serveUpdateFile(req, res) {
+  const parts = decodeURIComponent(req.url.split('?')[0]).split('/').filter(Boolean);
+  const [, component, fileName] = parts; // parts[0] is "updates"
+  if (!['client', 'server'].includes(component) || !fileName || /[\\/]|\.\./.test(fileName)) {
+    res.writeHead(400, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify({ success: false, message: 'Invalid update path' }));
+  }
+  const filePath = path.join(UPDATE_CACHE_DIR, component, fileName);
+  fs.stat(filePath, (err, stat) => {
+    if (err || !stat.isFile()) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ success: false, message: 'Not cached on this console yet' }));
+    }
+    res.writeHead(200, {
+      'Content-Type': fileName.endsWith('.yml') ? 'text/yaml' : 'application/octet-stream',
+      'Content-Length': stat.size
+    });
+    fs.createReadStream(filePath).pipe(res);
+  });
+}
+
 // Start token receiver HTTP server
 function startTokenServer() {
   const server = http.createServer((req, res) => {
@@ -712,12 +822,14 @@ function startTokenServer() {
           res.end(JSON.stringify({ success: false, message: 'Invalid request' }));
         }
       });
+    } else if (req.method === 'GET' && req.url.startsWith('/updates/')) {
+      serveUpdateFile(req, res);
     } else {
       res.writeHead(404, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: false, message: 'Not found' }));
     }
   });
-  
+
   tokenServer = server;
   server.listen(TOKEN_SERVER_PORT, () => {
     console.log(`Token receiver server listening on port ${TOKEN_SERVER_PORT} with CORS enabled`);
@@ -1104,6 +1216,20 @@ function registerIPCHandlers() {
       success: true,
       data: Array.from(stationSteamAuth.entries()).map(([name, s]) => ({ pcName: name, ...s }))
     };
+  });
+
+  /* The renderer's half of the update relay above: make sure this
+     component's latest build is cached here before it hands a station a
+     feed URL, and hand back that URL (this console's own address, not
+     ManagerXP's) once it's ready. */
+  ipcMain.handle("updates:cache-release", async (_, payload) => {
+    try {
+      const result = await cacheRelease(payload || {});
+      return { success: true, data: result };
+    } catch (err) {
+      console.error("[updates] cache-release failed:", err.message);
+      return { success: false, message: err.message };
+    }
   });
 
   /* Ask a station to look again — used after staff install a launcher on it. */
