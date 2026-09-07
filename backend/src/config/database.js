@@ -2473,8 +2473,15 @@ export const initializeDatabase = async () => {
 
     console.log('✅ Users table created/verified');
 
-    // Seed subscription_plans table with default data if empty
-    const planCheck = await client.query('SELECT COUNT(*) FROM subscription_plans');
+    /* Seed the free-trial plan if none exists yet — checked against
+       is_freetrial specifically, not "is the whole table empty". The
+       catalogue seed (schema.catalogue.js) inserts Basic/Advanced/Elite into
+       this same table, and whichever seed happens to run first made an
+       empty-table check here order-dependent: on a database where the
+       catalogue seed ran first, this block never fired at all, because the
+       table already had rows by the time it checked — silently shipping
+       with no free trial plan, not because one was ever deleted. */
+    const planCheck = await client.query("SELECT COUNT(*) FROM subscription_plans WHERE is_freetrial = TRUE");
     if (planCheck.rows[0].count === '0') {
       await client.query(`
         INSERT INTO subscription_plans (
