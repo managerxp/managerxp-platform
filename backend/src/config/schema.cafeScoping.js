@@ -106,6 +106,17 @@ export const initializeCafeScoping = async (client) => {
       ON customers (cafe_id, LOWER(email)) WHERE email IS NOT NULL
   `);
 
+  /* A customer-chosen handle, settable from their own account screen and
+     usable to sign in instead of typing an email. Unique per café rather
+     than platform-wide, same reasoning as email above — two different
+     cafés can each have their own "alex". Nullable: existing customers have
+     none until they set one. */
+  await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS username VARCHAR(30)`);
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_cafe_username
+      ON customers (cafe_id, LOWER(username)) WHERE username IS NOT NULL
+  `);
+
   /* Order numbers come from one sequence, so they are unique platform-wide
      already; the index is re-scoped anyway so a café importing historical
      numbers cannot collide with a neighbour's. */

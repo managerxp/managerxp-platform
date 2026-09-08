@@ -597,7 +597,7 @@
           "<div>" +
             '<div class="page-title">Peak &amp; Happy Hours</div>' +
             '<div class="page-sub">Charge more when you are busy and less when you are not. ' +
-              'Base prices stay in the Gaming Price Master — these windows adjust them by day and hour.</div>' +
+              'Base prices stay on the Gaming Prices page — these windows adjust them by day and hour.</div>' +
           "</div>" +
           '<div class="page-actions">' +
             '<button class="btn btn-outline" id="prRefresh">' + Icon("refresh", 15) +

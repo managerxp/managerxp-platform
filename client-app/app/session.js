@@ -55,7 +55,14 @@
       var drift = Math.floor((Date.now() - s.receivedAt) / 1000);
       s.live_elapsed = s.elapsed_seconds + drift;
       if (s.remaining_seconds !== null) {
+        var previous = s.live_remaining != null ? s.live_remaining : s.remaining_seconds;
         s.live_remaining = Math.max(0, s.remaining_seconds - drift);
+
+        /* The paid session's own low-time notice — distinct from "warning"/
+           "critical" above, which are the per-game launch timer, not this.
+           Same crossed-the-threshold edge detection as that one, so it fires
+           once per session rather than every tick under the line. */
+        if (previous > CRITICAL_AT && s.live_remaining <= CRITICAL_AT) emit("session-low-time", s);
       }
       emit("session-tick", s);
     }, 1000);

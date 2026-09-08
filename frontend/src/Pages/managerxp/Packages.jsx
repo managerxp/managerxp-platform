@@ -299,16 +299,24 @@ export const PackageEditor = () => {
                      onChange={setG(key)} disabled={!mayEdit} />
             </Field>
           ))}
+          <Field
+            label="Other stations (combined)"
+            id="pe-other_stations_limit"
+            hint="PS5, Pool, Dart, VR and any type a café adds all count together against this one number. Leave blank for uncapped."
+          >
+            <Input id="pe-other_stations_limit" type="number" min="0" placeholder="Uncapped"
+                   value={value('other_stations_limit')} onChange={setG('other_stations_limit')} disabled={!mayEdit} />
+          </Field>
         </div>
       </Panel>
 
       <Panel
-        title="Station type limits"
-        description="Optional caps per station type. Gaming PCs above counts PC stations only — a PS5, Pool table or VR rig is capped here, not against that total, and a type with no cap here is uncapped."
+        title="Station type limits (advanced)"
+        description="Only needed to cap one specific type differently from the combined 'Other stations' number above — e.g. plenty of Pool tables allowed but only 1 VR rig. A type listed here is checked against its own number instead of the combined one; most plans need this panel empty."
       >
         <div className="space-y-2">
           {stationLimits.length === 0 && (
-            <p className="text-sm text-neutral-500">No per-type caps. Add one to limit a specific station type.</p>
+            <p className="text-sm text-neutral-500">No per-type overrides — every non-PC station uses the combined limit above.</p>
           )}
           {stationLimits.map((row, i) => (
             <div key={i} className="grid grid-cols-[1fr_8rem_auto] items-end gap-2">

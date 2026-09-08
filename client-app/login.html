@@ -26,9 +26,9 @@
 
       <form class="auth-form" id="loginForm" novalidate>
         <div class="field">
-          <label class="field-label" for="email">Email</label>
-          <input class="input" type="email" id="email" placeholder="you@example.com"
-                 autocomplete="email" autofocus />
+          <label class="field-label" for="email">Email or username</label>
+          <input class="input" type="text" id="email" placeholder="you@example.com or your username"
+                 autocomplete="username" autofocus />
         </div>
 
         <div class="field">
@@ -108,12 +108,19 @@
          written to disk, and cleared the moment verification succeeds or the
          person navigates away. */
       var pendingEmail = "", pendingPassword = "";
+      /* A bare username is only unambiguous within one café (two cafés can
+         each have their own "alex") — sent alongside it so the backend can
+         resolve which café's customer is meant. Not needed at all when
+         signing in with an email, which stays looked up platform-wide. */
+      var pcName = "";
 
       Motion.enter(card, { y: 18, duration: 0.4 });
 
       window.api.getPcName(function (name) {
+        pcName = name || pcName;
         if (name) document.getElementById("pcName").textContent = name;
       });
+      if (window.api.onPcName) window.api.onPcName(function (name) { pcName = name || pcName; });
 
       /* Defaults to this machine, corrected to the console's real address once
          this station has been told it — see main.js's SET_NAME handler. A
@@ -145,6 +152,10 @@
       }
 
       function isValidEmail(value) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value); }
+      // Loose on purpose: the backend owns the real rule (3-20 chars,
+      // starts with a letter). This only rejects the obviously-wrong case of
+      // something that is neither an email nor a plausible username.
+      function isValidIdentifier(value) { return isValidEmail(value) || /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/.test(value); }
 
       /*
        * The actual sign-in call, pulled out so a successful verification can
@@ -152,11 +163,11 @@
        * attempt that was refused — the person should not have to type it
        * twice just because their address needed confirming.
        */
-      function signIn(email, password) {
+      function signIn(identifier, password) {
         return fetch(API_BASE + "/api/customers/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: email, password: password })
+          body: JSON.stringify({ identifier: identifier, password: password, pc_name: pcName })
         }).then(function (response) {
           return response.json().then(function (data) { return { response: response, data: data }; });
         });
@@ -169,8 +180,8 @@
         var email = emailInput.value.trim();
         var password = passwordInput.value;
 
-        if (!email || !password) { showError("Enter your email and password."); return; }
-        if (!isValidEmail(email)) { showError("That email address doesn't look right."); return; }
+        if (!email || !password) { showError("Enter your email or username, and your password."); return; }
+        if (!isValidIdentifier(email)) { showError("That doesn't look like a valid email or username."); return; }
 
         busy(true);
         try {
@@ -179,9 +190,12 @@
 
           if (!response.ok || !data.success) {
             if (data.data && data.data.verification_required) {
-              pendingEmail = email;
+              // The real address, from the account — not the login box, which
+              // may hold a username rather than an email when that's what was
+              // typed to sign in.
+              pendingEmail = data.data.email || email;
               pendingPassword = password;
-              verifyNotice.textContent = "Enter the six-digit code sent to " + email + " to finish setting up this account.";
+              verifyNotice.textContent = "Enter the six-digit code sent to " + pendingEmail + " to finish setting up this account.";
               form.classList.add("hidden");
               authAlt.classList.add("hidden");
               verifyForm.classList.remove("hidden");

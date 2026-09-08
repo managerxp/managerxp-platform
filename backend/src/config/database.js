@@ -1770,6 +1770,19 @@ export const initializeDatabase = async () => {
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS station_limits JSONB
     `);
 
+    /* Combined ceiling across every non-PC station type together (PS5 + Pool
+       + Dart + VR + whatever a café invents, all counted as one total) — so a
+       plan can cap "other stations" overall without the super-admin having to
+       pre-select and cap each type by name first. A type with its own entry
+       in station_limits above is still checked against that specific number
+       instead; this is only the fallback for types nobody capped individually. */
+    await client.query(`
+      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS other_stations_limit INTEGER
+    `);
+    await client.query(`
+      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS other_stations_limit INTEGER
+    `);
+
     /*
      * Payment links.
      *

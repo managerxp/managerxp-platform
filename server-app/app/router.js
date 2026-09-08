@@ -52,8 +52,12 @@
         { id: "credentials", label: "Game Credentials", icon: "settings", feature: "SESSION_MANAGEMENT", permission: "games.credentials" },
         { id: "fnb",         label: "F&B",         icon: "fnb",       feature: "FNB",       permission: "products.view" },
         { id: "inventory",   label: "Inventory",   icon: "inventory", feature: "INVENTORY", permission: "inventory.adjust" },
-        { id: "session-master", label: "Session Master", icon: "clock",   feature: "SESSION_MANAGEMENT", permission: "sessions.manage" },
-        { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
+        /* Session Master used to be its own page; it's now the "Durations"
+           tab on this one — a price needs a duration to exist, so splitting
+           them across two menu items was two stops for one errand. Either
+           permission still opens it, so nobody who could reach one half
+           loses access now that they're the same page. */
+        { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT", permission: ["pricing.manage", "sessions.manage"] },
         { id: "pricing-windows", label: "Peak & Happy Hours", icon: "clock", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
         { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP",  permission: "packages.manage" },
         { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING",      permission: "discounts.manage" },

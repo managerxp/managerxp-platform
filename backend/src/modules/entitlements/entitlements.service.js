@@ -88,7 +88,8 @@ export const getSubscription = async (organizationId) => {
            p.code AS plan_code, p.name AS plan_name, p.is_freetrial,
            p.max_pcs AS plan_max_pcs, p.max_branches AS plan_max_branches,
            p.max_users AS plan_max_users, p.max_installations AS plan_max_installations,
-           p.station_limits AS plan_station_limits
+           p.station_limits AS plan_station_limits,
+           p.other_stations_limit AS plan_other_stations_limit
     FROM subscriptions s
     LEFT JOIN subscription_plans p ON p.sub_id = s.sub_id
     WHERE s.organization_id = $1
@@ -161,8 +162,17 @@ export const getSubscription = async (organizationId) => {
        replaces the plan's map (not a per-key merge) — so a customer given a
        custom set gets exactly that set, with no plan keys leaking back in. An
        absent/empty map means no type is capped beyond max_pcs. */
-    station_limits: normalizeStationLimits(sub.station_limits ?? sub.plan_station_limits)
+    station_limits: normalizeStationLimits(sub.station_limits ?? sub.plan_station_limits),
+    /* Combined cap for every non-PC type with no specific entry above. A
+       subscription-level value overrides the plan's, same rule as everything
+       else in this object — null means uncapped. */
+    other_stations_limit: normalizePositiveIntOrNull(sub.other_stations_limit ?? sub.plan_other_stations_limit)
   };
+};
+
+const normalizePositiveIntOrNull = (raw) => {
+  const n = Math.floor(Number(raw));
+  return Number.isFinite(n) && n > 0 ? n : null;
 };
 
 /*
@@ -451,10 +461,13 @@ export const checkLimit = async (organizationId, kind) => {
  * Is there room for one more station of a given type?
  *
  * Independent of max_pcs, not layered on it: max_pcs/getUsage count only
- * category 'PC' (see getUsage above), so a PS5 or Pool cap here is the only
- * limit that type has. A type with no entry in station_limits is uncapped —
- * there is no shared total for it to fall back to. `excludePcId` lets a
- * category change on an existing station not count itself.
+ * category 'PC' (see getUsage above). A type with its own entry in
+ * station_limits is capped against that specific number; a type with no
+ * entry instead falls back to other_stations_limit, one combined ceiling
+ * shared by every non-PC type together — so a plan can cap "everything that
+ * isn't a PC" as a single number without the super-admin having to know and
+ * pre-select every station type a café might ever invent. `excludePcId` lets
+ * a category change on an existing station not count itself.
  *
  * Returns the same refusal shape as checkLimit so a caller can answer with a
  * sentence naming the type and the number.
@@ -466,31 +479,52 @@ export const checkStationLimit = async (organizationId, category, excludePcId = 
   const subscription = await getSubscription(organizationId);
   if (!subscription) return { ok: false, message: 'This account has no active subscription' };
 
-  const max = subscription.station_limits[name];
-  if (max == null) return { ok: true };     // this type is not capped
+  const specificMax = subscription.station_limits[name];
+  if (specificMax != null) {
+    /* Active gaming PCs of this exact type, this organization. Counted at the
+       moment of the check under the same rules getUsage counts the overall total. */
+    const { rows } = await pool.query(
+      `SELECT COUNT(*)::int AS used FROM pcs
+        WHERE organization_id = $1 AND is_active AND device_type = 'GAMING_PC'
+          AND category = $2 AND ($3::int IS NULL OR pc_id <> $3::int)`,
+      [organizationId, name, excludePcId]
+    );
+    const used = rows[0].used;
+    if (used >= specificMax) {
+      return {
+        ok: false,
+        reason: 'station_limit_reached',
+        message: `You have reached your limit of ${specificMax} ${name} station${specificMax === 1 ? '' : 's'} on this plan. ` +
+          'Upgrade your subscription or purchase additional capacity.',
+        category: name, used, max: specificMax
+      };
+    }
+    return { ok: true, category: name, used, max: specificMax };
+  }
 
-  /* Active gaming PCs of this type, this organization. Counted at the moment
-     of the check under the same rules getUsage counts the overall total. */
+  const overallMax = subscription.other_stations_limit;
+  if (overallMax == null) return { ok: true };     // not capped individually or overall
+
+  /* Every non-PC station of any type counts against this one shared ceiling —
+     including types invented on the café side that the super admin never saw. */
   const { rows } = await pool.query(
     `SELECT COUNT(*)::int AS used FROM pcs
       WHERE organization_id = $1 AND is_active AND device_type = 'GAMING_PC'
-        AND category = $2 AND ($3::int IS NULL OR pc_id <> $3::int)`,
-    [organizationId, name, excludePcId]
+        AND category IS NOT NULL AND category <> 'PC' AND ($2::int IS NULL OR pc_id <> $2::int)`,
+    [organizationId, excludePcId]
   );
   const used = rows[0].used;
 
-  if (used >= max) {
+  if (used >= overallMax) {
     return {
       ok: false,
-      reason: 'station_limit_reached',
-      message: `You have reached your limit of ${max} ${name} station${max === 1 ? '' : 's'} on this plan. ` +
-        'Upgrade your subscription or purchase additional capacity.',
-      category: name,
-      used,
-      max
+      reason: 'other_stations_limit_reached',
+      message: `You have reached your combined limit of ${overallMax} non-PC station${overallMax === 1 ? '' : 's'} on this plan ` +
+        '(PS5, Pool, VR and similar all count together). Upgrade your subscription or purchase additional capacity.',
+      category: name, used, max: overallMax
     };
   }
-  return { ok: true, category: name, used, max };
+  return { ok: true, category: name, used, max: overallMax };
 };
 
 /**

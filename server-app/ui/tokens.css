@@ -146,7 +146,8 @@
 [data-status="paused"],
 [data-status="warning"],
 [data-status="reserved"],
-[data-status="pending"] {
+[data-status="pending"],
+[data-status="occupied"] {
   --st: var(--warn); --st-soft: var(--warn-soft); --st-line: var(--warn-line); --st-glow: rgba(255,171,0,.28);
 }
 [data-status="offline"],

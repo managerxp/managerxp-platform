@@ -13,6 +13,7 @@ import {
   registerDiscoveredPC,
   reportClientVersion
 } from '../controllers/pcs.Controller.js';
+import { listStationTypes } from '../controllers/admin.Controller.js';
 import { requireAuth, requireStaff } from '../middleware/authGuards.js';
 
 const pcsRouter = express.Router();
@@ -35,6 +36,14 @@ const staff = requireStaff('Café staff access required');
 pcsRouter.get('/', requireAuth, getAllPCs);
 pcsRouter.get('/active', requireAuth, getActivePCs);
 pcsRouter.get('/branch/:branchId', requireAuth, getPCsByBranch);
+
+/* The same canonical list (PC, PS5, Pool, …) the super-admin plan editor
+   offers — reused verbatim rather than re-derived, so a café's "Add
+   station" dropdown and ManagerXP's own limits editor can never drift into
+   naming the same type two different ways. Must come before "/:id" or
+   Express would read "station-types" as an id. */
+pcsRouter.get('/station-types', requireAuth, listStationTypes);
+
 pcsRouter.get('/:id', requireAuth, getPCById);
 pcsRouter.get('/cafe/:cafeId', requireAuth, getPCsByCafe);
 

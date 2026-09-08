@@ -497,6 +497,8 @@ export const setOrganizationStatus = async (req, res) => {
  * type means capping it wherever it is run. Only the type names are returned,
  * never which café runs what.
  */
+const SEEDED_STATION_TYPES = ['PC', 'PS5', 'PS4', 'Xbox', 'Pool', 'Dart', 'VR', 'Table Tennis'];
+
 export const listStationTypes = async (_req, res) => {
   try {
     const { rows } = await pool.query(`
@@ -504,9 +506,11 @@ export const listStationTypes = async (_req, res) => {
         SELECT category FROM pcs            WHERE category IS NOT NULL AND category <> ''
         UNION ALL
         SELECT category FROM software_master WHERE category IS NOT NULL AND category <> ''
+        UNION ALL
+        SELECT unnest($1::text[])
       ) t
       ORDER BY category
-    `);
+    `, [SEEDED_STATION_TYPES]);
     res.json({ success: true, data: rows.map((r) => r.category) });
   } catch (error) {
     console.error('Station type list failed:', error);
@@ -520,7 +524,7 @@ export const listPackages = async (req, res) => {
     const { rows } = await pool.query(`
       SELECT p.sub_id AS plan_id, p.code, p.name, p.description, p.status,
              p.max_branches, p.max_pcs, p.max_users, p.max_managers, p.max_installations,
-             p.station_limits,
+             p.station_limits, p.other_stations_limit,
              p.is_freetrial, p.is_public, p.sort_order, p.no_of_days,
              COALESCE(json_agg(DISTINCT jsonb_build_object(
                'billing_period', pp.billing_period, 'currency', pp.currency, 'price', pp.price
@@ -581,7 +585,7 @@ export const getPackage = async (req, res) => {
 const PLAN_FIELDS = [
   'name', 'description', 'status', 'max_branches', 'max_pcs', 'max_users',
   'max_managers', 'max_installations', 'no_of_days', 'sort_order', 'is_public',
-  'station_limits'
+  'station_limits', 'other_stations_limit'
 ];
 
 /** POST /api/admin/packages */
@@ -651,6 +655,13 @@ export const updatePackage = async (req, res) => {
        Serialised here so the generic writer below stores valid jsonb. */
     if (req.body.station_limits !== undefined) {
       req.body.station_limits = JSON.stringify(normalizeStationLimits(req.body.station_limits));
+    }
+    /* Blank means "uncapped" here, unlike max_pcs/max_branches which always
+       carry a real number — an empty string would otherwise fail the column's
+       INTEGER cast instead of clearing the limit. */
+    if (req.body.other_stations_limit !== undefined) {
+      const n = Math.floor(Number(req.body.other_stations_limit));
+      req.body.other_stations_limit = Number.isFinite(n) && n > 0 ? n : null;
     }
 
     const sets = [];

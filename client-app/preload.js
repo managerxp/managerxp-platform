@@ -69,6 +69,12 @@ contextBridge.exposeInMainWorld("api", {
   sessionOvertime: (appName) => ipcRenderer.send("session-overtime", appName),
   // The customer tapped "Call staff" from the Help menu.
   callStaff: () => ipcRenderer.send("call-staff"),
+  // The customer tapped "Extend" on the low-time prompt — adds a block to
+  // their own session, same as a staff-driven extend from the console.
+  extendRequest: (blocks) => ipcRenderer.send("extend-request", blocks),
+  // Station tools from the Help menu — screen resolution, NVIDIA Control
+  // Panel, Device Manager. panel is "display" | "nvidia" | "devicemgmt".
+  openSystemPanel: (panel) => ipcRenderer.invoke("system:open-panel", panel),
   // The console added a block; grow the timer card's clock by these minutes.
   onExtendTimer: (cb) => ipcRenderer.on("extend-timer", (_, data) => cb(data)),
   // Self-service: ask what this station's customer could start (its games,
