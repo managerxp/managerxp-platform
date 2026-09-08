@@ -26,6 +26,7 @@
   var updConsole = null;   // last /api/updates/mine?component=server answer
   var updClient = null;    // last /api/updates/mine?component=client answer
   var updLoading = false;
+  var installState = null; // last snapshot from updater.js, via getConsoleUpdateState/onConsoleUpdateState
 
   function localVersionSort(v) {
     var parts = String(v || "0.0.0").replace(/^v/i, "").split(".");
@@ -65,6 +66,40 @@
     return data.detail || "Unavailable.";
   }
 
+  /* The directory holding latest.yml and the installer — electron-updater's
+     generic provider wants the folder, not the file. Same derivation
+     server-app/main.js's cacheRelease already uses for the station relay. */
+  function feedUrlFor(downloadUrl) {
+    if (!downloadUrl) return null;
+    var i = downloadUrl.lastIndexOf("/");
+    return i === -1 ? null : downloadUrl.slice(0, i);
+  }
+
+  function installButtonMarkup() {
+    if (!global.api || !global.api.downloadConsoleUpdate) return "";
+    var phase = installState ? installState.phase : "idle";
+
+    if (phase === "downloading") {
+      return '<button class="btn btn-outline btn-sm" disabled>' + Icon("download", 13) +
+        '<span class="btn-label">Downloading… ' + (installState.progress || 0) + "%</span></button>";
+    }
+    if (phase === "staged") {
+      return '<button class="btn btn-primary btn-sm" id="updInstallBtn" data-action="apply">' + Icon("refresh", 13) +
+        '<span class="btn-label">Restart &amp; install</span></button>';
+    }
+    if (phase === "applying") {
+      return '<button class="btn btn-primary btn-sm" disabled>' + Icon("refresh", 13) +
+        '<span class="btn-label">Restarting…</span></button>';
+    }
+    if (phase === "error") {
+      return '<button class="btn btn-outline btn-sm" id="updInstallBtn" data-action="download">' + Icon("download", 13) +
+        '<span class="btn-label">Retry download</span></button>';
+    }
+    // idle — nothing staged yet.
+    return '<button class="btn btn-primary btn-sm" id="updInstallBtn" data-action="download">' + Icon("download", 13) +
+      '<span class="btn-label">Install update</span></button>';
+  }
+
   function paintConsole() {
     if (!pageRoot) return;
     var host = pageRoot.querySelector("#updConsoleBody");
@@ -94,7 +129,72 @@
       rows += '<div class="kv" style="align-items:flex-start"><span class="kv-key">Release notes</span>' +
         '<span class="kv-val faint" style="font-size:12px;white-space:pre-wrap">' + UI.esc(updConsole.release_notes) + "</span></div>";
     }
+    if (updConsole.update_available) {
+      rows += '<div class="row gap-2" style="margin-top:var(--s-2);align-items:center">' + installButtonMarkup();
+      if (installState && installState.phase === "error") {
+        rows += '<span class="faint" style="font-size:12px;color:var(--danger)">' + UI.esc(installState.lastError || installState.detail || "Something went wrong") + "</span>";
+      }
+      rows += "</div>";
+    }
     host.innerHTML = rows;
+
+    var btn = host.querySelector("#updInstallBtn");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var action = btn.dataset.action;
+      if (action === "apply") {
+        onInstallClick();
+      } else {
+        onDownloadClick();
+      }
+    });
+  }
+
+  /* How many stations have a customer mid-session right now — the console
+     coordinates every station's WebSocket link, so restarting it drops the
+     whole floor for as long as it takes to come back. Read straight from
+     Store, no extra fetch. */
+  function activeSessionCount() {
+    var sessions = Store.state.sessions || {};
+    return Object.keys(sessions).filter(function (name) {
+      var s = sessions[name];
+      return s && (s.status === "active" || s.status === "paused");
+    }).length;
+  }
+
+  function onDownloadClick() {
+    var feedUrl = feedUrlFor(updConsole && updConsole.download && updConsole.download.url);
+    if (!feedUrl) {
+      UI.toast.error("Could not start the download", "No download URL was published with this release.");
+      return;
+    }
+    global.api.downloadConsoleUpdate(feedUrl, updConsole.latest_version)
+      .then(function (r) {
+        if (!r || r.ok === false) {
+          UI.toast.error("Could not download the update", (r && r.message) || "Try again shortly.");
+        }
+      })
+      .catch(function (e) { UI.toast.error("Could not download the update", e.message); });
+  }
+
+  function onInstallClick() {
+    var active = activeSessionCount();
+    var proceed = active > 0
+      ? UI.confirm({
+          title: "Restart the console now?",
+          message: active + " session" + (active === 1 ? " is" : "s are") + " currently running. " +
+            "Every station loses its connection to the console while it restarts — sessions themselves are not affected, " +
+            "but staff and the floor view will be unreachable for a minute or two.",
+          confirmLabel: "Restart anyway", variant: "danger"
+        })
+      : Promise.resolve(true);
+
+    proceed.then(function (ok) {
+      if (!ok) return;
+      global.api.applyConsoleUpdate().catch(function (e) {
+        UI.toast.error("Could not install the update", e.message);
+      });
+    });
   }
 
   function paintStations() {
@@ -204,9 +304,9 @@
         '<div class="notice" data-status="info">' + Icon("info", 16) +
           "<div><strong>Stations</strong> — " + UI.esc(desc ? desc.client : "Applied when a station is free.") + "</div></div>" +
         '<div class="notice" data-status="info">' + Icon("info", 16) +
-          "<div><strong>This console</strong> — " + UI.esc(desc ? desc.server : "Applied at a scheduled time.") + "</div></div>" +
-        '<div class="faint" style="font-size:12px;line-height:1.6">A session in progress always blocks an update on that station, ' +
-          "and one running anywhere on the floor blocks the console — this page will not offer to apply anything while that is true." +
+          "<div><strong>This console</strong> — " + UI.esc(desc ? desc.server : "You apply console updates yourself.") + "</div></div>" +
+        '<div class="faint" style="font-size:12px;line-height:1.6">A session in progress always blocks an update on that station. ' +
+          "Installing a console update is your call — if any station has a session running, you'll be asked to confirm before it restarts." +
         "</div>";
 
       var recheck = page.querySelector("#updRecheck");
@@ -227,6 +327,11 @@
       }
 
       offs.push(Store.on("pcs", function () { paintStationCount(); paintStations(); }));
+      // Live progress for the "Install update" button — Store owns the one
+      // ipcRenderer subscription (registered once at app start, not per
+      // mount) and just re-emits; see store.js's consoleUpdate wiring.
+      offs.push(Store.on("console-update", function (s) { installState = s; paintConsole(); }));
+      installState = Store.state.consoleUpdate;
       paintStationCount();
       paintConsole();
       paintStations();
