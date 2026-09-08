@@ -1069,8 +1069,13 @@ function ensureSteamSignedIn(credential) {
  * launchGame can treat every platform identically.
  */
 function verifyPassiveLauncher(platform) {
-  const mainProcess = (SIGNOUT_RECIPES[platform] && SIGNOUT_RECIPES[platform].processes[0]) || null;
+  // Looked up per-call, not here: this outer body runs immediately, while
+  // PLATFORM_AUTH below is being built (Steam/EA/Epic/... all resolved
+  // eagerly) — SIGNOUT_RECIPES is declared further down the file with
+  // const, so reading it here throws "before initialization" the moment
+  // this module loads, not some rare edge case.
   return function (credential) {
+    const mainProcess = (SIGNOUT_RECIPES[platform] && SIGNOUT_RECIPES[platform].processes[0]) || null;
     return detectLaunchers().then((launchers) => {
       const info = launchers[platform];
       if (!info || !info.installed) {

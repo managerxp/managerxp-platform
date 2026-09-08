@@ -484,18 +484,20 @@ export const setOrganizationStatus = async (req, res) => {
  *
  * The station types a plan can cap, for the plan editor's dropdown.
  *
- * Drawn from what cafés actually run and price rather than a list baked into
- * the frontend: the set is café-extensible by design (one sells bowling,
- * another does not), so a hard-coded list is guaranteed to be wrong for
- * somebody — it would offer a cap on a type nobody has, and no way to cap the
- * type they do.
+ * Seeded with the common gaming-café equipment types up front — a fresh
+ * platform with no café having tagged a single station yet still needs
+ * something to cap, and waiting on organic use left this empty on day one.
+ * Still merged with whatever cafés actually run and price, not replaced by
+ * the seed: the set stays café-extensible (one sells bowling, another does
+ * not — that still only ever appears here once someone's used it via the
+ * café-facing "Other…" option), so the seed is a floor, not a ceiling.
  *
- * Both sides are counted because either alone is incomplete: a type can be
- * priced before any station of it exists, and a station can exist before
- * anyone prices it. Unlike the café-facing category list this is deliberately
- * NOT scoped to one café — a plan applies across the platform, so capping a
- * type means capping it wherever it is run. Only the type names are returned,
- * never which café runs what.
+ * Both sides of the merge with real usage are counted because either alone
+ * is incomplete: a type can be priced before any station of it exists, and
+ * a station can exist before anyone prices it. Unlike the café-facing
+ * category list this is deliberately NOT scoped to one café — a plan
+ * applies across the platform, so capping a type means capping it wherever
+ * it is run. Only the type names are returned, never which café runs what.
  */
 const SEEDED_STATION_TYPES = ['PC', 'PS5', 'PS4', 'Xbox', 'Pool', 'Dart', 'VR', 'Table Tennis'];
 

@@ -499,8 +499,21 @@ export const createRelease = async (req, res) => {
  * — hence a separate env var rather than reusing that one and getting a
  * frontend URL back for a backend file.
  */
-const publicBase = (req) =>
-  process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+const publicBase = (req) => {
+  const configured = process.env.API_PUBLIC_URL;
+  const base = configured || `${req.protocol}://${req.get('host')}`;
+  /* A download link handed to a browser on an https:// page must itself be
+   * https:// — a scheme mismatch is a cross-origin change as far as the
+   * `download` attribute is concerned, so the browser silently refuses to
+   * force-download it. Two independent things can produce http:// here, and
+   * this is cheaper than relying on neither ever recurring: a mistyped
+   * API_PUBLIC_URL, or (when it's unset) req.protocol reporting the scheme
+   * between nginx and Node — always "http" — because nothing here tells
+   * Express to trust nginx's X-Forwarded-Proto. Never upgrade localhost —
+   * that's the one case (local dev, `npm start` with no TLS at all) where
+   * http:// is genuinely correct, not a misconfiguration. */
+  return /^http:\/\/(?!(?:localhost|127\.0\.0\.1)(?::|$))/.test(base) ? base.replace(/^http:\/\//, 'https://') : base;
+};
 
 /*
  * POST /api/platform/releases/upload
