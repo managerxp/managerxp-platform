@@ -104,6 +104,15 @@ contextBridge.exposeInMainWorld("api", {
   // instead of waiting for each one to reconnect on its own.
   refreshUnlockPin: () => ipcRenderer.invoke("station:refresh-unlock-pin"),
 
+  // Console self-update — download/apply this console's own new version,
+  // staff-triggered from the Updates page. feedUrl is the directory
+  // holding latest.yml, from Store.checkUpdate('server', v)'s download.url.
+  downloadConsoleUpdate: (feedUrl, targetVersion) =>
+    ipcRenderer.invoke("updates:download-console", { feedUrl, targetVersion }),
+  applyConsoleUpdate: () => ipcRenderer.invoke("updates:apply-console"),
+  getConsoleUpdateState: () => ipcRenderer.invoke("updates:console-state"),
+  onConsoleUpdateState: (cb) => ipcRenderer.on("updates:console-state", (_, d) => cb(d)),
+
   // System info
   getMacAddress: () => ipcRenderer.invoke("system:get-mac-address"),
   getAppVersion: () => ipcRenderer.invoke("system:get-app-version"),

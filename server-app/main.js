@@ -23,6 +23,7 @@ for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __di
   try { process.loadEnvFile(path.join(dir, ".env")); } catch (e) { /* not here */ }
 }
 const authContext = require("./authContext");
+const consoleUpdater = require("./updater");
 
 // .env is optional — a fresh checkout or a machine where it was never copied
 // still runs on the defaults below, exactly as it did before this existed.
@@ -999,7 +1000,15 @@ function handleWebAppLogin(token, user) {
 app.whenReady().then(() => {
   // Register IPC handlers (only once)
   registerIPCHandlers();
-  
+
+  // Self-update: staff-triggered from the Updates page, never automatic —
+  // see updater.js. Pushed to the renderer as it changes so the "Install
+  // update" button can show real download progress.
+  consoleUpdater.init({ log });
+  consoleUpdater.onChange((snapshot) => {
+    if (win && !win.isDestroyed()) win.webContents.send('updates:console-state', snapshot);
+  });
+
   // Start token receiver server
   startTokenServer();
   
@@ -1926,6 +1935,20 @@ function registerIPCHandlers() {
       }
     });
     return { success: true, stations: pushed.size };
+  });
+
+  /* Console self-update, driven from the Updates page — see updater.js.
+     feedUrl is the directory the renderer already has from
+     Store.checkUpdate('server', v)'s download.url; this handler never
+     decides anything on its own, only does what it's told. */
+  ipcMain.handle('updates:download-console', async (_, { feedUrl, targetVersion } = {}) => {
+    return consoleUpdater.download({ feedUrl, targetVersion });
+  });
+  ipcMain.handle('updates:apply-console', async () => {
+    return consoleUpdater.apply();
+  });
+  ipcMain.handle('updates:console-state', async () => {
+    return consoleUpdater.snapshot();
   });
 
   handlersRegistered = true;

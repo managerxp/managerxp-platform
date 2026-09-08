@@ -43,6 +43,7 @@
     sessions: {},               // pcName -> live session from /api/sessions
     helpRequests: {},           // pcName -> { at } — customer tapped Call staff, cleared once staff open that station
     signedIn: {},               // pcName -> { customerName, since } — signed in at the kiosk, no session yet
+    consoleUpdate: null,        // last snapshot from this console's own updater.js (main process)
     launchers: {},              // pcName -> { Steam: {installed, path}, ... } reported by the station
     steamAuth: {},              // pcName -> { state, account, at } — live venue-Steam sign-in progress
     me: null,                   // signed-in principal from /api/staff/me
@@ -2061,6 +2062,24 @@
         delete state.signedIn[pcName];
         emit("signed-in", state.signedIn);
       });
+    }
+
+    /* This console's own self-update progress — pushed from the main
+       process's updater.js as it changes (idle/downloading/staged/applying/
+       error). One subscription for the app's whole life, same reasoning as
+       every other onX above: a page re-subscribing on every mount/unmount
+       would pile up duplicate listeners the longer the console stays open. */
+    if (api.onConsoleUpdateState) {
+      api.onConsoleUpdateState(function (snapshot) {
+        state.consoleUpdate = snapshot;
+        emit("console-update", state.consoleUpdate);
+      });
+    }
+    if (api.getConsoleUpdateState) {
+      api.getConsoleUpdateState().then(function (snapshot) {
+        state.consoleUpdate = snapshot;
+        emit("console-update", state.consoleUpdate);
+      }).catch(function () {});
     }
 
     /*

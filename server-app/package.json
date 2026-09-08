@@ -9,6 +9,7 @@
     "dist": "electron-builder --win --publish never"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "ws": "^8.16.0"
   },
   "devDependencies": {
@@ -48,6 +49,12 @@
       "deleteAppDataOnUninstall": false,
       "installerIcon": "Images/icon.ico",
       "uninstallerIcon": "Images/icon.ico"
-    }
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://updates.managerxp.local/cafexp/server/"
+      }
+    ]
   }
 }
