@@ -17,12 +17,13 @@
   var FILTERS = [
     { id: "all",      label: "All stations" },
     { id: "online",   label: "Available" },
+    { id: "occupied", label: "Signed in" },
     { id: "gaming",   label: "In use" },
     { id: "offline",  label: "Offline" },
     { id: "inactive", label: "Deactivated" }
   ];
 
-  var STATUS_TEXT = { online: "Available", gaming: "In use", paused: "Paused", offline: "Offline", inactive: "Deactivated" };
+  var STATUS_TEXT = { online: "Available", occupied: "Signed in", gaming: "In use", paused: "Paused", offline: "Offline", inactive: "Deactivated" };
 
   /* ==========================================================================
      LAYOUT
@@ -326,6 +327,17 @@
                  ? "Client connected · waiting"
                  : (pc.category ? UI.esc(pc.category) + " · " : "") + "ready to start") +
                "</div>";
+    } else if (status === "occupied") {
+      /* Signed in at the kiosk, no session running — occupied, not billing.
+         The whole point of this state: staff see this instead of "Available"
+         and can go ask whether the customer wants to start playing. */
+      var signedIn = Store.state.signedIn[pc.name];
+      middle = '<div class="station-headline">' +
+                 (signedIn && signedIn.customerName ? UI.esc(signedIn.customerName) : "Signed in") +
+               "</div>" +
+               '<div class="station-subline">' +
+                 "No session yet" + (signedIn ? " · since " + UI.relTime(signedIn.since) : "") +
+               "</div>";
     } else if (status === "maintenance" && !session) {
       middle = '<div class="station-idle">Under maintenance</div>';
     } else if (status === "inactive") {
@@ -350,7 +362,7 @@
               : (pc.description || pc.category || "station")) +
           "</div>" +
         "</div>" +
-        '<span class="dot' + (status === "online" || status === "gaming" ? " dot-live" : "") + '"></span>' +
+        '<span class="dot' + (status === "online" || status === "gaming" || status === "occupied" ? " dot-live" : "") + '"></span>' +
       "</div>" +
       '<div class="station-mid">' + middle + "</div>" +
       '<div class="station-foot">' +
@@ -1358,7 +1370,10 @@
       chip.setAttribute("aria-pressed", String(chip.dataset.filter === filter));
       var countEl = chip.querySelector(".chip-count");
       if (!countEl) return;
-      var map = { all: counts.total, online: counts.online - counts.running, gaming: counts.running, offline: counts.offline, inactive: counts.inactive };
+      var map = {
+        all: counts.total, online: counts.online - counts.running - counts.occupied,
+        occupied: counts.occupied, gaming: counts.running, offline: counts.offline, inactive: counts.inactive
+      };
       countEl.textContent = map[chip.dataset.filter] || 0;
     });
     var search = rootEl.querySelector("#floorSearch");
@@ -1453,7 +1468,7 @@
           '<div class="row gap-2 wrap" id="floorFilters">' +
             FILTERS.map(function (f) {
               return '<button class="chip" data-filter="' + f.id + '" data-status="' +
-                ({ online: "online", gaming: "gaming", offline: "offline", inactive: "idle", all: "accent" }[f.id]) + '">' +
+                ({ online: "online", occupied: "occupied", gaming: "gaming", offline: "offline", inactive: "idle", all: "accent" }[f.id]) + '">' +
                 UI.esc(f.label) + '<span class="chip-count">0</span></button>';
             }).join("") +
           "</div>" +
@@ -1476,6 +1491,7 @@
 
         '<div class="legend" style="margin-bottom:var(--s-4)">' +
           '<span class="legend-item" data-status="online"><span class="legend-swatch"></span>Available</span>' +
+          '<span class="legend-item" data-status="occupied"><span class="legend-swatch"></span>Signed in</span>' +
           '<span class="legend-item" data-status="gaming"><span class="legend-swatch"></span>In use</span>' +
           '<span class="legend-item" data-status="offline"><span class="legend-swatch"></span>Offline</span>' +
           '<span class="legend-item" data-status="maintenance"><span class="legend-swatch"></span>Unregistered</span>' +
@@ -1576,6 +1592,7 @@
       offs.push(Store.on("tick", tickTimers));
       offs.push(Store.on("sessions", function () { renderPageChrome(); renderGrid(); }));
       offs.push(Store.on("help-requests", renderGrid));
+      offs.push(Store.on("signed-in", renderGrid));
       offs.push(Store.on("session-tick", tickTimers));
 
       renderPageChrome();

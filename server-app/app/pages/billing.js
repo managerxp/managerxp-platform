@@ -1145,7 +1145,7 @@
       '<div class="field hidden" id="itemRateField">' +
         '<label class="field-label" for="itemRate">Gaming price</label>' +
         '<select class="select" id="itemRate"><option value="">Loading rates…</option></select>' +
-        '<div class="field-hint" id="itemRateHint">From the Gaming Price Master.</div></div>' +
+        '<div class="field-hint" id="itemRateHint">From the Gaming Prices page.</div></div>' +
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
         '<div class="field"><label class="field-label field-req" for="itemQty">Quantity</label>' +
           '<input class="input" id="itemQty" type="number" min="1" step="1" value="1"></div>' +

@@ -30,6 +30,12 @@
           <input class="input" type="text" id="name" placeholder="Abdul" autocomplete="name" autofocus />
         </div>
 
+        <div class="field">
+          <label class="field-label" for="username">Username <span class="faint" style="font-weight:400">(optional)</span></label>
+          <input class="input" type="text" id="username" placeholder="Pick one now, or add it later" maxlength="20" autocomplete="username" />
+          <div class="field-hint">3–20 characters, starts with a letter — letters, numbers and underscore only. Sign in with this instead of your email, once set. Leave blank to add one later from My Account.</div>
+        </div>
+
         <div class="grid grid-2" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--s-4)">
           <div class="field">
             <label class="field-label" for="email">Email</label>
@@ -210,11 +216,14 @@
       function val(id) { return document.getElementById(id).value.trim(); }
       function isValidEmail(v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); }
       function isValidPhone(v) { return /^\d{10,15}$/.test(v.replace(/\D/g, "")); }
+      // Matches the backend's USERNAME_REGEX in customer.Controller.js.
+      function isValidUsername(v) { return /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/.test(v); }
 
       form.addEventListener("submit", async function (e) {
         e.preventDefault();
 
         var name = val("name");
+        var username = val("username"); // optional — may be ""
         var email = val("email");
         var phoneNumber = val("phoneNumber");
         var address = val("address");
@@ -222,6 +231,10 @@
 
         if (!name || !email || !phoneNumber || !address || !password) {
           showError("Please fill in every field."); return;
+        }
+        if (username && !isValidUsername(username)) {
+          showError("Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores.");
+          return;
         }
         if (!isValidEmail(email)) { showError("That email address doesn't look right."); return; }
         if (!isValidPhone(phoneNumber)) { showError("Enter a mobile number with 10–15 digits."); return; }
@@ -234,12 +247,12 @@
 
         busy(true);
         try {
-          // Unchanged endpoint and payload shape.
           var response = await fetch(API_BASE + "/api/customers/register", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               customer_name: name,
+              username: username || undefined,
               email: email,
               phone_number: fullPhone,
               password: password,

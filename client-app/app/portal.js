@@ -669,6 +669,45 @@
     Session.on("critical", function () {
       UI.toast({ title: "5 minutes left", message: "Time to wrap up — save your progress.", status: "error", duration: 9000 });
     });
+    /*
+     * The paid session itself is running low — distinct from "critical"
+     * above, which is the per-game launch timer. Offers a self-serve Extend
+     * only when the session can actually take one (a fixed-price block);
+     * an open-ended session has nothing to extend, so this is a plain
+     * notice for it instead of a dead button.
+     */
+    // Keyed by session_id, not a plain flag — a station runs many sessions
+    // back to back without restarting, and each one gets its own prompt.
+    var extendPromptShownFor = null;
+    Session.on("session-low-time", function (session) {
+      var sessionId = session && session.session_id;
+      if (!sessionId || extendPromptShownFor === sessionId) return;
+      extendPromptShownFor = sessionId;
+      var canExtend = !!(session && session.can_extend);
+      UI.modal({
+        title: "5 minutes left on your session",
+        description: canExtend
+          ? "Add another block now, or keep going and staff will settle it at the end."
+          : "Ask a staff member if you'd like more time.",
+        body: '<div style="font-size:var(--t-body);line-height:1.6;color:var(--text-2)">' +
+          (canExtend
+            ? "Extending adds a block to your session — it's added to your bill, not charged now."
+            : "This session's length was set by staff and can't be extended from here.") +
+          "</div>",
+        actions: canExtend
+          ? [
+              { label: "Not now", variant: "ghost" },
+              {
+                label: "Extend", variant: "primary", icon: "plus",
+                onClick: function () {
+                  if (global.api && global.api.extendRequest) global.api.extendRequest(1);
+                  UI.toast.ok("Block added", "Your session time will update in a moment.");
+                }
+              }
+            ]
+          : [{ label: "OK", variant: "primary" }]
+      });
+    });
     Session.on("overtime", function () {
       UI.toast({ title: "Time's up", message: "Keep playing — staff have been told and will settle the extra time.", status: "error", duration: 9000 });
     });
@@ -714,12 +753,43 @@
 
     document.getElementById("helpBtn").addEventListener("click", function () {
       var here = Session.state.pcName || "your station";
-      UI.modal({
-        title: "Help",
-        body: '<div style="font-size:var(--t-body);line-height:1.65;color:var(--text-2)">' +
+
+      var body = UI.el("div", { class: "col gap-4" });
+      body.innerHTML =
+        '<div style="font-size:var(--t-body);line-height:1.65;color:var(--text-2)">' +
           "Need a hand? Call a staff member and they'll come to " + UI.esc(here) +
           " to see what's going on." +
-          "</div>",
+        "</div>" +
+        '<div class="col gap-2">' +
+          '<div class="faint" style="font-size:12px">Station tools</div>' +
+          '<button class="btn btn-outline btn-block" type="button" id="toolDisplay">' + Icon("monitor", 15) +
+            '<span class="btn-label">Screen resolution</span></button>' +
+          '<button class="btn btn-outline btn-block" type="button" id="toolNvidia">' + Icon("settings", 15) +
+            '<span class="btn-label">NVIDIA Control Panel</span></button>' +
+          '<button class="btn btn-outline btn-block" type="button" id="toolDevices">' + Icon("settings", 15) +
+            '<span class="btn-label">Device Manager</span></button>' +
+        "</div>" +
+        '<div class="faint" style="font-size:12px;line-height:1.5">' +
+          "Press <strong>Alt+Tab</strong> any time during your session to switch between CafeXP and your game." +
+        "</div>";
+
+      function openPanel(panel, label) {
+        if (!global.api || !global.api.openSystemPanel) return;
+        global.api.openSystemPanel(panel).then(function (r) {
+          if (r && r.success) {
+            UI.toast.ok(label + " opening", r.message || "Click the CafeXP icon in the taskbar to come back to your game.");
+          } else {
+            UI.toast.error("Couldn't open " + label, (r && r.message) || "Try again, or call staff.");
+          }
+        });
+      }
+      body.querySelector("#toolDisplay").addEventListener("click", function () { openPanel("display", "Screen resolution"); });
+      body.querySelector("#toolNvidia").addEventListener("click", function () { openPanel("nvidia", "NVIDIA Control Panel"); });
+      body.querySelector("#toolDevices").addEventListener("click", function () { openPanel("devicemgmt", "Device Manager"); });
+
+      UI.modal({
+        title: "Help",
+        body: body,
         actions: [
           { label: "Not now", variant: "ghost" },
           {

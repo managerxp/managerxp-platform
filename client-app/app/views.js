@@ -1831,6 +1831,78 @@
             Icon("trash", 15) + '<span class="btn-label">Delete my account</span></button>' +
         "</div>";
 
+      /*
+       * Name and email stay out of this form on purpose — email is the
+       * verified identity behind password reset and email OTP, and the
+       * backend's PATCH /api/customers/me refuses to touch either. Username,
+       * mobile and address are the fields it accepts, so they are the only
+       * ones offered here.
+       */
+      var editCard = UI.el("div", { class: "card" });
+      var currentAddress = UI.fmtAddress(user.address);
+      editCard.innerHTML =
+        '<div class="card-head"><h2>Edit profile</h2></div>' +
+        '<div class="card-body col gap-3">' +
+          '<div class="field">' +
+            '<label class="field-label" for="acctUsername">Username</label>' +
+            '<input class="input" id="acctUsername" maxlength="20" placeholder="Not set" ' +
+              'value="' + UI.esc(user.username || "") + '">' +
+            '<div class="field-hint">3–20 characters, starting with a letter — letters, numbers and ' +
+              'underscore only. Sign in with this instead of your email, once set.</div>' +
+          "</div>" +
+          '<div class="field">' +
+            '<label class="field-label" for="acctPhone">Mobile</label>' +
+            '<input class="input" id="acctPhone" value="' + UI.esc(user.phone_number || "") + '">' +
+          "</div>" +
+          '<div class="field">' +
+            '<label class="field-label" for="acctAddress">Address</label>' +
+            '<input class="input" id="acctAddress" value="' + UI.esc(currentAddress === "—" ? "" : currentAddress) + '">' +
+          "</div>" +
+          '<div class="notice hidden" data-status="error" id="acctSaveError"></div>' +
+        "</div>" +
+        '<div class="card-foot">' +
+          '<button class="btn btn-primary btn-sm" id="acctSaveBtn">' + Icon("check", 15) +
+            '<span class="btn-label">Save changes</span></button>' +
+        "</div>";
+
+      editCard.querySelector("#acctSaveBtn").addEventListener("click", function (e) {
+        var btn = e.currentTarget;
+        var errorBox = editCard.querySelector("#acctSaveError");
+        errorBox.classList.add("hidden");
+
+        var payload = {
+          username: editCard.querySelector("#acctUsername").value.trim(),
+          phone_number: editCard.querySelector("#acctPhone").value.trim(),
+          address: editCard.querySelector("#acctAddress").value.trim()
+        };
+        if (payload.phone_number.length < 10) {
+          errorBox.textContent = "Phone number must be at least 10 characters.";
+          errorBox.classList.remove("hidden");
+          return;
+        }
+        if (!payload.address) {
+          errorBox.textContent = "Address is required.";
+          errorBox.classList.remove("hidden");
+          return;
+        }
+
+        UI.withBusy(btn, function () {
+          return Wallet.request("/api/customers/me", { method: "PATCH", body: JSON.stringify(payload) })
+            .then(function (body) {
+              // Session.state.user is what the rest of this view (and the
+              // header) read the profile from — merged in place so a
+              // re-render elsewhere in the app sees the change immediately,
+              // not only after the next sign-in.
+              Object.assign(user, body.data);
+              UI.toast({ title: "Profile updated", status: "success", duration: 2500 });
+            })
+            .catch(function (err) {
+              errorBox.textContent = err.message || "Could not save your changes.";
+              errorBox.classList.remove("hidden");
+            });
+        });
+      });
+
       // Bills — real, from the café server. Read-only: staff take payment.
       var Wallet = global.CXWallet;
       var history = UI.el("div", { class: "card" });
@@ -1964,6 +2036,7 @@
 
       var col = UI.el("div", { class: "col", style: { gap: "var(--s-6)" } });
       col.appendChild(profile);
+      col.appendChild(editCard);
       col.appendChild(history);
       split.appendChild(col);
 

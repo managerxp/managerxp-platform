@@ -62,6 +62,9 @@ contextBridge.exposeInMainWorld("api", {
   onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
   // A customer tapped "Call staff" on the Help menu at their station.
   onStationCallStaff: (cb) => ipcRenderer.on("station:call-staff", (_, d) => cb(d)),
+  // A customer signed in or out at a station's kiosk, before any session exists.
+  onCustomerSignedIn: (cb) => ipcRenderer.on("station:customer-signed-in", (_, d) => cb(d)),
+  onCustomerSignedOut: (cb) => ipcRenderer.on("station:customer-signed-out", (_, d) => cb(d)),
   // A self-started session's game failed to launch — nobody is playing it.
   onStationLaunchFailed: (cb) => ipcRenderer.on("station:launch-failed", (_, d) => cb(d)),
   // A logged-in customer opened the game picker while idle — send this
@@ -97,6 +100,10 @@ contextBridge.exposeInMainWorld("api", {
   clearPCFailures: (pcName) => ipcRenderer.invoke("pc:clear-failures", { pcName }),
   refreshPCList: () => ipcRenderer.invoke("pc:refresh-list"),
   
+  // Push a just-saved/cleared staff unlock PIN to every connected station now,
+  // instead of waiting for each one to reconnect on its own.
+  refreshUnlockPin: () => ipcRenderer.invoke("station:refresh-unlock-pin"),
+
   // System info
   getMacAddress: () => ipcRenderer.invoke("system:get-mac-address"),
   getAppVersion: () => ipcRenderer.invoke("system:get-app-version"),

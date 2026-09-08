@@ -127,7 +127,7 @@
            figure on the bill is one the café actually set. */
         '<div class="field"><label class="field-label field-req" for="sessPrice">Gaming price</label>' +
           '<select class="select" id="sessPrice"><option value="">Loading prices…</option></select>' +
-          '<div class="field-hint" id="sessPriceHint">From the Gaming Price Master.</div></div>' +
+          '<div class="field-hint" id="sessPriceHint">From the Gaming Prices page.</div></div>' +
       "</div>" +
 
       /* Only reachable when the station\'s type has no price set up. Kept so a

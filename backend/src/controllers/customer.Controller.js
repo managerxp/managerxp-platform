@@ -38,6 +38,7 @@ export const register = async (req, res) => {
       address,
       pc_name
     } = req.body;
+    const username = String(req.body.username || '').trim() || null;
 
     const normalizedAddress = normalizeAddress(address);
 
@@ -103,6 +104,16 @@ export const register = async (req, res) => {
       });
     }
 
+    // A username is optional at sign-up — it can also be set later from the
+    // account screen — but whatever is offered here has to meet the same
+    // rule updateMyProfile enforces.
+    if (username && !USERNAME_REGEX.test(username)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores'
+      });
+    }
+
     // Check if user already exists
     const checkUserQuery = 'SELECT email FROM customers WHERE email = $1';
     const existingUser = await pool.query(checkUserQuery, [email]);
@@ -114,18 +125,33 @@ export const register = async (req, res) => {
       });
     }
 
+    // Same idea as the email check above, scoped to this café — the whole
+    // reason a username is only unique per café (idx_customers_cafe_username).
+    if (username) {
+      const existingUsername = await pool.query(
+        'SELECT 1 FROM customers WHERE cafe_id = $1 AND LOWER(username) = LOWER($2)',
+        [cafeId, username]
+      );
+      if (existingUsername.rows.length > 0) {
+        return res.status(409).json({
+          success: false,
+          message: 'That username is already taken at this café'
+        });
+      }
+    }
+
     // Hash the password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // Insert new customer
     const insertQuery = `
-      INSERT INTO customers (customer_name, email, phone_number, password, address, cafe_id)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING customer_id, customer_name, email, phone_number, address, cafe_id, created_at, updated_at
+      INSERT INTO customers (customer_name, email, username, phone_number, password, address, cafe_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING customer_id, customer_name, email, username, phone_number, address, cafe_id, created_at, updated_at
     `;
 
-    const values = [customer_name, email, phone_number, hashedPassword, normalizedAddress, cafeId];
+    const values = [customer_name, email, username, phone_number, hashedPassword, normalizedAddress, cafeId];
     const result = await pool.query(insertQuery, values);
 
     const newCustomer = result.rows[0];
@@ -162,11 +188,14 @@ export const register = async (req, res) => {
   } catch (error) {
     console.error('Registration error:', error);
     
-    // Handle unique constraint violation
+    // Handle unique constraint violation — the pre-checks above catch this
+    // in the ordinary case, so this is only the race where two signups for
+    // the same email or username land at the same instant.
     if (error.code === '23505') {
+      const onUsername = String(error.constraint || '').includes('username');
       return res.status(409).json({
         success: false,
-        message: 'Email already exists'
+        message: onUsername ? 'That username is already taken at this café' : 'Email already exists'
       });
     }
 
@@ -181,29 +210,59 @@ export const register = async (req, res) => {
 // Login function
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const identifier = String(req.body.identifier ?? req.body.email ?? req.body.username ?? '').trim();
+    const { password, pc_name } = req.body;
 
     // Validate required fields
-    if (!email || !password) {
+    if (!identifier || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Email and password are required'
+        message: 'Email/username and password are required'
       });
     }
 
-    // Find user by email
-    const findUserQuery = `
-      SELECT customer_id, customer_name, email, phone_number, password, address, created_at, updated_at, email_verified
-      FROM customers
-      WHERE email = $1
-    `;
+    const looksLikeEmail = identifier.includes('@');
+    const SELECT_FIELDS = `customer_id, customer_name, email, username, phone_number, password, address, created_at, updated_at, email_verified`;
 
-    const result = await pool.query(findUserQuery, [email]);
+    let result;
+    if (looksLikeEmail) {
+      // Unchanged from before username existed: email has always been
+      // looked up platform-wide here, so this path carries zero behaviour
+      // change for every account that already signs in this way.
+      result = await pool.query(
+        `SELECT ${SELECT_FIELDS} FROM customers WHERE LOWER(email) = LOWER($1)`,
+        [identifier]
+      );
+    } else {
+      /*
+       * A username is unique only within one café (idx_customers_cafe_username),
+       * so a bare username with no café to scope it to is ambiguous — the same
+       * handle can belong to a different person at another café. Resolved the
+       * same way register() resolves a station to a café: by the station's own
+       * name, never a café id the caller could simply assert.
+       */
+      let cafeId = null;
+      if (pc_name) {
+        const pc = await pool.query(
+          `SELECT cafe_id FROM pcs WHERE name = $1 AND cafe_id IS NOT NULL LIMIT 1`, [pc_name]);
+        cafeId = pc.rows[0]?.cafe_id ?? null;
+      }
+      if (!cafeId) {
+        return res.status(400).json({
+          success: false,
+          message: "This station isn't recognized by any café yet. Ask a staff member for help."
+        });
+      }
+      result = await pool.query(
+        `SELECT ${SELECT_FIELDS} FROM customers WHERE LOWER(username) = LOWER($1) AND cafe_id = $2`,
+        [identifier, cafeId]
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid email/username or password'
       });
     }
 
@@ -215,7 +274,7 @@ export const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email or password'
+        message: 'Invalid email/username or password'
       });
     }
 
@@ -277,7 +336,7 @@ export const login = async (req, res) => {
  */
 
 const CUSTOMER_FIELDS = `
-  c.customer_id, c.customer_name, c.email, c.phone_number,
+  c.customer_id, c.customer_name, c.email, c.username, c.phone_number,
   c.address, c.created_at, c.updated_at,
   c.customer_type, c.discount_percent, c.credit_limit, c.tier_note
 `;
@@ -301,6 +360,7 @@ const shapeCustomer = (row) => ({
   customer_id: row.customer_id,
   customer_name: row.customer_name,
   email: row.email,
+  username: row.username || null,
   phone_number: row.phone_number,
   address: row.address,
   created_at: row.created_at,
@@ -531,6 +591,80 @@ export const getMyProfile = async (req, res) => {
   } catch (error) {
     console.error('Error fetching own profile:', error);
     res.status(500).json({ success: false, message: 'Error fetching profile' });
+  }
+};
+
+const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/;
+
+/*
+ * PATCH /api/customers/me
+ *
+ * A customer editing their own username, phone number or address — the
+ * fields client-app's account screen offers. Name and email stay out of
+ * reach here: email is the verified identity behind email OTP and password
+ * reset, and letting either drift through a self-service edit would break
+ * both without anybody meaning to.
+ */
+export const updateMyProfile = async (req, res) => {
+  try {
+    const id = req.actor?.customer_id;
+    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
+
+    const sets = [];
+    const params = [id];
+
+    if (req.body.username !== undefined) {
+      const username = String(req.body.username || '').trim();
+      if (!username) {
+        // Blank clears it back to none rather than being refused — a
+        // customer un-setting a handle they no longer want is a valid choice.
+        sets.push('username = NULL');
+      } else if (!USERNAME_REGEX.test(username)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores'
+        });
+      } else {
+        params.push(username);
+        sets.push(`username = $${params.length}`);
+      }
+    }
+
+    if (req.body.phone_number !== undefined) {
+      const phone = String(req.body.phone_number || '').trim();
+      if (phone.length < 10) {
+        return res.status(400).json({ success: false, message: 'Phone number must be at least 10 characters' });
+      }
+      params.push(phone);
+      sets.push(`phone_number = $${params.length}`);
+    }
+
+    if (req.body.address !== undefined) {
+      const address = normalizeAddress(req.body.address);
+      if (!address) {
+        return res.status(400).json({ success: false, message: 'Address is required' });
+      }
+      params.push(address);
+      sets.push(`address = $${params.length}`);
+    }
+
+    if (!sets.length) {
+      return res.status(400).json({ success: false, message: 'Nothing to change' });
+    }
+
+    const updated = await pool.query(
+      `UPDATE customers c SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
+       WHERE c.customer_id = $1 RETURNING ${CUSTOMER_FIELDS}`,
+      params
+    );
+
+    res.json({ success: true, message: 'Profile updated', data: shapeCustomer(updated.rows[0]) });
+  } catch (error) {
+    if (error.code === '23505') {
+      return res.status(409).json({ success: false, message: 'That username is already taken at this café' });
+    }
+    console.error('Customer profile update failed:', error);
+    res.status(500).json({ success: false, message: 'Could not update your profile' });
   }
 };
 

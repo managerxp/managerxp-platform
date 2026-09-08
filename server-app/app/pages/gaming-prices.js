@@ -1,7 +1,7 @@
 /* ==========================================================================
-   CafeXP Admin — Gaming Price Master
-   One price per game + session pair. The screen shows names and durations by
-   joining the masters; only software_id, session_master_id and price are sent.
+   CafeXP Admin — Gaming Prices
+   Durations, house activities and prices in one place — one price per game +
+   session pair. Only software_id, session_master_id and price are sent.
    ========================================================================== */
 (function (global) {
   "use strict";
@@ -35,6 +35,343 @@
   function durationText(row) {
     if (row.duration_minutes === null || row.duration_minutes === undefined) return "Unlimited";
     return row.duration_minutes + " min";
+  }
+
+  /* ==========================================================================
+     DURATIONS (formerly the standalone "Session Master" page)
+
+     A price needs a duration to exist first, so this used to be two menu
+     items for one errand — merged here as a tab. Kept as its own set of
+     functions/state (sm* prefix) rather than woven into the prices code
+     above: it lists ALL durations including inactive ones for editing, while
+     `sessions` above stays the active-only list the price form picks from.
+     ========================================================================== */
+  var smRows = [];
+  var smLoading = false;
+  var smLoadError = null;
+  var smQuery = "";
+  var smStatusFilter = "";
+  var smSearchTimer = null;
+  var smPane = null;
+
+  var SM_TYPES = [
+    { value: "MINUTES",   label: "Minutes" },
+    { value: "HOURS",     label: "Hours" },
+    { value: "CUSTOM",    label: "Custom (minutes)" },
+    { value: "UNLIMITED", label: "Unlimited / Any Time" }
+  ];
+
+  function smMinutesFor(type, duration) {
+    if (type === "UNLIMITED") return null;
+    var n = parseInt(duration, 10);
+    if (!n || n < 1) return null;
+    return type === "HOURS" ? n * 60 : n;
+  }
+
+  function smDurationText(row) {
+    if (row.duration_minutes === null) return "Unlimited";
+    var m = row.duration_minutes;
+    if (m < 60) return m + " min";
+    var h = Math.floor(m / 60), rem = m % 60;
+    return h + "h" + (rem ? " " + rem + "m" : "") + " (" + m + " min)";
+  }
+
+  function smLoad() {
+    smLoading = true;
+    smLoadError = null;
+    smRenderTable();
+    return Store.listSessionMaster({ search: smQuery, status: smStatusFilter, limit: 200 })
+      .then(function (body) { smRows = body.data || []; smLoading = false; smRenderTable(); })
+      .catch(function (err) { smLoading = false; smLoadError = err.message; smRows = []; smRenderTable(); });
+  }
+
+  function smSessionForm(existing) {
+    var isEdit = !!existing;
+    var body = UI.el("div", { class: "col gap-4" });
+
+    body.innerHTML =
+      '<div class="field">' +
+        '<label class="field-label field-req" for="smName">Session name</label>' +
+        '<input class="input" id="smName" placeholder="1 Hour" maxlength="255" ' +
+          'value="' + UI.esc(existing ? existing.session_name : "") + '" data-autofocus>' +
+        '<div class="field-hint">What staff will see when starting a session.</div>' +
+      "</div>" +
+
+      '<div class="field">' +
+        '<label class="field-label field-req" for="smType">Duration type</label>' +
+        '<select class="select" id="smType">' +
+          SM_TYPES.map(function (t) {
+            return '<option value="' + t.value + '"' +
+              (existing && existing.duration_type === t.value ? " selected" : "") + ">" + t.label + "</option>";
+          }).join("") +
+        "</select>" +
+      "</div>" +
+
+      '<div class="field" id="smDurationField">' +
+        '<label class="field-label field-req" for="smDuration">Duration</label>' +
+        '<input class="input" id="smDuration" type="number" min="1" step="1" placeholder="1" ' +
+          'value="' + UI.esc(existing && existing.duration !== null ? existing.duration : "") + '">' +
+      "</div>" +
+
+      '<div class="notice" data-status="accent" id="smPreview"></div>' +
+
+      '<label class="switch">' +
+        '<input type="checkbox" id="smStatus"' +
+          (!existing || existing.status === "ACTIVE" ? " checked" : "") + '>' +
+        '<span class="switch-track"></span>' +
+        '<span style="font-size:13px">Active — available when starting a session</span>' +
+      "</label>";
+
+    var dialog = UI.modal({
+      title: isEdit ? "Edit session" : "Add session",
+      description: isEdit ? existing.session_name : "Create a gaming duration staff can sell.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: isEdit ? "Save changes" : "Create session",
+          variant: "primary",
+          icon: "check",
+          onClick: function (ctx) {
+            var name = ctx.body.querySelector("#smName").value.trim();
+            var type = ctx.body.querySelector("#smType").value;
+            var durationRaw = ctx.body.querySelector("#smDuration").value;
+            var status = ctx.body.querySelector("#smStatus").checked ? "ACTIVE" : "INACTIVE";
+
+            if (!name) {
+              Motion.shake(ctx.body.querySelector("#smName"));
+              UI.toast.warn("A session name is required");
+              return false;
+            }
+            if (type !== "UNLIMITED") {
+              var n = parseInt(durationRaw, 10);
+              if (!n || n < 1) {
+                Motion.shake(ctx.body.querySelector("#smDuration"));
+                UI.toast.warn("Enter a duration of at least 1");
+                return false;
+              }
+            }
+
+            var payload = {
+              session_name: name,
+              duration_type: type,
+              duration: type === "UNLIMITED" ? null : parseInt(durationRaw, 10),
+              status: status
+            };
+
+            var call = isEdit
+              ? Store.updateSessionMaster(existing.id, payload)
+              : Store.createSessionMaster(payload);
+
+            return call
+              .then(function (r) {
+                UI.toast.ok(isEdit ? "Session updated" : "Session created", r.data.session_name);
+                return Promise.all([smLoad(), loadMasters()]);
+              })
+              .then(function () { return true; })
+              .catch(function (err) {
+                UI.toast.error(isEdit ? "Could not save" : "Could not create", err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+
+    var typeSelect = body.querySelector("#smType");
+    var durationField = body.querySelector("#smDurationField");
+    var durationInput = body.querySelector("#smDuration");
+    var preview = body.querySelector("#smPreview");
+
+    function refresh() {
+      var type = typeSelect.value;
+      var unlimited = type === "UNLIMITED";
+      durationField.classList.toggle("hidden", unlimited);
+
+      if (unlimited) {
+        preview.setAttribute("data-status", "warning");
+        preview.innerHTML = Icon("clock", 16) +
+          "<div>No time limit — the session runs until staff end it. " +
+          "Duration is stored as <strong>NULL</strong>.</div>";
+        return;
+      }
+
+      var minutes = smMinutesFor(type, durationInput.value);
+      if (minutes === null) {
+        preview.setAttribute("data-status", "idle");
+        preview.innerHTML = Icon("info", 16) + "<div>Enter a duration to see the calculated minutes.</div>";
+        return;
+      }
+      preview.setAttribute("data-status", "accent");
+      preview.innerHTML = Icon("check", 16) +
+        "<div>Stored as <strong>" + minutes + " minutes</strong>" +
+        (type === "HOURS" ? " (" + durationInput.value + " × 60)" : "") + ".</div>";
+    }
+
+    typeSelect.addEventListener("change", refresh);
+    durationInput.addEventListener("input", refresh);
+    refresh();
+
+    return dialog;
+  }
+
+  function smConfirmDelete(row) {
+    UI.confirm({
+      title: "Delete " + row.session_name + "?",
+      message: row.price_count
+        ? "This session has " + row.price_count + " price(s) configured. Deleting removes those prices too. " +
+          "Deactivating keeps the history instead."
+        : "This cannot be undone.",
+      confirmLabel: "Delete",
+      variant: "danger"
+    }).then(function (ok) {
+      if (!ok) return;
+      Store.deleteSessionMaster(row.id, row.price_count > 0)
+        .then(function () { UI.toast.ok("Session deleted", row.session_name); return Promise.all([smLoad(), loadMasters()]); })
+        .catch(function (err) { UI.toast.error("Could not delete", err.message); });
+    });
+  }
+
+  function smSyncFilters() {
+    if (!smPane) return;
+    UI.$$("#smFilters .chip", smPane).forEach(function (chip) {
+      chip.setAttribute("aria-pressed", String(chip.dataset.status === smStatusFilter));
+    });
+  }
+
+  function smRenderTable() {
+    if (!smPane) return;
+    var host = smPane.querySelector("#smTable");
+    if (!host) return;
+    UI.clear(host);
+
+    if (smLoading && !smRows.length) { host.appendChild(UI.skeletonRows(6)); return; }
+    if (smLoadError) { host.appendChild(UI.errorState(smLoadError, smLoad)); return; }
+
+    if (!smRows.length) {
+      host.appendChild(UI.emptyState({
+        icon: "clock",
+        title: smQuery || smStatusFilter ? "No durations match" : "No durations yet",
+        text: smQuery || smStatusFilter
+          ? "Nothing matches the current search and filter."
+          : "Create the durations your café sells — 30 minutes, 1 hour, a night package.",
+        actions: [{
+          label: smQuery || smStatusFilter ? "Clear filters" : "Add duration",
+          icon: smQuery || smStatusFilter ? "close" : "plus",
+          variant: "primary",
+          onClick: function () {
+            if (smQuery || smStatusFilter) {
+              smQuery = ""; smStatusFilter = "";
+              smPane.querySelector("#smSearch").value = "";
+              smSyncFilters();
+              smLoad();
+            } else smSessionForm(null);
+          }
+        }]
+      }));
+      return;
+    }
+
+    var table = UI.el("table", { class: "tbl" });
+    table.innerHTML =
+      "<thead><tr><th>ID</th><th>Session name</th><th>Type</th>" +
+      "<th class='td-num'>Duration</th><th class='td-num'>Minutes</th>" +
+      "<th>Prices</th><th>Status</th><th></th></tr></thead>";
+    var tbody = UI.el("tbody");
+
+    smRows.forEach(function (row) {
+      var active = row.status === "ACTIVE";
+      var tr = UI.el("tr", { dataset: { status: active ? "online" : "idle" } });
+      tr.innerHTML =
+        '<td class="mono faint">#' + row.id + "</td>" +
+        "<td><strong>" + UI.esc(row.session_name) + "</strong></td>" +
+        '<td><span class="badge badge-plain">' + UI.esc(row.duration_type) + "</span></td>" +
+        '<td class="td-num">' + (row.duration === null ? '<span class="faint">—</span>' : row.duration) + "</td>" +
+        '<td class="td-num mono">' + UI.esc(smDurationText(row)) + "</td>" +
+        "<td>" + (row.price_count
+          ? '<span class="badge badge-plain">' + row.price_count + "</span>"
+          : '<span class="faint">none</span>') + "</td>" +
+        '<td><span class="badge" data-status="' + (active ? "online" : "idle") + '">' +
+          (active ? "Active" : "Inactive") + "</span></td>" +
+        '<td class="td-actions"></td>';
+
+      var actions = tr.querySelector(".td-actions");
+
+      var editBtn = UI.el("button", {
+        class: "btn btn-outline btn-sm btn-icon", html: Icon("edit", 13), "data-tip": "Edit"
+      });
+      editBtn.addEventListener("click", function () { smSessionForm(row); });
+
+      var toggleBtn = UI.el("button", {
+        class: "btn btn-sm btn-icon " + (active ? "btn-warn" : "btn-ok"),
+        html: Icon(active ? "pause" : "check", 13),
+        "data-tip": active ? "Deactivate" : "Activate"
+      });
+      toggleBtn.addEventListener("click", function () {
+        Store.setSessionMasterStatus(row.id, active ? "INACTIVE" : "ACTIVE")
+          .then(function (r) { UI.toast.ok(r.message, row.session_name); return Promise.all([smLoad(), loadMasters()]); })
+          .catch(function (err) { UI.toast.error("Could not update status", err.message); });
+      });
+
+      var delBtn = UI.el("button", {
+        class: "btn btn-danger btn-sm btn-icon", html: Icon("trash", 13), "data-tip": "Delete"
+      });
+      delBtn.addEventListener("click", function () { smConfirmDelete(row); });
+
+      actions.appendChild(editBtn);
+      actions.appendChild(toggleBtn);
+      actions.appendChild(delBtn);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    var wrap = UI.el("div", { class: "table-wrap" });
+    wrap.appendChild(table);
+    host.appendChild(wrap);
+  }
+
+  function renderDurationsPane(pane) {
+    smPane = pane;
+    pane.innerHTML =
+      '<div class="toolbar">' +
+        '<div class="search" style="width:300px">' + Icon("search", 15) +
+          '<input class="input" id="smSearch" type="search" placeholder="Search session name…" autocomplete="off">' +
+        "</div>" +
+        '<div class="row gap-2" id="smFilters">' +
+          '<button class="chip" data-status="" aria-pressed="true">All</button>' +
+          '<button class="chip" data-status="ACTIVE">Active</button>' +
+          '<button class="chip" data-status="INACTIVE">Inactive</button>' +
+        "</div>" +
+        '<div style="flex:1"></div>' +
+        '<button class="btn btn-outline btn-sm" type="button" id="smRefresh">' + Icon("refresh", 14) +
+          '<span class="btn-label">Refresh</span></button>' +
+        '<button class="btn btn-primary btn-sm" type="button" id="smAdd">' + Icon("plus", 14) +
+          '<span class="btn-label">Add duration</span></button>' +
+      "</div>" +
+      '<div class="card card-body-flush" id="smTable"></div>';
+
+    pane.querySelector("#smAdd").addEventListener("click", function () { smSessionForm(null); });
+
+    var refreshBtn = pane.querySelector("#smRefresh");
+    refreshBtn.addEventListener("click", function () { UI.withBusy(refreshBtn, function () { return smLoad(); }); });
+
+    var search = pane.querySelector("#smSearch");
+    search.value = smQuery;
+    search.addEventListener("input", function () {
+      clearTimeout(smSearchTimer);
+      smSearchTimer = setTimeout(function () { smQuery = search.value.trim(); smLoad(); }, 250);
+    });
+
+    UI.$$("#smFilters .chip", pane).forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        smStatusFilter = chip.dataset.status;
+        smSyncFilters();
+        smLoad();
+      });
+    });
+
+    smSyncFilters();
+    smLoad();
   }
 
   /* ==========================================================================
@@ -141,7 +478,9 @@
        an empty Session Master still blocks, because a price is per duration
        and there is nothing sensible to invent there. */
     if (!sessions.length) {
-      UI.toast.warn("No active sessions", "Create a session in Session Master first.");
+      UI.toast.warn("No active durations", "Add a duration in the Durations tab first.");
+      activeTab = "durations";
+      syncTab();
       return;
     }
 
@@ -642,10 +981,26 @@
      PAGE
      ========================================================================== */
   var activeTab = "prices";
+  var tabPage = null, pricesPane = null, topupPane = null, durationsPane = null, priceActions = null;
+
+  /* Module-level (not local to mount()) so priceForm()'s "no durations yet"
+     redirect above can jump tabs from outside the mount closure. */
+  function syncTab() {
+    if (!tabPage) return;
+    UI.$$("#gpTabs button", tabPage).forEach(function (btn) {
+      btn.setAttribute("aria-selected", String(btn.dataset.tab === activeTab));
+    });
+    pricesPane.classList.toggle("hidden", activeTab !== "prices");
+    durationsPane.classList.toggle("hidden", activeTab !== "durations");
+    topupPane.classList.toggle("hidden", activeTab !== "topup");
+    priceActions.classList.toggle("hidden", activeTab !== "prices");
+    if (activeTab === "durations" && !durationsPane.childElementCount) renderDurationsPane(durationsPane);
+    if (activeTab === "topup" && !topupPane.childElementCount) renderTopupPane(topupPane);
+  }
 
   global.CXPages["gaming-prices"] = {
-    title: "Gaming Price Master",
-    subtitle: "What each game costs per session",
+    title: "Gaming Prices",
+    subtitle: "Durations, prices and activities — everything you sell by the session",
 
     mount: function (root) {
       rootEl = root;
@@ -653,8 +1008,8 @@
       page.innerHTML =
         '<div class="page-head">' +
           "<div>" +
-            '<div class="page-title">Gaming Price Master</div>' +
-            '<div class="page-sub">Game → Session → Duration → Price. Names and durations come from the masters.</div>' +
+            '<div class="page-title">Gaming Prices</div>' +
+            '<div class="page-sub">Durations, activities and what each one costs — all in one place.</div>' +
           "</div>" +
           '<div class="page-actions" id="gpPriceActions">' +
             '<button class="btn btn-outline" id="gpRefresh">' + Icon("refresh", 15) +
@@ -667,6 +1022,7 @@
         "</div>" +
         '<div class="tabs" id="gpTabs" style="margin-bottom:var(--s-5)">' +
           '<button data-tab="prices" aria-selected="true">Prices</button>' +
+          '<button data-tab="durations" aria-selected="false">Durations</button>' +
           '<button data-tab="topup" aria-selected="false">Coin Top-up</button>' +
         "</div>" +
         '<div id="gpPricesPane">' +
@@ -685,6 +1041,7 @@
           "</div>" +
           '<div class="card card-body-flush" id="gpTable"></div>' +
         "</div>" +
+        '<div id="gpDurationsPane" class="hidden"></div>' +
         '<div id="gpTopupPane" class="hidden"></div>';
       root.appendChild(page);
 
@@ -716,20 +1073,12 @@
         });
       });
 
-      var pricesPane = page.querySelector("#gpPricesPane");
-      var topupPane = page.querySelector("#gpTopupPane");
-      var priceActions = page.querySelector("#gpPriceActions");
+      tabPage = page;
+      pricesPane = page.querySelector("#gpPricesPane");
+      durationsPane = page.querySelector("#gpDurationsPane");
+      topupPane = page.querySelector("#gpTopupPane");
+      priceActions = page.querySelector("#gpPriceActions");
 
-      function syncTab() {
-        UI.$$("#gpTabs button", page).forEach(function (btn) {
-          btn.setAttribute("aria-selected", String(btn.dataset.tab === activeTab));
-        });
-        var onPrices = activeTab === "prices";
-        pricesPane.classList.toggle("hidden", !onPrices);
-        topupPane.classList.toggle("hidden", onPrices);
-        priceActions.classList.toggle("hidden", !onPrices);
-        if (!onPrices && !topupPane.childElementCount) renderTopupPane(topupPane);
-      }
       UI.$$("#gpTabs button", page).forEach(function (btn) {
         btn.addEventListener("click", function () {
           activeTab = btn.dataset.tab;
@@ -744,8 +1093,11 @@
 
     unmount: function () {
       clearTimeout(searchTimer);
+      clearTimeout(smSearchTimer);
       rootEl = null;
       topupRoot = null;
+      smPane = null;
+      tabPage = null; pricesPane = null; topupPane = null; durationsPane = null; priceActions = null;
     }
   };
 })(window);

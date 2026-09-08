@@ -42,6 +42,7 @@
     running: {},                // pcName -> { appName, appPath, remaining, totalSeconds } (launch timer)
     sessions: {},               // pcName -> live session from /api/sessions
     helpRequests: {},           // pcName -> { at } — customer tapped Call staff, cleared once staff open that station
+    signedIn: {},               // pcName -> { customerName, since } — signed in at the kiosk, no session yet
     launchers: {},              // pcName -> { Steam: {installed, path}, ... } reported by the station
     steamAuth: {},              // pcName -> { state, account, at } — live venue-Steam sign-in progress
     me: null,                   // signed-in principal from /api/staff/me
@@ -208,6 +209,11 @@
     var session = state.sessions[name];
     if (session) return session.status === "paused" ? "paused" : "gaming";
     if (state.running[name]) return "gaming";
+    /* Signed in at the kiosk but no session yet — occupied, not available,
+       even though nothing is being billed. Checked after session/running so
+       an active session always wins if the sign-in flag happens to be
+       stale. */
+    if (state.signedIn[name]) return "occupied";
     if (state.connected.indexOf(name) !== -1) return "online";
 
     /* A station with no address is available, not offline.
@@ -263,7 +269,7 @@
 
   function counts() {
     var c = {
-      total: state.pcs.length, online: 0, offline: 0, running: 0, inactive: 0,
+      total: state.pcs.length, online: 0, offline: 0, running: 0, inactive: 0, occupied: 0,
       discovered: state.discovered.length, failing: 0,
       /* Kept apart from online/offline on purpose. A pool table is neither
          connected nor disconnected — counting it as "online" made the
@@ -286,6 +292,10 @@
       // held by that session, not free and not actually offline.
       if (s === "gaming" || s === "paused") { c.running++; bucket.running++; if (networked) c.online++; }
       else if (s === "online") { if (networked) c.online++; bucket.free++; }
+      // Connected and accounted for, same as "online" — just not free for a
+      // new customer right now, so left out of bucket.free/running/offline
+      // rather than folded into one that would misstate what it means.
+      else if (s === "occupied") { c.occupied++; if (networked) c.online++; }
       else if (s === "inactive") { c.inactive++; }
       else { c.offline++; bucket.offline++; }
 
@@ -408,6 +418,16 @@
   /** Remove the record entirely. Refused if the station has sessions. */
   function deletePC(pcId) {
     return request("/api/pcs/" + pcId + "?permanent=true", { method: "DELETE" });
+  }
+
+  /* The canonical station types (PC, PS5, Pool, …) — the same seeded list
+     the super-admin plan editor offers, platform-wide, not scoped to what
+     this café happens to have used already. Used to fill the "Add station"
+     and "Edit station" Type dropdowns so PS5 (and the rest) are always
+     there to pick, not something staff have to type once via "Other…"
+     before it "exists" for this café. */
+  function listStationTypes() {
+    return request("/api/pcs/station-types").then(function (d) { return d.data || []; });
   }
 
   function getMacAddress() { return bridge("getMacAddress"); }
@@ -668,6 +688,11 @@
     return request("/api/settings/" + encodeURIComponent(key), {
       method: "PUT", body: JSON.stringify({ value: String(value) })
     });
+  }
+  /* Pushes a just-saved staff unlock PIN to every station connected right
+     now, rather than leaving it to whenever each one next reconnects. */
+  function refreshUnlockPin() {
+    return bridge("refreshUnlockPin");
   }
 
   /* ==========================================================================
@@ -2013,6 +2038,32 @@
     }
 
     /*
+     * A customer signed in at a station's kiosk with no session running yet,
+     * or signed out again without ever starting one. Visibility only — see
+     * pcStatus() below, which reads this map to tell "occupied but not
+     * playing" apart from a genuinely empty station. A session starting
+     * already outranks this in pcStatus(), so nothing needs to clear the
+     * entry there; it's left to expire naturally on sign-out or the next
+     * sign-in overwriting it.
+     */
+    if (api.onCustomerSignedIn) {
+      api.onCustomerSignedIn(function (data) {
+        var pcName = data && data.pcName;
+        if (!pcName) return;
+        state.signedIn[pcName] = { customerName: data.customerName || null, since: data.since || new Date().toISOString() };
+        emit("signed-in", state.signedIn);
+      });
+    }
+    if (api.onCustomerSignedOut) {
+      api.onCustomerSignedOut(function (data) {
+        var pcName = data && data.pcName;
+        if (!pcName || !state.signedIn[pcName]) return;
+        delete state.signedIn[pcName];
+        emit("signed-in", state.signedIn);
+      });
+    }
+
+    /*
      * The game a self-started session was for never actually launched. The
      * customer never played a second of it, so the session is cancelled —
      * same as staff cancelling by hand, charges nothing — rather than left
@@ -2352,6 +2403,7 @@
     assignStations: assignStations,
     getSettings: getSettings,
     setSetting: setSetting,
+    refreshUnlockPin: refreshUnlockPin,
 
     // customers & wallet
     getCustomers: getCustomers,
@@ -2371,6 +2423,7 @@
     deactivatePC: deactivatePC,
     restorePC: restorePC,
     deletePC: deletePC,
+    listStationTypes: listStationTypes,
     getMacAddress: getMacAddress,
 
     // software

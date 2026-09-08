@@ -245,6 +245,23 @@ function handleStationRequest(msg, ws) {
     if (win) win.webContents.send("station:call-staff", { pcName });
     return true;
   }
+  /*
+   * A customer signed in or out at the kiosk — before any session or
+   * billing exists. Purely visibility: it tells the floor a station is
+   * occupied by someone browsing, not the empty seat it would otherwise
+   * read as, so staff can tell "nobody's there" apart from "somebody's
+   * there and hasn't started playing yet."
+   */
+  if (msg.type === "CUSTOMER_SIGNED_IN") {
+    if (win) win.webContents.send("station:customer-signed-in", {
+      pcName, customerName: msg.customerName || null, since: msg.since || new Date().toISOString()
+    });
+    return true;
+  }
+  if (msg.type === "CUSTOMER_SIGNED_OUT") {
+    if (win) win.webContents.send("station:customer-signed-out", { pcName });
+    return true;
+  }
   /* A logged-in customer opened the "choose a game" screen while idle — send
      what they need to start their own session (the café's games and prices
      for this station), independent of whether one is already running. */
@@ -868,6 +885,42 @@ function startTokenServer() {
   tokenServer = server;
   server.listen(TOKEN_SERVER_PORT, () => {
     console.log(`Token receiver server listening on port ${TOKEN_SERVER_PORT} with CORS enabled`);
+  });
+
+  startDiscoveryBroadcastListener();
+}
+
+/*
+ * A station on a different machine can't reach /api/pc-discovery above by
+ * TCP without already knowing this console's IP — which is exactly what
+ * discovery is supposed to establish. This UDP socket hears the LAN
+ * broadcast a client-app sends instead, then relays it into the same HTTP
+ * handler via loopback so none of that handler's logic is duplicated.
+ */
+function startDiscoveryBroadcastListener() {
+  const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
+
+  socket.on('message', (msg) => {
+    const relay = http.request({
+      hostname: '127.0.0.1',
+      port: TOKEN_SERVER_PORT,
+      path: '/api/pc-discovery',
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': msg.length }
+    });
+    relay.on('error', (err) => console.error('[PC Discovery] UDP relay failed:', err.message));
+    relay.write(msg);
+    relay.end();
+  });
+
+  socket.on('error', (err) => {
+    console.error('[PC Discovery] UDP listener error:', err.message);
+    socket.close();
+  });
+
+  socket.bind(TOKEN_SERVER_PORT, () => {
+    socket.setBroadcast(true);
+    console.log(`[PC Discovery] Listening for LAN broadcasts on UDP ${TOKEN_SERVER_PORT}`);
   });
 }
 
@@ -1854,6 +1907,27 @@ function registerIPCHandlers() {
     }
   });
   
+  /*
+   * The Settings page calls this right after saving or clearing the staff
+   * unlock PIN. Without it a change would sit invisible until every station
+   * happened to reconnect — cachedUnlockPin below is fetched once and then
+   * reused for the rest of this console's run, precisely so a station never
+   * has to phone home to check it during the outage the PIN exists for. That
+   * means nothing here refreshes on its own; this is the one path that does.
+   */
+  ipcMain.handle('station:refresh-unlock-pin', async () => {
+    cachedUnlockPin = null;
+    await fetchStaffUnlockPin();
+    const pushed = new Set();
+    clients.forEach((client) => {
+      if (client?.ws && !pushed.has(client.ws)) {
+        pushed.add(client.ws);
+        pushStationConfig(client.ws);
+      }
+    });
+    return { success: true, stations: pushed.size };
+  });
+
   handlersRegistered = true;
   console.log('IPC handlers registered');
 }

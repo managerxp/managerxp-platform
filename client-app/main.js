@@ -5,6 +5,7 @@ const path = require("path");
 const { exec,spawn } = require("child_process");
 const fs = require("fs");
 const http = require("http");
+const dgram = require("dgram");
 const telemetry = require("./telemetry");
 const updater = require("./updater");
 
@@ -180,6 +181,11 @@ public static class CafeXPKbdGuard {
                msg == WM_SYSKEYUP;
     }
 
+    private static bool IsKeyDownMessage(IntPtr wParam) {
+        int msg = wParam.ToInt32();
+        return msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN;
+    }
+
     private static bool IsBlockedShortcut(int vk) {
         bool ctrl = IsDown(VK_CONTROL);
         bool alt = IsDown(VK_MENU);
@@ -247,6 +253,17 @@ public static class CafeXPKbdGuard {
                 IsDown(VK_MENU) &&
                 IsDown(VK_SHIFT)) {
                 return CallNextHookEx(hookId, nCode, wParam, lParam);
+            }
+
+            // Alt+Tab is still swallowed — Windows' own switcher would list
+            // every open window, not just CafeXP and the running game — but
+            // announced first so Node can do the narrower two-window switch
+            // itself. Only on the down transition, or one physical press
+            // would print this twice (once per key-repeat is still possible
+            // if held, which Node treats as idempotent).
+            if (IsDown(VK_MENU) && vk == VK_TAB && IsKeyDownMessage(wParam)) {
+                Console.WriteLine("ALTTAB");
+                return (IntPtr)1;
             }
 
             if (IsBlockedShortcut(vk)) {
@@ -320,7 +337,12 @@ function startWindowsKioskGuard() {
         windowsKioskGuard = child;
 
         child.stdout.on("data", data => {
-            console.log("[Kiosk] Windows keyboard guard:", data.toString().trim());
+            data.toString().split(/\r?\n/).forEach((line) => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+                if (trimmed === "ALTTAB") { handleAltTabToggle(); return; }
+                console.log("[Kiosk] Windows keyboard guard:", trimmed);
+            });
         });
 
         child.stderr.on("data", data => {
@@ -390,6 +412,74 @@ function syncWindowsKeyboardBlocker() {
     } else {
         stopWindowsKeyboardBlocker();
     }
+}
+
+/*
+ * Alt+Tab, scoped to exactly two windows: CafeXP and whatever game is
+ * currently running — nothing else. The native guard above swallows every
+ * Alt+Tab so Windows' own switcher (which would list every open window,
+ * not just those two) never appears; this is what actually does the
+ * switching, in response to the "ALTTAB" line the guard prints.
+ *
+ * With no game running there is nothing to switch to, so it does nothing —
+ * a customer at an idle, locked station has nowhere for this to send them.
+ */
+function handleAltTabToggle() {
+    if (!kioskLocked || !alive(win)) return;
+
+    const appName = currentRunningApp();
+    if (!appName) return;
+
+    if (win.isFocused()) {
+        const info = runningProcesses.get(appName);
+        const exeName = deriveExeName(info && info.appPath, appName);
+        focusRunningExe(exeName);
+    } else {
+        win.show();
+        win.focus();
+    }
+}
+
+/*
+ * Foreground another process's main window from ours.
+ *
+ * Windows normally refuses SetForegroundWindow calls made on another
+ * process's behalf (the "foreground lock" — otherwise any background app
+ * could steal focus at will); AttachThreadInput is the standard, narrow way
+ * around that, used only for the instant of the switch and detached again
+ * right after.
+ */
+function focusRunningExe(exeName) {
+    if (!exeName) return;
+    const script = String.raw`
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class CafeXPFocus {
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+    [DllImport("user32.dll")] public static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+    [DllImport("kernel32.dll")] public static extern uint GetCurrentThreadId();
+    public static void Focus(IntPtr target) {
+        IntPtr fg = GetForegroundWindow();
+        uint fgThread; GetWindowThreadProcessId(fg, out fgThread);
+        uint curThread = GetCurrentThreadId();
+        bool attached = fgThread != curThread && AttachThreadInput(curThread, fgThread, true);
+        ShowWindow(target, 9);
+        SetForegroundWindow(target);
+        if (attached) AttachThreadInput(curThread, fgThread, false);
+    }
+}
+'@
+$p = Get-Process -Name '${exeName}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+if ($p) { [CafeXPFocus]::Focus($p.MainWindowHandle) }
+`;
+    const child = spawn("powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script],
+        { windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
+    child.stderr.on("data", (data) => log(`Could not switch to ${exeName}: ${data.toString().trim()}`));
 }
 
 /*
@@ -543,6 +633,14 @@ function markSessionGameConfirmed() {
 
 function launchGame(game) {
   if (!game || typeof game !== 'object') return;
+  /* Already running — a double-tap on Play, or this function firing twice
+     for the same session, must not spawn a second copy of the game or
+     discard the running timer card's progress and restart it from the
+     full amount. */
+  if (runningProcesses.has(game.name)) {
+    log(`${game.name} is already running — ignoring duplicate launch request`);
+    return;
+  }
   // A fresh attempt at the same title supersedes any earlier cancel.
   cancelledLaunches.delete(game.name);
   const isSessionStart = isFirstLaunchForSession();
@@ -1262,6 +1360,19 @@ function createWindow() {
     }
   });
 
+  /* The customer tapped Extend on the low-time prompt. The console already
+     auto-approves this (see server-app's onStationExtendRequest) — nothing
+     here decides whether it's allowed, that's the portal's job via
+     session.can_extend before it ever offers the button. */
+  ipcMain.on('extend-request', (event, blocks) => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "EXTEND_REQUEST", simId: SIM_ID, pcName: SIM_ID, blocks: Number(blocks) || 1 }));
+      log(`Sent EXTEND_REQUEST to console (+${Number(blocks) || 1} block)`);
+    } else {
+      log("Extend requested but console not connected");
+    }
+  });
+
   /* The customer opened the game picker while idle and wants to see what they
      could start — this station's games and this café's prices. */
   ipcMain.on('request-start-options', () => {
@@ -1269,6 +1380,74 @@ function createWindow() {
       serverConnection.send(JSON.stringify({ type: "REQUEST_START_OPTIONS", simId: SIM_ID }));
       log("Sent REQUEST_START_OPTIONS to console");
     }
+  });
+
+  /*
+   * Station system tools — screen resolution, NVIDIA Control Panel, Device
+   * Manager — from the Help menu, with no staff PIN. Available any time,
+   * not just mid-session: there is no gate on who is allowed to reach these.
+   *
+   * There is no way to show an ordinary window over an always-on-top kiosk
+   * one, so using any of these makes the same trade a remote "Minimise
+   * client" already makes (see runPowerAction's minimize-client): kiosk
+   * mode and the low-level keyboard guard both drop, the window minimises,
+   * and reseal() — fired when the customer restores it, e.g. by clicking
+   * the CafeXP taskbar icon — puts both back. kioskLocked itself is never
+   * touched, so nothing here can leave a station permanently unsealed.
+   *
+   * General desktop access is deliberately NOT offered here — see the
+   * ALTTAB handling below instead, which lets a customer switch between
+   * CafeXP and their running game specifically, without opening the
+   * desktop up to anything else.
+   */
+  const SYSTEM_PANELS = {
+    display: {
+      label: 'Screen resolution',
+      open: () => { shell.openExternal('ms-settings:display'); return { success: true }; }
+    },
+    nvidia: {
+      label: 'NVIDIA Control Panel',
+      open: () => {
+        // No universal launch command for this one — different driver
+        // versions install it in different places, and not every station
+        // even has an NVIDIA card. Best-effort across the common paths,
+        // with a plain "not here" instead of a dead click if none match.
+        const candidates = [
+          'C:\\Program Files\\NVIDIA Corporation\\Control Panel Client\\nvcplui.exe',
+          'C:\\Windows\\System32\\nvcplui.exe'
+        ];
+        const found = candidates.find((p) => { try { return fs.existsSync(p); } catch (e) { return false; } });
+        if (!found) return { success: false, message: 'NVIDIA Control Panel is not installed on this station.' };
+        exec(`"${found}"`, (err) => { if (err) log(`NVIDIA Control Panel failed to launch: ${err.message}`); });
+        return { success: true };
+      }
+    },
+    devicemgmt: {
+      label: 'Device Manager',
+      open: () => {
+        exec('mmc.exe devmgmt.msc', (err) => { if (err) log(`Device Manager failed to launch: ${err.message}`); });
+        return { success: true };
+      }
+    }
+  };
+
+  ipcMain.handle('system:open-panel', async (_, panel) => {
+    const entry = SYSTEM_PANELS[panel];
+    if (!entry) return { success: false, message: 'Unknown panel' };
+    if (!alive(win)) return { success: false, message: 'The client window is not available' };
+
+    const result = entry.open();
+    if (!result.success) return result;
+
+    stopWindowsKeyboardBlocker();
+    win.setKiosk(false);
+    win.setFullScreen(false);
+    win.minimize();
+    log(`[Station tools] Opened ${entry.label} — kiosk dropped until the client window is restored.`);
+    return {
+      success: true,
+      message: entry.openMessage || `${entry.label} opening — click the CafeXP icon in the taskbar to come back.`
+    };
   });
 
   /*
@@ -1313,8 +1492,27 @@ function createWindow() {
 
   // IPC handler for storing authenticated user details
   ipcMain.on('store-user-info', (event, user) => {
+    /*
+     * A customer signed in or out — the one choke point both paths already
+     * run through (login.html on success, Session.signOut() with a null
+     * user). Told to the console so a station that is occupied but not yet
+     * paying can be told apart from one that is genuinely empty, instead of
+     * both reading as "Available" — see pcStatus()'s new "occupied" state
+     * in server-app. Only sent on the null↔object transition, not on every
+     * call, so a page that re-stores the same user does not spam the floor
+     * with repeat signals.
+     */
+    const wasSignedIn = !!userInfo;
+    const isSignedIn = !!user;
     userInfo = user;
     log(`User info stored`);
+
+    if (isSignedIn !== wasSignedIn && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify(isSignedIn
+        ? { type: "CUSTOMER_SIGNED_IN", simId: SIM_ID, pcName: SIM_ID, customerName: user.customer_name || user.name || null, since: new Date().toISOString() }
+        : { type: "CUSTOMER_SIGNED_OUT", simId: SIM_ID, pcName: SIM_ID }));
+      log(`Sent CUSTOMER_SIGNED_${isSignedIn ? "IN" : "OUT"} to console`);
+    }
   });
 
   // IPC handler for retrieving authentication token
@@ -1675,6 +1873,13 @@ function createWindow() {
     if (win.isFullScreen()) return;   // already sealed — do not re-apply
     win.setKiosk(true);
     win.setFullScreen(true);
+    /* The visual seal alone is not the whole lock: whatever dropped it
+       (a remote "Minimise client", or a station tool opened locally) also
+       stopped the low-level keyboard guard so Alt+Tab et al. would reach
+       the desktop. Restarting it here, not just on the explicit
+       restore-client path, is what stops Alt+Tab staying usable for the
+       rest of the session after the seal visually comes back. */
+    syncKioskShortcuts();
   };
 
   win.on('restore', reseal);
@@ -1871,8 +2076,8 @@ function broadcastPCInfo() {
     req.on('error', (error) => {
       // Expected on a real café floor: the console almost never runs on this
       // same machine, so nothing is listening on localhost:SERVER_APP_PORT.
-      // That is not fatal — reportMacToBackend() below is the path that
-      // actually reaches the console in that layout.
+      // That is not fatal — the UDP broadcast below is what actually reaches
+      // the console in that layout.
       log(`⚠ Local discovery relay unreachable (expected on a separate console machine): ${error.message}`);
     });
 
@@ -1880,10 +2085,34 @@ function broadcastPCInfo() {
     req.write(payload);
     req.end();
 
+    broadcastPCInfoOverLAN(payload);
     reportMacToBackend(localIP, macAddress);
   } catch (error) {
     log(`Error broadcasting PC info: ${error.message}`);
   }
+}
+
+/*
+ * Send the same PC_DISCOVERY payload as a UDP broadcast on SERVER_APP_PORT.
+ * This is the path that actually crosses machines on a real café floor: the
+ * console runs on a different PC, so it has no fixed address this client can
+ * know in advance — broadcasting to the LAN's broadcast address is how a
+ * console listening on that port hears about a station without either side
+ * being configured with the other's IP by hand.
+ */
+function broadcastPCInfoOverLAN(payload) {
+  const socket = dgram.createSocket('udp4');
+  socket.once('error', (error) => {
+    log(`⚠ LAN discovery broadcast failed: ${error.message}`);
+    socket.close();
+  });
+  socket.bind(() => {
+    socket.setBroadcast(true);
+    const buf = Buffer.from(payload);
+    socket.send(buf, 0, buf.length, SERVER_APP_PORT, '255.255.255.255', () => {
+      socket.close();
+    });
+  });
 }
 
 /*
@@ -2668,7 +2897,17 @@ function listen() {
 
       if (msg.type === "LAUNCH_APP") {
         log(`Launching: ${msg.appName}`);
-        if (msg.appPath) {
+        /* A repeat LAUNCH_APP for a title already tracked as running — a
+           resent command, a re-click at the console on an already-active
+           station — must not spawn a second copy of the game or throw away
+           the running timer card's progress. Without this guard the
+           customer's on-screen clock appears to reset to the full amount
+           (and re-shows "Loading…" if still inside the buffer) with
+           nothing they did to explain it — the actual trigger happened at
+           the console, invisible from the station. */
+        if (msg.appPath && runningProcesses.has(msg.appName)) {
+          log(`${msg.appName} is already running on this station — ignoring duplicate launch request`);
+        } else if (msg.appPath) {
           // Tell the portal a launch started so it can show its transition.
           // Purely a UI notification; the launch itself is unchanged.
           sendToWindow(win, "app-launching", { appName: msg.appName });

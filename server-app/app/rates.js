@@ -107,32 +107,42 @@
   }
 
   /*
-   * The station types this café actually has.
+   * The station types on offer when adding or editing a station.
    *
-   * Two sources, because either alone is incomplete: the types already on the
-   * floor (so an existing PS5 offers "PS5" even if nobody has priced one yet)
-   * and the types it has priced (so the first pool table can be created before
-   * any pool table exists). Sorted, de-duplicated, never invented — a café
-   * that sells bowling gets Bowling and one that does not, does not.
+   * Three sources, because any one alone is incomplete: the types already on
+   * the floor (so an existing PS5 offers "PS5" even if nobody has priced one
+   * yet), the types this café has priced (so the first pool table can be
+   * created before any pool table exists), and the platform's own canonical
+   * list — PS5, Pool, Dart, VR and the rest, the same seeded set the
+   * super-admin plan editor works from. That third source is what makes PS5
+   * show up on a brand-new café's very first station, instead of forcing
+   * staff to type it once via "Other…" before it "exists" here — and typing
+   * it is exactly how one café ends up with "PS5" and another with "ps5" or
+   * "PS 5" naming the same thing three different ways.
    *
-   * Shared rather than rebuilt per dialog: a station's type decides which
-   * prices it is offered, so "add a station" and "edit a station" disagreeing
-   * about the list is how a station ends up filed under a type nothing is
-   * priced for.
+   * Sorted, de-duplicated. Shared rather than rebuilt per dialog: a station's
+   * type decides which prices it is offered, so "add a station" and "edit a
+   * station" disagreeing about the list is how a station ends up filed under
+   * a type nothing is priced for.
    */
   function stationTypes() {
     var seen = {};
     var pcs = (Store && Store.state && Store.state.pcs) || [];
     pcs.forEach(function (p) { if (p.category) seen[p.category] = true; });
 
-    return list()
-      .then(function (rows) {
-        rows.forEach(function (r) { if (r.category) seen[r.category] = true; });
-        return Object.keys(seen).sort();
-      })
+    var pricedTypes = list()
+      .then(function (rows) { rows.forEach(function (r) { if (r.category) seen[r.category] = true; }); })
       /* The floor's own types are enough to proceed — a café that cannot reach
          its price master should still be able to file a station. */
-      .catch(function () { return Object.keys(seen).sort(); });
+      .catch(function () {});
+
+    var seededTypes = (Store && Store.listStationTypes ? Store.listStationTypes() : Promise.resolve([]))
+      .then(function (types) { (types || []).forEach(function (t) { if (t) seen[t] = true; }); })
+      .catch(function () {});
+
+    return Promise.all([pricedTypes, seededTypes]).then(function () {
+      return Object.keys(seen).sort();
+    });
   }
 
   global.CXRates = {

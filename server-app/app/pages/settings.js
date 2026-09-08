@@ -146,7 +146,9 @@
           "Launching is handled by the client agent on each station over the existing WebSocket connection. The admin sends the executable path and a duration; the client starts the process and closes it when time runs out." +
         "</div>" +
         '<div class="notice" data-status="info">' + Icon("info", 16) +
-          "<div>Kiosk lock, unlock and remote restart are not implemented in the client yet, so those controls are not offered here.</div></div>" +
+          "<div>Kiosk lock, staff PIN unlock (<strong>Ctrl+Alt+Shift+Q</strong> at the station) and " +
+          "remote restart are all live — see <strong>Station unlock PIN</strong> below and " +
+          "<strong>Minimise client</strong> on a station's own panel.</div></div>" +
       "</div>";
 
     pane.appendChild(card);
@@ -410,8 +412,14 @@
           return UI.withBusy(btn, function () {
             return Store.setSetting("client.staff_unlock_pin", value)
               .then(function () {
+                // Best-effort: the setting itself is already saved even if a
+                // station happens to be unreachable right this second — it
+                // still picks the new PIN up on its next connect either way.
+                return Store.refreshUnlockPin().catch(function () {});
+              })
+              .then(function () {
                 UI.toast.ok(value ? "Station unlock PIN saved" : "Station unlock PIN cleared",
-                  value ? "Stations pick it up as they reconnect."
+                  value ? "Already active at every connected station."
                         : "Ctrl+Alt+Shift+Q is now refused at every station.");
               })
               .catch(function (e) { UI.toast.error("Could not " + verb + " the PIN", e.message); });
