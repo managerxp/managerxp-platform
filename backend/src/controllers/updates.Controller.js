@@ -319,6 +319,50 @@ export const reportUpdateState = async (req, res) => {
   }
 };
 
+/*
+ * GET /api/portal/downloads
+ *
+ * The website's own Downloads page, not a station or a console — a portal
+ * user asking "what can I install" before anything has been set up yet, so
+ * this takes no licence, no subscription check and no reported version. It
+ * is the one place `client_releases` is read by someone who isn't already
+ * running CafeXP.
+ */
+export const getLatestDownloads = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query(`
+      SELECT DISTINCT ON (component) component, version, release_notes,
+             download_url, file_name, file_size, published_at
+      FROM client_releases
+      WHERE product = 'cafexp' AND is_published AND channel = 'stable'
+      ORDER BY component, version_sort DESC
+    `);
+
+    const byComponent = {};
+    rows.forEach((r) => {
+      byComponent[r.component] = {
+        version: r.version,
+        release_notes: r.release_notes,
+        download_url: r.download_url,
+        file_name: r.file_name,
+        file_size: r.file_size != null ? Number(r.file_size) : null,
+        published_at: r.published_at
+      };
+    });
+
+    res.json({
+      success: true,
+      data: { server: byComponent.server || null, client: byComponent.client || null }
+    });
+  } catch (error) {
+    console.error('Error loading downloads:', error);
+    res.status(500).json({ success: false, message: 'Could not load downloads' });
+  } finally {
+    client.release();
+  }
+};
+
 /* ==========================================================================
    PLATFORM ADMIN — publishing releases
    ========================================================================== */
