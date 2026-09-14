@@ -66,12 +66,22 @@ export const publicBookingLimiter = rateLimit({
  * booking: a station reports its own MAC/IP before it has any credential to
  * present. Unlike booking, a MAC match here also rewrites a row (the IP
  * auto-update), so this exists to make guessing at MAC addresses from the
- * public internet slow rather than free. A café's own stations calling this
- * legitimately do so rarely (once per DHCP lease change, not per request).
+ * public internet slow rather than free.
+ *
+ * A café's own stations legitimately call this far more often than "once
+ * per DHCP lease change" — every station shares the café's one public IP
+ * (NAT), the console relays every discovery broadcast it hears while a
+ * station isn't yet connected (booting, reconnecting, a network hiccup all
+ * produce a burst), and a café can run dozens of stations at once. 20 per
+ * 15 minutes was sized for a single machine, not a whole café behind one
+ * IP, and started throttling real registrations during ordinary use.
+ * Sized generously for that instead — still a real ceiling against a
+ * blind internet-wide guessing attempt, just not one a busy café's own
+ * traffic can hit by accident.
  */
 export const deviceCheckLimiter = rateLimit({
   windowMs: minutes(15),
-  limit: 20,
+  limit: 300,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
   handler: refusal('Too many requests from here. Wait a few minutes and try again.')
