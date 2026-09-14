@@ -103,9 +103,14 @@ export const register = async (req, res) => {
       });
     }
 
-    // Check if user already exists
-    const checkUserQuery = 'SELECT email FROM customers WHERE email = $1';
-    const existingUser = await pool.query(checkUserQuery, [email]);
+    /* Scoped to this café — the schema itself already agrees (see
+       idx_customers_cafe_email, a per-café unique index; the old global
+       `email UNIQUE` was dropped when it was added). The same person
+       registering independently at two unrelated cafés is the normal case,
+       not a clash: each café's relationship with them — wallet, tier,
+       visit history — is its own, same as every other part of this table. */
+    const checkUserQuery = 'SELECT email FROM customers WHERE LOWER(email) = LOWER($1) AND cafe_id = $2';
+    const existingUser = await pool.query(checkUserQuery, [email, cafeId]);
 
     if (existingUser.rows.length > 0) {
       return res.status(409).json({
@@ -181,24 +186,53 @@ export const register = async (req, res) => {
 // Login function
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    /* login.html sends `identifier` (its field accepts an email today, and
+       is labelled to eventually accept a username too, per its own
+       comment) — `email` is kept as a fallback for any other caller still
+       using the older shape. There is no username lookup implemented
+       anywhere yet, so identifier is always treated as an email for now;
+       that's a real gap if username login is wanted, but a separate,
+       larger feature from what's broken here. */
+    const { email, identifier, password, pc_name } = req.body;
+    const loginEmail = (identifier || email || '').trim();
 
     // Validate required fields
-    if (!email || !password) {
+    if (!loginEmail || !password) {
       return res.status(400).json({
         success: false,
         message: 'Email and password are required'
       });
     }
 
-    // Find user by email
+    /*
+     * Email is only unique within one café (see register's own note on
+     * idx_customers_cafe_email) — the same address can now have a separate
+     * account at more than one café, so a bare lookup would pick whichever
+     * café's row happened to come back first. Resolved the same way
+     * register() resolves it: from the station's own name, never a café id
+     * the caller could name directly.
+     */
+    let cafeId = null;
+    if (pc_name) {
+      const pc = await pool.query(
+        `SELECT cafe_id FROM pcs WHERE name = $1 AND cafe_id IS NOT NULL LIMIT 1`, [pc_name]);
+      cafeId = pc.rows[0]?.cafe_id ?? null;
+    }
+    if (!cafeId) {
+      return res.status(400).json({
+        success: false,
+        message: "This station isn't recognized by any café yet. Ask a staff member for help."
+      });
+    }
+
+    // Find user by email, scoped to this café
     const findUserQuery = `
       SELECT customer_id, customer_name, email, phone_number, password, address, created_at, updated_at, email_verified
       FROM customers
-      WHERE email = $1
+      WHERE LOWER(email) = LOWER($1) AND cafe_id = $2
     `;
 
-    const result = await pool.query(findUserQuery, [email]);
+    const result = await pool.query(findUserQuery, [loginEmail, cafeId]);
 
     if (result.rows.length === 0) {
       return res.status(401).json({
