@@ -122,11 +122,11 @@ jobs:
           if [ "$status" -ge 400 ]; then echo "Upload failed with HTTP $status"; exit 1; fi
           echo "download_url=$(echo "$body" | jq -r '.data.download_url')" >> "$GITHUB_OUTPUT"
 
-      # Only client-app carries a `build.publish` config (server-app never
-      # self-updates — see server-app/app/pages/updates.js), which is what
-      # makes electron-builder emit this manifest at all; skip quietly when
-      # it isn't there rather than failing the server-app leg over a file
-      # that was never going to exist for it.
+      # Both apps now carry a `build.publish` config (server-app self-updates
+      # too — see server-app/updater.js), which is what makes electron-builder
+      # emit this manifest. The hashFiles check stays as a guard rather than
+      # an assumption, so a future app without one still skips quietly
+      # instead of failing its leg over a file that was never going to exist.
       - name: Upload update manifest to the backend
         if: hashFiles(format('{0}/dist/latest.yml', matrix.app)) != ''
         shell: bash
