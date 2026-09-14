@@ -13,9 +13,10 @@ import {
   listLicenses, createLicense, revokeLicense, unbindLicense, listActivations
 } from '../controllers/licenses.Controller.js';
 import {
-  listReleases, createRelease, updateRelease, getRollout
+  listReleases, createRelease, updateRelease, getRollout, uploadReleaseBinary
 } from '../controllers/updates.Controller.js';
 import { requirePlatformAdmin, requireReleaseAgent } from '../middleware/authGuards.js';
+import { releaseUpload, handleReleaseUploadErrors } from '../middleware/releaseUpload.js';
 
 const router = express.Router();
 
@@ -38,6 +39,10 @@ router.post('/pay/:token/complete', completeLinkPayment);
    without its token falls straight through to the ordinary admin-gated
    /releases route below, unaffected. */
 router.post('/releases', requireReleaseAgent, createRelease);
+/* The same build's installer/manifest, handed over first so createRelease
+   above has a download_url + sha512 to publish with — see uploadReleaseBinary
+   and releaseUpload.js. Same requireReleaseAgent fallthrough as /releases. */
+router.post('/releases/upload', requireReleaseAgent, releaseUpload, handleReleaseUploadErrors, uploadReleaseBinary);
 
 /* ==========================================================================
    PLATFORM ADMIN — everything below crosses tenant boundaries
@@ -70,6 +75,7 @@ router.get('/licenses/:id/activations', listActivations);
    so it demands a checksum — see createRelease. */
 router.get('/releases', listReleases);
 router.post('/releases', createRelease);
+router.post('/releases/upload', releaseUpload, handleReleaseUploadErrors, uploadReleaseBinary);
 router.patch('/releases/:id', updateRelease);
 router.get('/releases-rollout', getRollout);
 

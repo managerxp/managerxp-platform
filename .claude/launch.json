@@ -10,7 +10,7 @@
     {
       "name": "backend-api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "../Manager-XP-Website/backend", "run", "start"],
+      "runtimeArgs": ["--prefix", "backend", "run", "start"],
       "port": 5000
     },
     {
