@@ -337,12 +337,11 @@ export const initializeDatabase = async () => {
       )
     `);
 
-    // Session names are the label staff pick from, so keep them unique
-    // regardless of casing.
-    await client.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_session_master_name
-        ON session_master (LOWER(session_name))
-    `);
+    // Session names are the label staff pick from, kept unique regardless of
+    // casing — scoped per café (or globally among shared rows) rather than
+    // globally across every café, which would wrongly stop two cafés from
+    // both having their own "1 Hour". See initializeCatalogueTenancy's
+    // idx_session_master_name_cafe/_shared, which supersedes this.
 
     // gaming price master — one price per game + session pair.
     // The game catalogue is software_master, so software_id plays the game_id
