@@ -31,7 +31,12 @@ const money = (v) => Number(Number(v || 0).toFixed(2));
    charged, what has already come back, and therefore what is still available.
    Computed rather than stored, so it cannot drift from the rows it describes.
    ========================================================================== */
-const loadRefundable = async (client, billId) => {
+/**
+ * `cafeId` is the calling staff token's own café. A bill belonging to
+ * another café returns null here — the same "not found" a bad id gets —
+ * rather than being loaded and refunded.
+ */
+const loadRefundable = async (client, billId, cafeId) => {
   const bill = (await client.query(`
     SELECT b.*,
            COALESCE((SELECT SUM(amount) FROM payments
@@ -39,8 +44,8 @@ const loadRefundable = async (client, billId) => {
            COALESCE((SELECT SUM(refund_amount) FROM refunds
                      WHERE bill_id = b.bill_id
                        AND refund_status = 'COMPLETED'), 0)         AS refunded
-    FROM bills b WHERE b.bill_id = $1
-  `, [billId])).rows[0];
+    FROM bills b WHERE b.bill_id = $1 AND b.cafe_id IS NOT DISTINCT FROM $2
+  `, [billId, cafeId])).rows[0];
 
   if (!bill) return null;
 
@@ -104,7 +109,7 @@ const shapeRefund = (row) => ({
 export const getRefundable = async (req, res) => {
   const client = await pool.connect();
   try {
-    const state = await loadRefundable(client, Number(req.params.billId));
+    const state = await loadRefundable(client, Number(req.params.billId), req.actor?.cafe_id ?? null);
     if (!state) return res.status(404).json({ success: false, message: 'Bill not found' });
 
     res.json({
@@ -145,6 +150,15 @@ export const getRefundable = async (req, res) => {
 export const listBillRefunds = async (req, res) => {
   const client = await pool.connect();
   try {
+    const billId = Number(req.params.billId);
+    const owned = await client.query(
+      'SELECT bill_id FROM bills WHERE bill_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [billId, req.actor?.cafe_id ?? null]
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Bill not found' });
+    }
+
     const { rows } = await client.query(`
       SELECT r.*, b.bill_number,
              COALESCE(
@@ -195,9 +209,9 @@ export const getRefund = async (req, res) => {
       FROM refunds r
       LEFT JOIN bills b ON b.bill_id = r.bill_id
       LEFT JOIN refund_items ri ON ri.refund_id = r.refund_id
-      WHERE r.refund_id = $1
+      WHERE r.refund_id = $1 AND r.cafe_id IS NOT DISTINCT FROM $2
       GROUP BY r.refund_id, b.bill_number
-    `, [Number(req.params.refundId)]);
+    `, [Number(req.params.refundId), req.actor?.cafe_id ?? null]);
 
     if (!rows.length) return res.status(404).json({ success: false, message: 'Refund not found' });
     res.json({ success: true, data: shapeRefund(rows[0]) });
@@ -258,7 +272,11 @@ export const createRefund = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Bill not found' });
     }
 
-    const state = await loadRefundable(client, billId);
+    const state = await loadRefundable(client, billId, req.actor?.cafe_id ?? null);
+    if (!state) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Bill not found' });
+    }
 
     if (state.bill.status === 'VOID') {
       await client.query('ROLLBACK');

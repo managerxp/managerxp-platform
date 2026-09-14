@@ -246,6 +246,22 @@ function handleStationRequest(msg, ws) {
     if (win) win.webContents.send("station:call-staff", { pcName });
     return true;
   }
+  /* The station's own low-level keyboard hook — the thing that actually
+     blocks Alt+Tab, the Windows key, etc. — has failed to install several
+     times in a row. Nothing about kiosk mode's visual seal changes when
+     this happens; the window still looks locked down while none of the
+     shortcuts actually are. Flagged on the floor the same way a call for
+     help is, because it is exactly as urgent. */
+  if (msg.type === "KIOSK_GUARD_FAILED") {
+    log(`[Kiosk] ⚠ ${pcName} reports its keyboard lock is NOT active (${msg.reason || "unknown reason"})`);
+    if (win) win.webContents.send("station:kiosk-guard-failed", { pcName, reason: msg.reason || null });
+    return true;
+  }
+  if (msg.type === "KIOSK_GUARD_RECOVERED") {
+    log(`[Kiosk] ${pcName}'s keyboard lock is installed again`);
+    if (win) win.webContents.send("station:kiosk-guard-recovered", { pcName });
+    return true;
+  }
   /*
    * A customer signed in or out at the kiosk — before any session or
    * billing exists. Purely visibility: it tells the floor a station is
@@ -279,7 +295,8 @@ function handleStationRequest(msg, ws) {
       game_id: msg.game_id || null,
       game_platform_id: msg.game_platform_id || null,
       game_account_id: msg.game_account_id || null,
-      use_venue_account: !!msg.use_venue_account
+      use_venue_account: !!msg.use_venue_account,
+      occupancy_login_start: !!msg.occupancy_login_start
     });
     return true;
   }
@@ -1931,7 +1948,7 @@ function registerIPCHandlers() {
     clients.forEach((client) => {
       if (client?.ws && !pushed.has(client.ws)) {
         pushed.add(client.ws);
-        pushStationConfig(client.ws);
+        pushStationConfig(client.ws, client.pcName);
       }
     });
     return { success: true, stations: pushed.size };
@@ -2003,12 +2020,33 @@ async function fetchStaffUnlockPin() {
 }
 
 /** Send a freshly registered station the settings it needs to hold locally. */
-async function pushStationConfig(ws) {
+async function pushStationConfig(ws, pcName) {
   if (!ws || ws.readyState !== WebSocket.OPEN) return;
   const pin = cachedUnlockPin !== null ? cachedUnlockPin : await fetchStaffUnlockPin();
   if (pin === null) return;
+
+  /* This station's own Station-tools switches — which of screen resolution /
+     NVIDIA Control Panel / Device Manager it should NOT offer, e.g. a
+     machine with no NVIDIA card. Looked up fresh rather than cached like the
+     café-wide unlock PIN above: this is per-station, so caching it here
+     would mean whichever station connected first decided what every other
+     station saw until this console restarted. Best-effort — a station that
+     cannot be found in the list still gets its unlock PIN, just with
+     nothing disabled, which is the same "leave it on" default it already
+     had before this existed. */
+  let disabledSystemTools = [];
+  if (pcName) {
+    try {
+      const pcs = await fetchClientsFromAPI();
+      const match = pcs.find((p) => p.simId === pcName);
+      if (match) disabledSystemTools = match.disabledSystemTools;
+    } catch (error) {
+      log(`Could not resolve ${pcName}'s station-tools config: ${error.message}`);
+    }
+  }
+
   try {
-    ws.send(JSON.stringify({ type: 'STATION_CONFIG', staffUnlockPin: pin }));
+    ws.send(JSON.stringify({ type: 'STATION_CONFIG', staffUnlockPin: pin, disabledSystemTools }));
   } catch (error) {
     log(`Could not send station config: ${error.message}`);
   }
@@ -2044,7 +2082,8 @@ async function fetchClientsFromAPI() {
       return result.data.map(pc => ({
         simId: pc.name,
         ip: pc.ip_address,
-        port: pc.port
+        port: pc.port,
+        disabledSystemTools: Array.isArray(pc.disabled_system_tools) ? pc.disabled_system_tools : []
       }));
     }
     
@@ -2220,8 +2259,8 @@ async function heartbeat() {
                   ws.simId = msg.simId;
                   clients.set(msg.simId, { ws, apps: [], pcName: pcName });
                   clients.set(pcName, { ws, apps: [], pcName: pcName });
-                  // Hand it the settings it must hold locally (the staff unlock PIN).
-                  pushStationConfig(ws);
+                  // Hand it the settings it must hold locally (the staff unlock PIN, station tools).
+                  pushStationConfig(ws, pcName);
                   log(`[Heartbeat Reconnect] ✅ Registered: ${msg.simId} (${msg.hostname})`);
                   
                   // Record success
@@ -2354,8 +2393,8 @@ function connectToSpecificPC(ip, port, pcName) {
           ws.simId = msg.simId;
           clients.set(msg.simId, { ws, apps: [], pcName: pcName });
           clients.set(pcName, { ws, apps: [], pcName: pcName });
-          // Hand it the settings it must hold locally (the staff unlock PIN).
-          pushStationConfig(ws);
+          // Hand it the settings it must hold locally (the staff unlock PIN, station tools).
+          pushStationConfig(ws, pcName);
           log(`[Dynamic Connect] ✅ Registered: ${msg.simId} (${msg.hostname})`);
           
           // Record success
@@ -2522,8 +2561,8 @@ async function connectToClients() {
             // Store with both the registered simId and the PC name as keys
             clients.set(msg.simId, { ws, apps: [], pcName: simId });
             clients.set(simId, { ws, apps: [], pcName: simId });
-            // Hand it the settings it must hold locally (the staff unlock PIN).
-            pushStationConfig(ws); // Also store by PC name for lookup
+            // Hand it the settings it must hold locally (the staff unlock PIN, station tools).
+            pushStationConfig(ws, simId); // Also store by PC name for lookup
             log(`Registered: ${msg.simId} (${msg.hostname})`);
             
             // Remove this PC from discovered list since it's now connected

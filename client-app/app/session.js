@@ -40,6 +40,18 @@
   var ticker = null;
   var sessionTicker = null;
 
+  /** What this session is worth for `elapsedSeconds` played — mirrors the
+      backend's amountForSeconds exactly, so the live figure shown between
+      pushes agrees with what the server will actually bill. */
+  function estimateAmount(s, elapsedSeconds) {
+    var billsWhole = s.pricing_unit === "FLAT" || s.pricing_unit === "BLOCK";
+    var base = billsWhole
+      ? Number(s.flat_amount || 0)
+      : Number(s.rate_per_hour || 0) * Math.max(0, elapsedSeconds) / 3600;
+    var discount = Number(s.membership_discount_percent) || 0;
+    return discount ? base * (1 - discount / 100) : base;
+  }
+
   /**
    * The café session's own countdown. Derived from the elapsed figure the
    * server sent plus the time since it arrived, so a late push corrects any
@@ -52,8 +64,37 @@
       if (!s) { clearInterval(sessionTicker); sessionTicker = null; return; }
       if (s.status !== "active") return;
 
+      /* The server holds elapsed_seconds at 0 (and remaining_seconds at the
+         full planned value) for the whole café load buffer — see this
+         session's own grace_seconds. Extrapolating drift on top of that
+         unconditionally, as below, counted the display up from the moment
+         the session started regardless, and then the console's ~15s
+         reconcile push corrected it back to the still-zero server figure —
+         which read as the timer resetting. Held here the same way, from the
+         same started_at/grace_seconds pair, until the buffer has actually
+         elapsed. */
+      var wasGrace = s.live_phase === "grace";
+      if (s.started_at && s.grace_seconds &&
+          Date.now() - new Date(s.started_at).getTime() < s.grace_seconds * 1000) {
+        s.live_elapsed = 0;
+        s.live_running_amount = 0;
+        s.live_phase = "grace";
+        s.live_grace_remaining = Math.max(0, s.grace_seconds -
+          Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000));
+        if (s.remaining_seconds !== null) s.live_remaining = s.remaining_seconds;
+        emit("session-tick", s);
+        return;
+      }
+
+      s.live_phase = "active";
+      s.live_grace_remaining = 0;
+      // The free setup buffer just ran out on this exact tick — billing has
+      // now started, whether or not a game was ever launched.
+      if (wasGrace) emit("session-billing-started", s);
+
       var drift = Math.floor((Date.now() - s.receivedAt) / 1000);
       s.live_elapsed = s.elapsed_seconds + drift;
+      s.live_running_amount = estimateAmount(s, s.live_elapsed);
       if (s.remaining_seconds !== null) {
         var previous = s.live_remaining != null ? s.live_remaining : s.remaining_seconds;
         s.live_remaining = Math.max(0, s.remaining_seconds - drift);
@@ -378,6 +419,12 @@
           game: game, gaming_price_id: gamingPriceId, use_venue_account: !!useVenueAccount
         });
       }
+    },
+    /* Fired once right after login — see preload's requestOccupancySessionStart
+       and server-app/app/store.js's occupancy_login_start branch for what
+       actually decides whether this station bills that way. */
+    requestOccupancyStart: function () {
+      if (api.requestOccupancySessionStart) api.requestOccupancySessionStart();
     },
     sessionClockSeconds: sessionClockSeconds,
     progress: progress,

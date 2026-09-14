@@ -942,15 +942,23 @@
     var customInput = body.querySelector("#edCustomType");
 
     /* The same list the "Add station" dialog offers, from the same helper —
-       the two must not disagree about what this café's types are. */
+       the two must not disagree about what this café's types are. Matched
+       against this station's own category case-insensitively: a station
+       already filed under a free-typed "pc" must show as the canonical
+       "PC" selected, not gain a second "pc" entry alongside it because an
+       exact-string check never found it in the deduped list. */
     function paintTypes(types) {
       var known = types.slice();
-      if (pc.category && known.indexOf(pc.category) === -1) known.push(pc.category);
+      var already = pc.category && known.some(function (c) {
+        return c.toLowerCase() === pc.category.trim().toLowerCase();
+      });
+      if (pc.category && !already) known.push(pc.category.trim());
       typeSelect.innerHTML =
         '<option value="">— Select type —</option>' +
-        known.sort().map(function (c) {
+        known.sort(function (a, b) { return a.localeCompare(b); }).map(function (c) {
+          var isSelected = pc.category && c.toLowerCase() === pc.category.trim().toLowerCase();
           return '<option value="' + UI.esc(c) + '"' +
-            (c === pc.category ? " selected" : "") + ">" + UI.esc(c) + "</option>";
+            (isSelected ? " selected" : "") + ">" + UI.esc(c) + "</option>";
         }).join("") +
         '<option value="__other">Other…</option>';
     }

@@ -88,8 +88,16 @@ export const placeOrder = async (req, res) => {
 
     await client.query('BEGIN');
 
+    /* A staff token can name any customerId in the body; scoped to their own
+       café so a cross-café customer_id cannot get an order (and, downstream,
+       a wallet debit) filed against a café that customer has no account
+       with. A customer ordering for themselves needs no such check — the
+       customerId above is already their own, from their own token. */
     const customer = await client.query(
-      'SELECT customer_id, customer_name, cafe_id FROM customers WHERE customer_id = $1', [customerId]
+      req.actor?.isStaff
+        ? 'SELECT customer_id, customer_name, cafe_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2'
+        : 'SELECT customer_id, customer_name, cafe_id FROM customers WHERE customer_id = $1',
+      req.actor?.isStaff ? [customerId, req.actor.cafe_id ?? null] : [customerId]
     );
     if (customer.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -367,7 +375,13 @@ export const setOrderStatus = async (req, res) => {
     }
 
     await client.query('BEGIN');
-    const order = await client.query('SELECT * FROM orders WHERE order_id = $1 FOR UPDATE', [id]);
+    // Scoped to the caller's own café — without it, any café's staff could
+    // change another café's order status (including CANCELLED, which
+    // returns stock) by bare id.
+    const order = await client.query(
+      'SELECT * FROM orders WHERE order_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 FOR UPDATE',
+      [id, req.actor?.cafe_id ?? null]
+    );
     if (order.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Order not found' });

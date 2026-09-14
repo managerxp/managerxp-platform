@@ -253,13 +253,12 @@ export const checkForUpdateMine = async (req, res) => {
     }
 
     const reported = String(req.query?.current_version || '0.0.0');
-    const available = isNewer(latest.version, reported);
     res.json({
       success: true,
       data: {
         entitled: true,
         component,
-        update_available: available,
+        update_available: isNewer(latest.version, reported),
         current_version: reported,
         latest_version: latest.version,
         channel: latest.channel,
@@ -267,68 +266,12 @@ export const checkForUpdateMine = async (req, res) => {
         is_mandatory: latest.is_mandatory,
         below_minimum: latest.min_supported_version
           ? versionSort(reported) < versionSort(latest.min_supported_version)
-          : false,
-        // Was deliberately absent while no release existed to fetch — see
-        // checkForUpdate's identical block, now that client_releases is
-        // populated by the release pipeline this answers "here is the file"
-        // too, not just "one exists".
-        download: available
-          ? {
-            url: latest.download_url,
-            file_name: latest.file_name,
-            file_size: latest.file_size != null ? Number(latest.file_size) : null,
-            sha512: latest.sha512
-          }
-          : null
+          : false
       }
     });
   } catch (error) {
     console.error('Error checking for updates (mine):', error);
     res.status(500).json({ success: false, message: 'Could not check for updates' });
-  } finally {
-    client.release();
-  }
-};
-
-/**
- * GET /api/portal/downloads
- *
- * The website's own Downloads page, not a station or a console — a portal
- * user asking "what can I install" before anything has been set up yet, so
- * this takes no licence, no subscription check and no reported version. It
- * is the one place `client_releases` is read by someone who isn't already
- * running CafeXP.
- */
-export const getLatestDownloads = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const { rows } = await client.query(`
-      SELECT DISTINCT ON (component) component, version, release_notes,
-             download_url, file_name, file_size, published_at
-      FROM client_releases
-      WHERE product = 'cafexp' AND is_published AND channel = 'stable'
-      ORDER BY component, version_sort DESC
-    `);
-
-    const byComponent = {};
-    rows.forEach((r) => {
-      byComponent[r.component] = {
-        version: r.version,
-        release_notes: r.release_notes,
-        download_url: r.download_url,
-        file_name: r.file_name,
-        file_size: r.file_size != null ? Number(r.file_size) : null,
-        published_at: r.published_at
-      };
-    });
-
-    res.json({
-      success: true,
-      data: { server: byComponent.server || null, client: byComponent.client || null }
-    });
-  } catch (error) {
-    console.error('Error loading downloads:', error);
-    res.status(500).json({ success: false, message: 'Could not load downloads' });
   } finally {
     client.release();
   }
@@ -488,43 +431,6 @@ export const createRelease = async (req, res) => {
   } finally {
     client.release();
   }
-};
-
-/*
- * Where the download link points — this backend's OWN public origin, not
- * platform.Controller.js's publicBase (that one is PUBLIC_BASE_URL, the
- * FRONTEND's origin, deliberately, since a pay link opens a page the React
- * app renders). A file this server itself serves from /uploads needs this
- * server's own address, which in production is a different host entirely
- * — hence a separate env var rather than reusing that one and getting a
- * frontend URL back for a backend file.
- */
-const publicBase = (req) =>
-  process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
-
-/*
- * POST /api/platform/releases/upload
- *
- * The release workflow's first step for a given build: hand over the .exe
- * it just produced, get back the absolute URL and file facts (name, size)
- * that the very next call — POST /api/platform/releases, unchanged — needs
- * to actually publish it. Two calls, not one, so createRelease keeps taking
- * plain JSON and this stays the only place that ever touches a multipart
- * upload this large.
- */
-export const uploadReleaseBinary = async (req, res) => {
-  if (!req.file) return res.status(400).json({ success: false, message: 'No installer was uploaded' });
-  // Matches releaseUpload.js's own componentDir() — client and server each
-  // get a subfolder so their same-named latest.yml manifests never collide.
-  const component = req.body?.component === 'server' ? 'server' : 'client';
-  res.status(201).json({
-    success: true,
-    data: {
-      download_url: `${publicBase(req)}/uploads/releases/${component}/${req.file.filename}`,
-      file_name: req.file.filename,
-      file_size: req.file.size
-    }
-  });
 };
 
 // PATCH /api/platform/releases/:id

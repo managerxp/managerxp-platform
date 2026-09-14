@@ -162,6 +162,11 @@ export const listStaff = async (req, res) => {
   try {
     const filters = [];
     const params = [];
+    // Every sibling read in this codebase scopes to the caller's own café —
+    // this was the one staff surface that didn't, and it is the one that
+    // controls account credentials.
+    params.push(req.actor?.cafe_id ?? null);
+    filters.push(`s.cafe_id IS NOT DISTINCT FROM $${params.length}`);
     if (req.query.status) {
       params.push(String(req.query.status).toUpperCase());
       filters.push(`s.status = $${params.length}`);
@@ -201,7 +206,15 @@ export const createStaff = async (req, res) => {
       return res.status(400).json({ success: false, message: 'A role is required' });
     }
 
-    const role = await pool.query('SELECT role_id FROM roles WHERE role_id = $1', [roleId]);
+    const cafeId = req.actor?.cafe_id ?? null;
+
+    // A role is either a shared system template (cafe_id NULL — Owner,
+    // Manager, Cashier, Attendant) or a custom role this café made itself.
+    // Never another café's custom role.
+    const role = await pool.query(
+      'SELECT role_id FROM roles WHERE role_id = $1 AND (cafe_id IS NULL OR cafe_id = $2)',
+      [roleId, cafeId]
+    );
     if (role.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Role not found' });
     }
@@ -211,7 +224,9 @@ export const createStaff = async (req, res) => {
       `INSERT INTO staff (cafe_id, role_id, staff_name, email, phone_number, password, created_by)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING staff_id`,
       [
-        req.body?.cafe_id || req.actor?.cafe_id || null, roleId, name, email,
+        // Never a client-supplied cafe_id — this is a staff-only route, so
+        // the token's own café is already authoritative.
+        cafeId, roleId, name, email,
         req.body?.phone_number || null, hashed, req.actor?.label || null
       ]
     );
@@ -261,12 +276,24 @@ export const updateStaff = async (req, res) => {
       hashed = await bcrypt.hash(String(password), 10);
     }
 
+    const cafeId = req.actor?.cafe_id ?? null;
+    const role = await pool.query(
+      'SELECT role_id FROM roles WHERE role_id = $1 AND (cafe_id IS NULL OR cafe_id = $2)',
+      [roleId, cafeId]
+    );
+    if (role.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Role not found' });
+    }
+
+    // Scoped to the caller's own café — without this, any café's
+    // staff.manage holder could rewrite another café's staff member's name,
+    // email, role and password by id, a full account takeover.
     const result = await pool.query(
       `UPDATE staff
        SET staff_name = $1, email = $2, phone_number = $3, role_id = $4,
            password = COALESCE($5::varchar, password), updated_at = CURRENT_TIMESTAMP
-       WHERE staff_id = $6 RETURNING staff_id`,
-      [name, email, req.body?.phone_number || null, roleId, hashed, id]
+       WHERE staff_id = $6 AND cafe_id IS NOT DISTINCT FROM $7 RETURNING staff_id`,
+      [name, email, req.body?.phone_number || null, roleId, hashed, id, cafeId]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Staff member not found' });
@@ -298,8 +325,8 @@ export const setStaffStatus = async (req, res) => {
 
     const result = await pool.query(
       `UPDATE staff SET status = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE staff_id = $2 RETURNING staff_id`,
-      [status, id]
+       WHERE staff_id = $2 AND cafe_id IS NOT DISTINCT FROM $3 RETURNING staff_id`,
+      [status, id, req.actor?.cafe_id ?? null]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Staff member not found' });
@@ -333,12 +360,16 @@ export const setStaffStatus = async (req, res) => {
 export const listRoles = async (req, res) => {
   const client = await pool.connect();
   try {
+    // The shared system templates (cafe_id NULL) plus this café's own
+    // custom roles — never another café's.
     const roles = await client.query(
       `SELECT r.*, COUNT(s.staff_id)::int AS staff_count
        FROM roles r
        LEFT JOIN staff s ON s.role_id = r.role_id AND s.status = 'ACTIVE'
+       WHERE r.cafe_id IS NULL OR r.cafe_id = $1
        GROUP BY r.role_id
-       ORDER BY r.is_system DESC, r.role_name ASC`
+       ORDER BY r.is_system DESC, r.role_name ASC`,
+      [req.actor?.cafe_id ?? null]
     );
 
     const grants = await client.query(
@@ -401,9 +432,10 @@ export const createRole = async (req, res) => {
 
     await client.query('BEGIN');
 
+    // Never a client-supplied cafe_id — see createStaff for the same fix.
     const result = await client.query(
       `INSERT INTO roles (role_name, description, cafe_id) VALUES ($1,$2,$3) RETURNING role_id`,
-      [name, req.body?.description || null, req.body?.cafe_id || req.actor?.cafe_id || null]
+      [name, req.body?.description || null, req.actor?.cafe_id ?? null]
     );
     const roleId = result.rows[0].role_id;
 
@@ -541,6 +573,20 @@ export const setRolePermissions = async (req, res) => {
         message: 'The Owner role always has every permission and cannot be reduced'
       });
     }
+    /*
+     * Every other system role (Manager, Cashier, Attendant) is one shared
+     * row every café's staff picks from — cafe_id NULL, not a per-café copy.
+     * Letting one café edit it would silently change what "Cashier" means
+     * everywhere else too. Only a café's own custom role (cafe_id = this
+     * café) can be edited here; this also closes the same hole for another
+     * café's custom role.
+     */
+    if (role.rows[0].cafe_id !== (req.actor?.cafe_id ?? null)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only a role your own café created can be edited here'
+      });
+    }
 
     await client.query('BEGIN');
     await client.query('DELETE FROM role_permissions WHERE role_id = $1', [roleId]);
@@ -582,12 +628,17 @@ export const setRolePermissions = async (req, res) => {
 export const deleteRole = async (req, res) => {
   try {
     const roleId = parseInt(req.params.id, 10);
-    const role = await pool.query('SELECT is_system FROM roles WHERE role_id = $1', [roleId]);
+    const role = await pool.query('SELECT is_system, cafe_id FROM roles WHERE role_id = $1', [roleId]);
     if (role.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Role not found' });
     }
     if (role.rows[0].is_system) {
       return res.status(409).json({ success: false, message: 'Built-in roles cannot be deleted' });
+    }
+    // A custom role belongs to the café that created it — never deletable by
+    // another café.
+    if (role.rows[0].cafe_id !== (req.actor?.cafe_id ?? null)) {
+      return res.status(404).json({ success: false, message: 'Role not found' });
     }
 
     const used = await pool.query('SELECT COUNT(*)::int AS count FROM staff WHERE role_id = $1', [roleId]);

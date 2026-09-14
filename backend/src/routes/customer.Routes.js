@@ -6,9 +6,6 @@ import {
   getCustomers,
   getCustomerById,
   getMyProfile,
-  updateMyProfile,
-  exportMyData,
-  deleteMyAccount,
   setCustomerTier,
   getCustomerCredit
 } from '../controllers/customer.Controller.js';
@@ -37,16 +34,6 @@ customerRouter.post('/resend-verification', resetLimiter, resendCustomerVerifica
    this café's package includes the staff-facing Customers module. Literal
    path before "/:id", or "me" would be read as a customer id. */
 customerRouter.get('/me', requireAuth, getMyProfile);
-
-/* A customer changing their own username, phone number or address. Same
-   "/me" gate as reading it — not feature-gated, not staff-only. */
-customerRouter.patch('/me', requireAuth, updateMyProfile);
-
-/* DPDP Act, 2023 — a customer's own right to export or erase their data.
-   Not feature-gated, same reasoning as /me: this works regardless of
-   whether the café's package includes the Customers module. */
-customerRouter.get('/me/export', requireAuth, exportMyData);
-customerRouter.delete('/me', requireAuth, deleteMyAccount);
 
 // Staff only: these return other people's contact details.
 customerRouter.post('/', requirePermission('customers.manage'), feature, createCustomer);

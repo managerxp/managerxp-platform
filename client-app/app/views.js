@@ -1616,7 +1616,7 @@
               "</div>" +
             "</div>" +
             '<div class="xp-coin-halo">' +
-              global.CXCoin(112, { detail: "full", spin: true }).replace('class="xp-coin', 'class="xp-coin xp-coin-hero') +
+              global.CXCoin(112, { spin: true }).replace('class="xp-coin', 'class="xp-coin xp-coin-hero') +
             "</div>" +
           "</div>" +
           '<div class="wallet-sub">Earn · Redeem · Grow</div>' +
@@ -2058,7 +2058,7 @@
             "</div>" +
             (s.error
               ? '<span class="badge" data-status="warning">Unavailable</span>'
-              : global.CXCoin(52, { detail: "plain", spin: true })) +
+              : global.CXCoin(52, { spin: true })) +
           "</div>" +
           '<button class="btn btn-outline btn-block" style="margin-top:var(--s-4)" id="walletOpen">' +
             Icon("billing", 16) + '<span class="btn-label">View wallet</span></button>';

@@ -20,6 +20,16 @@
 
   function pc() { return selectedPC ? Store.getPC(selectedPC) : null; }
 
+  /* The client's own built-in Station tools — fixed, not scanned, not
+     stored in pc_software (there is no path to launch them by, they are
+     Windows panels the client already knows how to open). Kept to exactly
+     the three keys pcs.Controller.js validates against. */
+  var STATION_TOOLS = [
+    { id: "display", label: "Screen resolution" },
+    { id: "nvidia", label: "NVIDIA Control Panel" },
+    { id: "devicemgmt", label: "Device Manager" }
+  ];
+
   /*
    * Only stations that run the client agent belong on this screen.
    *
@@ -117,6 +127,54 @@
   }
 
   /* ==========================================================================
+     STATION TOOLS — the customer's Help-menu switches (screen resolution,
+     NVIDIA Control Panel, Device Manager), on or off per station. Not part
+     of the software list below: these have no path, are never scanned, and
+     the client already knows how to open them — this only decides whether
+     it is allowed to.
+     ========================================================================== */
+  function renderStationTools(host, target) {
+    var disabled = Array.isArray(target.disabled_system_tools) ? target.disabled_system_tools : [];
+
+    var card = UI.el("div", { class: "card-body col gap-2", style: { borderTop: "1px solid var(--line)" } });
+    card.innerHTML = '<div class="faint" style="font-size:12px">Station tools offered to the customer</div>';
+
+    STATION_TOOLS.forEach(function (t) {
+      var row = UI.el("label", { class: "switch", style: { marginTop: "var(--s-1)" } });
+      var isOn = disabled.indexOf(t.id) === -1;
+      row.innerHTML =
+        '<input type="checkbox" data-tool="' + t.id + '"' + (isOn ? " checked" : "") + '>' +
+        '<span class="switch-track"></span>' +
+        '<span style="font-size:13px">' + UI.esc(t.label) + "</span>";
+
+      var input = row.querySelector("input");
+      input.addEventListener("change", function () {
+        var next = STATION_TOOLS
+          .map(function (tool) { return tool.id; })
+          .filter(function (id) {
+            var box = card.querySelector('[data-tool="' + id + '"]');
+            return box && !box.checked;
+          });
+        input.disabled = true;
+        Store.updatePC(target.pc_id, { disabled_system_tools: next })
+          .then(function () {
+            target.disabled_system_tools = next;
+            UI.toast.ok(input.checked ? "Enabled" : "Disabled", t.label + " on " + target.name);
+          })
+          .catch(function (e) {
+            input.checked = !input.checked;   // the write failed — put the switch back
+            UI.toast.error("Could not change it", e.message);
+          })
+          .then(function () { input.disabled = false; });
+      });
+
+      card.appendChild(row);
+    });
+
+    host.appendChild(card);
+  }
+
+  /* ==========================================================================
      SOFTWARE DETAIL (right column)
      ========================================================================== */
   function renderDetail(errorMessage) {
@@ -148,6 +206,7 @@
         '<button class="btn btn-primary btn-sm" id="btnAddSw">' + Icon("plus", 14) + '<span class="btn-label">Add software</span></button>' +
       "</div>";
     host.appendChild(head);
+    renderStationTools(host, target);
 
     var body = UI.el("div", { class: "card-body col gap-3" });
     host.appendChild(body);
@@ -182,15 +241,33 @@
         '<span class="badge" data-status="' + (s.is_active === false ? "idle" : "online") + '">' +
           (s.is_active === false ? "Inactive" : "Available") + "</span>";
 
+      var isActive = s.is_active !== false;
       var launchBtn = UI.el("button", {
         class: "btn btn-outline btn-sm btn-icon",
         html: Icon("play", 13),
-        "data-tip": connected ? "Launch on " + target.name : "Station is offline",
-        disabled: !connected || !s.software_path || !!Store.state.running[target.name]
+        "data-tip": !isActive ? "Hidden — make it available again first"
+          : connected ? "Launch on " + target.name : "Station is offline",
+        disabled: !isActive || !connected || !s.software_path || !!Store.state.running[target.name]
       });
       launchBtn.addEventListener("click", function () {
         global.CXStationPanel.launchDialog(target.name, {
           name: s.software_name, launch: s.software_path, icon: s.software_icon
+        });
+      });
+
+      var toggleBtn = UI.el("button", {
+        class: "btn btn-outline btn-sm btn-icon",
+        html: Icon("power", 13),
+        "data-tip": isActive ? "Hide from this station" : "Make available again"
+      });
+      toggleBtn.addEventListener("click", function () {
+        UI.withBusy(toggleBtn, function () {
+          return Store.togglePcSoftware(s.pc_software_id)
+            .then(function () {
+              UI.toast.ok(isActive ? "Hidden" : "Available again", s.software_name);
+              return loadSoftware();
+            })
+            .catch(function (e) { UI.toast.error("Could not change it", e.message); });
         });
       });
 
@@ -213,6 +290,7 @@
       });
 
       row.appendChild(launchBtn);
+      row.appendChild(toggleBtn);
       row.appendChild(delBtn);
       body.appendChild(row);
       rows.push(row);

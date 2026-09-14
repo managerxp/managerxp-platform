@@ -60,3 +60,19 @@ export const publicBookingLimiter = rateLimit({
   legacyHeaders: false,
   handler: refusal('Too many booking attempts from here. Wait a few minutes and try again.')
 });
+
+/*
+ * /api/pcs/check-exists — also unauthenticated, for the same reason as
+ * booking: a station reports its own MAC/IP before it has any credential to
+ * present. Unlike booking, a MAC match here also rewrites a row (the IP
+ * auto-update), so this exists to make guessing at MAC addresses from the
+ * public internet slow rather than free. A café's own stations calling this
+ * legitimately do so rarely (once per DHCP lease change, not per request).
+ */
+export const deviceCheckLimiter = rateLimit({
+  windowMs: minutes(15),
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: refusal('Too many requests from here. Wait a few minutes and try again.')
+});

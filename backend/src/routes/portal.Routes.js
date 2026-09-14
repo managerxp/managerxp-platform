@@ -1,12 +1,11 @@
 import express from 'express';
 import {
-  signup, me, dashboard, exportMyData, deleteMyAccount,
+  signup, me, dashboard,
   getOrganization, updateOrganization, createOrganization,
   listBranches, createBranch, updateBranch,
   subscription, listDevices, listInstallations, revokeInstallation,
   listUsers, inviteUser, acceptInvite
 } from '../controllers/portal.Controller.js';
-import { getLatestDownloads } from '../controllers/updates.Controller.js';
 import { requirePortalUser, withOrganization, withBranch, requireOwner } from '../middleware/tenancy.js';
 import {
   portalListTickets, portalCreateTicket, portalGetTicket, portalReply, portalCloseTicket,
@@ -39,14 +38,6 @@ router.use(requirePortalUser);
 
 // Spans every organization the user belongs to, so it takes no org scope.
 router.get('/me', me);
-
-// DPDP Act, 2023 — export or erase this account. Same "no org scope" reason.
-router.get('/me/export', exportMyData);
-router.delete('/me', deleteMyAccount);
-
-// Same reason — the Downloads page is what gets you an installation in the
-// first place, so it can't be scoped to one you don't have yet.
-router.get('/downloads', getLatestDownloads);
 
 router.get('/dashboard', withOrganization(), withBranch(), dashboard);
 

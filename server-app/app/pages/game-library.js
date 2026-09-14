@@ -119,11 +119,7 @@
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
       '<div class="field"><label class="field-label">How players get into this game</label>' +
-        '<div class="col gap-2" id="amModes"></div></div>' +
-      '<div class="field"><label class="field-label" for="cgRate">Rate per hour</label>' +
-        '<input class="input" id="cgRate" type="number" min="0" step="1" placeholder="Leave blank to use the station\'s own rate" ' +
-          'value="' + (game.price_per_hour == null ? "" : UI.esc(game.price_per_hour)) + '">' +
-        '<div class="field-hint">Optional. Blank means this game is charged at whatever the station type already costs.</div></div>';
+        '<div class="col gap-2" id="amModes"></div></div>';
 
     var modeHost = body.querySelector("#amModes");
     ACCOUNT_MODES.forEach(function (m) {
@@ -148,11 +144,7 @@
           label: "Save", variant: "primary", icon: "check",
           onClick: function (ctx) {
             var mode = (ctx.body.querySelector('input[name="accountMode"]:checked') || {}).value;
-            var rateRaw = ctx.body.querySelector("#cgRate").value.trim();
-            var patch = {
-              account_mode: mode,
-              price_per_hour: rateRaw === "" ? null : Number(rateRaw)
-            };
+            var patch = { account_mode: mode };
             return Store.updateCafeGame(game.cafe_game_id, patch)
               .then(function () { UI.toast.ok("Saved", game.name); load(); return true; })
               .catch(function (e) { UI.toast.error("Could not save", e.message); return false; });
@@ -483,7 +475,6 @@
             (g.icon_url ? '<img src="' + UI.esc(Store.API_BASE + g.icon_url) + '" style="width:100%;height:100%;object-fit:cover">' : Icon("games", 14)) +
           "</div><div><strong>" + UI.esc(g.name) + "</strong>" +
           (g.category ? ' <span class="badge badge-plain">' + UI.esc(g.category) + "</span>" : "") +
-          (g.price_per_hour != null ? '<div class="faint" style="font-size:11px">₹' + UI.esc(g.price_per_hour) + "/hr</div>" : "") +
           "</div></div></td>" +
         '<td class="faint" style="font-size:12px">' + platformText + "</td>" +
         '<td style="font-size:12px">' + UI.esc(MODE_LABEL[g.account_mode] || g.account_mode) + "</td>" +

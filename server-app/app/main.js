@@ -389,6 +389,23 @@
       });
     });
 
+    /* A station's keyboard lock (Alt+Tab, the Windows key, etc.) failed to
+       install — the seal still looks normal on that station's own screen,
+       so this toast is the only place anyone finds out it isn't actually
+       blocking anything right now. Longest duration on the floor: unlike a
+       call for help, this does not go away just because someone glanced at
+       it, so it should stay visible until it is actually dealt with. */
+    Store.on("kiosk-alert:new", function (r) {
+      notifyBeep();
+      UI.toast({
+        title: "Keyboard lock failed — " + r.pcName,
+        message: "Alt+Tab and the rest of the kiosk lock are not active on this station.",
+        status: "warn",
+        duration: 30000,
+        action: { label: "Open", onClick: openNotifications }
+      });
+    });
+
     /* Same idea again for a new booking — from the café's own public
        booking link as much as from a staff member typing one in here. */
     Store.on("reservation:new", function (r) {

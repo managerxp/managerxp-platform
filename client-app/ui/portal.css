@@ -1218,10 +1218,11 @@
 .xp-coin {
   display: block;
   flex: none;
-  filter: drop-shadow(0 6px 18px rgba(255, 23, 68, 0.28));
+  /* Amber, matching the coin's own gold now that nothing on it is red. */
+  filter: drop-shadow(0 6px 18px rgba(255, 171, 0, 0.28));
 }
 .xp-coin-hero {
-  filter: drop-shadow(0 18px 44px rgba(255, 23, 68, 0.4));
+  filter: drop-shadow(0 18px 44px rgba(255, 171, 0, 0.38));
 }
 /* A slow 3D tilt — one element, transform only, and it settles rather than
    looping forever in the customer's peripheral vision. */
@@ -1233,7 +1234,6 @@
   0%, 100% { transform: perspective(600px) rotateY(-12deg) rotateX(4deg); }
   50%      { transform: perspective(600px) rotateY(12deg) rotateX(-3deg); }
 }
-.xpc-ring { font-family: var(--font); }
 
 /* Halo behind the wallet page's hero coin — a plain drop-shadow reads as a
    dark smudge on this card's own dark background, so the glow needs to be
@@ -1250,7 +1250,7 @@
   position: absolute;
   inset: -20%;
   border-radius: 50%;
-  background: radial-gradient(circle, rgba(240, 185, 55, .38), rgba(255, 23, 68, .2) 55%, transparent 74%);
+  background: radial-gradient(circle, rgba(240, 185, 55, .38), rgba(255, 171, 0, .2) 55%, transparent 74%);
   filter: blur(7px);
   animation: coin-halo-breathe 3.4s var(--ease-in-out) infinite;
 }

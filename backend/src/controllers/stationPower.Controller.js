@@ -80,8 +80,12 @@ export const authorisePower = async (req, res) => {
       });
     }
 
+    // Scoped to the console's own café — otherwise a name match alone could
+    // authorise a disruptive power action (restart, shutdown, sign-out)
+    // against another café's station.
     const station = await pool.query(
-      'SELECT pc_id, name FROM pcs WHERE name = $1', [name]
+      'SELECT pc_id, name FROM pcs WHERE name = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [name, req.actor?.cafe_id ?? null]
     );
     if (station.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Station not found' });

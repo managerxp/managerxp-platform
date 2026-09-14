@@ -111,6 +111,15 @@ async function diskUsage() {
  *
  * AdapterRAM is a signed 32-bit field, so anything at or above 4 GB comes
  * back wrong — it is discarded rather than reported as a small number.
+ *
+ * A station with a discrete GPU alongside the CPU's own integrated one
+ * (the normal case for a gaming PC) has more than one Win32_VideoController
+ * row, and WMI's enumeration order does not favour the discrete card — it
+ * regularly lists the integrated adapter first. Taking `-First 1` reported
+ * "Intel(R) UHD Graphics" on machines that were visibly running an NVIDIA
+ * card. Every adapter is read now, and a real NVIDIA card is preferred over
+ * whatever WMI happened to list first; a station with only integrated
+ * graphics still gets exactly what it did before.
  */
 async function gpuInfo() {
   if (process.platform !== "win32") return null;
@@ -118,13 +127,33 @@ async function gpuInfo() {
   if (gpuPending) return gpuPending;
 
   gpuPending = powershellJson(
-    "Get-CimInstance Win32_VideoController | Select-Object -First 1 " +
-    "Name,AdapterRAM | ConvertTo-Json -Compress"
+    "Get-CimInstance Win32_VideoController | Select-Object " +
+    "Name,AdapterRAM,Status | ConvertTo-Json -Compress"
   ).then((parsed) => {
-    const ram = Number(parsed && parsed.AdapterRAM);
-    gpuCache = parsed && parsed.Name
+    const rows = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
+
+    // Remote-session / render-only stand-ins, never the card a customer's
+    // game is actually drawn through — excluded outright rather than ever
+    // being allowed to win by process of elimination.
+    const real = rows.filter((r) => r && r.Name && !/Microsoft (Basic|Remote)|Citrix|TeamViewer/i.test(r.Name));
+    const candidates = real.length ? real : rows;
+
+    const best =
+      // An NVIDIA-branded adapter is unambiguous — NVIDIA has never made an
+      // integrated CPU graphics chip, so this alone resolves the common
+      // café case (Intel iGPU + NVIDIA dGPU) correctly regardless of order.
+      candidates.find((r) => /NVIDIA/i.test(r.Name)) ||
+      // Otherwise, most video memory wins — a discrete card reports far
+      // more than an integrated one shares from system RAM. Ties and the
+      // AdapterRAM overflow case below both fall through to "first listed",
+      // the previous behaviour.
+      candidates.slice().sort((a, b) => (Number(b.AdapterRAM) || 0) - (Number(a.AdapterRAM) || 0))[0] ||
+      candidates[0];
+
+    const ram = Number(best && best.AdapterRAM);
+    gpuCache = best && best.Name
       ? {
-          name: String(parsed.Name),
+          name: String(best.Name),
           vram_bytes: Number.isFinite(ram) && ram > 0 && ram < 4294967295 ? ram : null
         }
       : null;

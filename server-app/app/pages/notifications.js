@@ -47,6 +47,13 @@
       .sort(function (a, b) { return a.at - b.at; });   // longest-waiting first
   }
 
+  function kioskAlertEntries() {
+    var map = Store.state.kioskAlerts || {};
+    return Object.keys(map)
+      .map(function (pcName) { return Object.assign({ pcName: pcName }, map[pcName]); })
+      .sort(function (a, b) { return a.at - b.at; });
+  }
+
   function overdueSessions() {
     var sessions = Store.state.sessions || {};
     return Object.keys(sessions)
@@ -60,6 +67,21 @@
       "<div><div style='font-size:14px;font-weight:700'>" + UI.esc(entry.pcName) + "</div>" +
       "<div class='faint' style='font-size:12px'>" + UI.esc(entry.who || "A customer") +
         " · waiting " + UI.esc(UI.relTime(new Date(entry.at).toISOString())) + "</div></div>";
+    var go = UI.el("button", {
+      class: "btn btn-primary", html: Icon("chevronR", 15) + '<span class="btn-label">Go to station</span>'
+    });
+    go.addEventListener("click", function () { global.CXStationPanel.open(entry.pcName); });
+    card.appendChild(go);
+    return card;
+  }
+
+  function kioskAlertCard(entry) {
+    var card = UI.el("div", { class: "card card-pad row-between", style: { alignItems: "center" }, dataset: { status: "warning" } });
+    card.innerHTML =
+      "<div><div style='font-size:14px;font-weight:700'>" + UI.esc(entry.pcName) + "</div>" +
+      "<div class='faint' style='font-size:12px'>Alt+Tab and the rest of the kiosk lock are not active" +
+        (entry.reason ? " (" + UI.esc(entry.reason) + ")" : "") +
+        " · since " + UI.esc(UI.relTime(new Date(entry.at).toISOString())) + "</div></div>";
     var go = UI.el("button", {
       class: "btn btn-primary", html: Icon("chevronR", 15) + '<span class="btn-label">Go to station</span>'
     });
@@ -332,10 +354,11 @@
 
     if (loading) { bodyEl.appendChild(UI.skeletonCards(3)); return; }
 
+    var kioskAlerts = kioskAlertEntries();
     var help = helpEntries();
     var overdue = overdueSessions();
 
-    if (!help.length && !overdue.length && !requests.length && !orders.length && !reservations.length) {
+    if (!kioskAlerts.length && !help.length && !overdue.length && !requests.length && !orders.length && !reservations.length) {
       bodyEl.appendChild(UI.emptyState({
         icon: "check",
         status: "online",
@@ -346,6 +369,15 @@
     }
 
     var wrap = UI.el("div", { class: "col gap-6" });
+
+    // A station that is not actually locked down leads the page — this is
+    // not a service request, it is a customer able to reach the Windows
+    // desktop right now.
+    if (kioskAlerts.length) {
+      var kioskList = UI.el("div", { class: "col gap-3" });
+      kioskAlerts.forEach(function (k) { kioskList.appendChild(kioskAlertCard(k)); });
+      wrap.appendChild(section("Keyboard lock not active", kioskAlerts.length, kioskList));
+    }
 
     // Someone waiting on a person, right now — leads the page.
     if (help.length) {
@@ -409,6 +441,7 @@
          avoid — a session only enters or leaves this list on a real change
          (started, extended, ended), which "sessions" already covers. */
       offs.push(Store.on("help-requests", render));
+      offs.push(Store.on("kiosk-alerts", render));
       offs.push(Store.on("sessions", render));
     },
 

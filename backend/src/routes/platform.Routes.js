@@ -13,10 +13,9 @@ import {
   listLicenses, createLicense, revokeLicense, unbindLicense, listActivations
 } from '../controllers/licenses.Controller.js';
 import {
-  listReleases, createRelease, updateRelease, getRollout, uploadReleaseBinary
+  listReleases, createRelease, updateRelease, getRollout
 } from '../controllers/updates.Controller.js';
 import { requirePlatformAdmin, requireReleaseAgent } from '../middleware/authGuards.js';
-import { releaseUpload, handleReleaseUploadErrors } from '../middleware/releaseUpload.js';
 
 const router = express.Router();
 
@@ -39,7 +38,6 @@ router.post('/pay/:token/complete', completeLinkPayment);
    without its token falls straight through to the ordinary admin-gated
    /releases route below, unaffected. */
 router.post('/releases', requireReleaseAgent, createRelease);
-router.post('/releases/upload', requireReleaseAgent, releaseUpload, handleReleaseUploadErrors, uploadReleaseBinary);
 
 /* ==========================================================================
    PLATFORM ADMIN — everything below crosses tenant boundaries

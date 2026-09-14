@@ -9,7 +9,8 @@ import {
   transferSession,
   endSession,
   cancelSession,
-  getDefaults
+  getDefaults,
+  heartbeatSession
 } from '../controllers/session.Controller.js';
 import { requireStaff } from '../middleware/authGuards.js';
 import { requireCafeFeature } from '../modules/entitlements/entitlements.service.js';
@@ -30,6 +31,7 @@ sessionRouter.post('/:id/resume', staff, feature, resumeSession);
 sessionRouter.post('/:id/extend', staff, feature, extendSession);
 sessionRouter.post('/:id/transfer', staff, feature, transferSession);
 sessionRouter.post('/:id/end', staff, feature, endSession);
+sessionRouter.post('/:id/heartbeat', staff, feature, heartbeatSession);
 
 /* Started by mistake. Records who and when, releases the station, charges
    nothing — and never removes the row. */

@@ -128,8 +128,12 @@ export const ingest = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Every sample needs a pc_name' });
     }
 
+    // Scoped to the reporting console's own café — without this, two cafés
+    // that happen to name a station the same (e.g. "PC-01") would have their
+    // telemetry cross-attributed to whichever café's row matched first.
     const known = await client.query(
-      'SELECT pc_id, name FROM pcs WHERE name = ANY($1)', [names]
+      'SELECT pc_id, name FROM pcs WHERE name = ANY($1) AND cafe_id IS NOT DISTINCT FROM $2',
+      [names, req.actor?.cafe_id ?? null]
     );
     const idByName = new Map(known.rows.map((r) => [r.name, r.pc_id]));
 
@@ -227,8 +231,13 @@ export const latest = async (req, res) => {
     const limits = await thresholds();
     const now = new Date();
 
-    // Every registered station appears, including ones that have never
-    // reported — "no data" is the most important thing this page can say.
+    /* Every station that could ever report appears, including ones that
+       never have — "no data" is the most important thing this page can say
+       about a PC. But a pool table, a PS5 or a VR rig has no client agent
+       and no hardware counters to sample; it isn't "hasn't reported yet",
+       it structurally never will. Scoped to networked stations, the same
+       fact every other client-only view in this console already keys on
+       (see games.js's configurableStations()). */
     const result = await pool.query(
       `SELECT p.pc_id, p.name AS pc_name, p.ip_address, p.is_active, p.zone_id,
               z.zone_name, t.*
@@ -236,11 +245,13 @@ export const latest = async (req, res) => {
        LEFT JOIN floor_zones z ON z.zone_id = p.zone_id
        LEFT JOIN LATERAL (
          SELECT * FROM station_telemetry s
-         WHERE s.pc_name = p.name
+         WHERE s.pc_id = p.pc_id
          ORDER BY s.sampled_at DESC
          LIMIT 1
        ) t ON TRUE
-       ORDER BY p.name`
+       WHERE p.ip_address IS NOT NULL AND p.cafe_id IS NOT DISTINCT FROM $1
+       ORDER BY p.name`,
+      [req.actor?.cafe_id ?? null]
     );
 
     const stations = result.rows.map((row) => {
@@ -292,6 +303,17 @@ export const history = async (req, res) => {
     const points = Math.min(Math.max(parseInt(req.query.points, 10) || 120, 10), 500);
     const bucketSeconds = Math.max(Math.round((minutes * 60) / points), 1);
 
+    // Resolved to this café's own PC by name first, then queried by pc_id —
+    // matching by bare pc_name would mix in another café's same-named
+    // station's samples, which have no cafe_id of their own to filter by.
+    const owned = await pool.query(
+      'SELECT pc_id FROM pcs WHERE name = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [name, req.actor?.cafe_id ?? null]
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Station not found' });
+    }
+
     const result = await pool.query(
       `SELECT
          to_timestamp(floor(extract(epoch FROM sampled_at) / $1) * $1) AS bucket,
@@ -302,11 +324,11 @@ export const history = async (req, res) => {
          ROUND(AVG(latency_ms))      AS latency_ms,
          COUNT(*)::int               AS samples
        FROM station_telemetry
-       WHERE pc_name = $2
+       WHERE pc_id = $2
          AND sampled_at >= CURRENT_TIMESTAMP - ($3 || ' minutes')::interval
        GROUP BY bucket
        ORDER BY bucket`,
-      [bucketSeconds, name, String(minutes)]
+      [bucketSeconds, owned.rows[0].pc_id, String(minutes)]
     );
 
     res.status(200).json({
@@ -339,10 +361,11 @@ export const alerts = async (req, res) => {
        FROM pcs p
        LEFT JOIN LATERAL (
          SELECT * FROM station_telemetry s
-         WHERE s.pc_name = p.name ORDER BY s.sampled_at DESC LIMIT 1
+         WHERE s.pc_id = p.pc_id ORDER BY s.sampled_at DESC LIMIT 1
        ) t ON TRUE
-       WHERE p.is_active = TRUE
-       ORDER BY p.name`
+       WHERE p.is_active = TRUE AND p.cafe_id IS NOT DISTINCT FROM $1
+       ORDER BY p.name`,
+      [req.actor?.cafe_id ?? null]
     );
 
     const flagged = [];
@@ -369,8 +392,17 @@ export const clearStation = async (req, res) => {
     if (!name) {
       return res.status(400).json({ success: false, message: 'A station name is required' });
     }
+
+    const owned = await pool.query(
+      'SELECT pc_id FROM pcs WHERE name = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [name, req.actor?.cafe_id ?? null]
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Station not found' });
+    }
+
     const result = await pool.query(
-      'DELETE FROM station_telemetry WHERE pc_name = $1', [name]
+      'DELETE FROM station_telemetry WHERE pc_id = $1', [owned.rows[0].pc_id]
     );
     res.status(200).json({
       success: true,

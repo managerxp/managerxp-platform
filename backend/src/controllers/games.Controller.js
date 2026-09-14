@@ -5,9 +5,9 @@
  * names — belongs to ManagerXP's master catalog (gameCatalog.Controller.js).
  * This file is deliberately unable to write any of that: a café can only
  * browse the catalog, add or remove a title, choose how customers get into
- * it (account_mode) and an optional rate, and say which platform of a game
- * is installed on which of its PCs. There is no endpoint here that accepts
- * an App ID, because there must never be one.
+ * it (account_mode), and say which platform of a game is installed on
+ * which of its PCs. There is no endpoint here that accepts an App ID,
+ * because there must never be one.
  */
 import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
@@ -44,7 +44,6 @@ const shapeCafeGame = (r) => ({
   banner_url: r.banner_url || null,
   enabled: !!r.enabled,
   account_mode: r.account_mode,
-  price_per_hour: r.price_per_hour === null || r.price_per_hour === undefined ? null : Number(r.price_per_hour),
   platforms: r.platforms || [],
   pc_count: r.pc_count !== undefined ? Number(r.pc_count) : undefined
 });
@@ -114,7 +113,7 @@ export const listGames = async (req, res) => {
     }
 
     const { rows } = await pool.query(`
-      SELECT cg.cafe_game_id, cg.enabled, cg.account_mode, cg.price_per_hour, g.*,
+      SELECT cg.cafe_game_id, cg.enabled, cg.account_mode, g.*,
              (SELECT COUNT(*) FROM station_game_platforms sgp WHERE sgp.cafe_game_id = cg.cafe_game_id AND sgp.installed) AS pc_count
         FROM cafe_games cg
         JOIN games g ON g.id = cg.game_id
@@ -166,12 +165,10 @@ export const addGame = async (req, res) => {
 };
 
 /**
- * PATCH /api/games/:cafeGameId   { enabled?, account_mode?, price_per_hour? }
+ * PATCH /api/games/:cafeGameId   { enabled?, account_mode? }
  *
  * The account policy decides what a customer is offered when they pick this
- * game at a station — their own login, a venue account, or either — and the
- * rate is an optional per-game override; leaving it null defers to the
- * station's own hourly pricing.
+ * game at a station — their own login, a venue account, or either.
  */
 export const updateCafeGame = async (req, res) => {
   try {
@@ -187,13 +184,6 @@ export const updateCafeGame = async (req, res) => {
         return res.status(400).json({ success: false, message: `account_mode must be one of ${ACCOUNT_MODES.join(', ')}` });
       }
       params.push(req.body.account_mode); sets.push(`account_mode = $${params.length}`);
-    }
-    if (req.body?.price_per_hour !== undefined) {
-      const rate = req.body.price_per_hour === null ? null : Number(req.body.price_per_hour);
-      if (rate !== null && (!Number.isFinite(rate) || rate < 0)) {
-        return res.status(400).json({ success: false, message: 'Rate must be zero or more, or left blank' });
-      }
-      params.push(rate); sets.push(`price_per_hour = $${params.length}`);
     }
     if (!sets.length) return res.status(400).json({ success: false, message: 'Nothing to change' });
 
@@ -262,7 +252,7 @@ export const listPcGames = async (req, res) => {
     if (!pc) return res.status(404).json({ success: false, message: 'Station not found' });
 
     const cafeGames = (await pool.query(`
-      SELECT cg.cafe_game_id, cg.enabled, cg.account_mode, cg.price_per_hour, g.*
+      SELECT cg.cafe_game_id, cg.enabled, cg.account_mode, g.*
         FROM cafe_games cg JOIN games g ON g.id = cg.game_id
        WHERE cg.cafe_id IS NOT DISTINCT FROM $1
        ORDER BY g.name

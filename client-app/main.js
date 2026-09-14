@@ -63,6 +63,18 @@ let kioskLocked = true;
 let windowsKioskGuard = null;
 let windowsKioskGuardStarting = false;
 
+/* How many times in a row this has failed to actually confirm itself
+   installed (HOOK_INSTALLED never arrived before the process exited or
+   printed HOOK_FAILED). A single failed attempt is retried silently — a
+   transient blip is not worth alarming anyone over — but a station stuck
+   failing repeatedly means Alt+Tab and the rest of the kiosk lock are not
+   actually being blocked, with nothing visible about it to anyone standing
+   at the machine. That is worth staff knowing, which nothing did before
+   this: a failure here only ever reached this station's own hidden log. */
+let kioskGuardFailureStreak = 0;
+let kioskGuardAlertSent = false;
+const KIOSK_GUARD_ALERT_THRESHOLD = 3;
+
 const WINDOWS_KIOSK_GUARD_SCRIPT = String.raw`
 Add-Type @'
 using System;
@@ -286,8 +298,21 @@ public static class CafeXPKbdGuard {
             }
         }
 
-        if (hookId == IntPtr.Zero)
-            throw new Exception("SetWindowsHookEx failed.");
+        if (hookId == IntPtr.Zero) {
+            // A distinct, greppable line on stdout — not just an exception
+            // that lands on stderr and, on a real station with nobody
+            // watching its hidden console, is never seen by anyone. This is
+            // what lets Node tell "the lock is not active" apart from
+            // "still starting up" instead of assuming success by default.
+            int err = Marshal.GetLastWin32Error();
+            Console.WriteLine("HOOK_FAILED win32_error=" + err);
+            throw new Exception("SetWindowsHookEx failed (error " + err + ").");
+        }
+
+        // Printed only once the hook is actually confirmed in place — this
+        // used to run unconditionally before Run() was even called, so it
+        // claimed success whether or not SetWindowsHookEx ever succeeded.
+        Console.WriteLine("HOOK_INSTALLED");
 
         MSG msg;
 
@@ -299,7 +324,6 @@ public static class CafeXPKbdGuard {
 }
 '@
 
-[Console]::WriteLine("CafeXP keyboard guard started")
 [CafeXPKbdGuard]::Run()
 `;
 
@@ -335,12 +359,18 @@ function startWindowsKioskGuard() {
         );
 
         windowsKioskGuard = child;
+        let confirmedThisRun = false;
 
         child.stdout.on("data", data => {
             data.toString().split(/\r?\n/).forEach((line) => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
                 if (trimmed === "ALTTAB") { handleAltTabToggle(); return; }
+                if (trimmed === "HOOK_INSTALLED") {
+                    confirmedThisRun = true;
+                    reportKioskGuardRecovered();
+                    return;
+                }
                 console.log("[Kiosk] Windows keyboard guard:", trimmed);
             });
         });
@@ -353,6 +383,7 @@ function startWindowsKioskGuard() {
             console.error("[Kiosk] Failed to start Windows keyboard guard:", error);
             windowsKioskGuard = null;
             windowsKioskGuardStarting = false;
+            reportKioskGuardFailure(`spawn error: ${error.message}`);
         });
 
         child.on("exit", (code, signal) => {
@@ -362,6 +393,14 @@ function startWindowsKioskGuard() {
 
             windowsKioskGuard = null;
             windowsKioskGuardStarting = false;
+
+            /* Only a genuine failure to protect the station counts here — a
+               deliberate stop (staff unlocked it, or it is being restarted
+               to pick up fresh config) is neither an error nor something
+               that should count toward the alert streak. */
+            if (kioskLocked && !confirmedThisRun) {
+                reportKioskGuardFailure(`exited before confirming installed (code=${code})`);
+            }
 
             // Restart automatically if kiosk protection is still required.
             if (kioskLocked) {
@@ -383,6 +422,50 @@ function startWindowsKioskGuard() {
             "[Kiosk] Failed to start Windows keyboard guard:",
             error
         );
+        reportKioskGuardFailure(`could not spawn: ${error.message}`);
+    }
+}
+
+/*
+ * Alt+Tab and the rest of the kiosk lock depend entirely on the low-level
+ * keyboard hook actually being installed — the customer-facing kiosk window
+ * itself has no idea whether it is protected. Left unreported, a station
+ * whose hook keeps failing to install (blocked by AV, a policy, anything)
+ * runs completely unlocked with every appearance of working normally, and
+ * nobody finds out until a customer notices they can reach the desktop.
+ *
+ * A single failed attempt is not reported — startup jitter recovers on its
+ * own most of the time — but a run of them past KIOSK_GUARD_ALERT_THRESHOLD
+ * means the retry loop is not recovering by itself, and staff need to know
+ * this specific station is not actually locked down.
+ */
+function reportKioskGuardFailure(reason) {
+    kioskGuardFailureStreak += 1;
+    if (kioskGuardFailureStreak < KIOSK_GUARD_ALERT_THRESHOLD || kioskGuardAlertSent) return;
+
+    kioskGuardAlertSent = true;
+    log(`[Kiosk] ⚠ Keyboard lock has failed ${kioskGuardFailureStreak} times in a row (${reason}) — this station is not actually locked down.`);
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        serverConnection.send(JSON.stringify({
+            type: "KIOSK_GUARD_FAILED",
+            simId: SIM_ID,
+            reason,
+            failures: kioskGuardFailureStreak
+        }));
+    }
+}
+
+/** The hook came back up — clear the streak, and tell the console if it was
+    ever told there was a problem, so the floor stops flagging this station. */
+function reportKioskGuardRecovered() {
+    const wasAlerted = kioskGuardAlertSent;
+    kioskGuardFailureStreak = 0;
+    kioskGuardAlertSent = false;
+    if (!wasAlerted) return;
+
+    log("[Kiosk] Keyboard lock is installed again.");
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+        serverConnection.send(JSON.stringify({ type: "KIOSK_GUARD_RECOVERED", simId: SIM_ID }));
     }
 }
 
@@ -483,6 +566,24 @@ if ($p) { [CafeXPFocus]::Focus($p.MainWindowHandle) }
 }
 
 /*
+ * A game just launched must come up in front of CafeXP on its own — Windows'
+ * foreground lock (see focusRunningExe above) means a freshly spawned
+ * background process cannot steal focus by itself, so without this the
+ * kiosk window simply stayed in front and the customer had to already know
+ * to Alt+Tab to find a game that, from their side, looked like it never
+ * opened. A single attempt right after launch usually finds no window yet —
+ * the process exists but hasn't created one — so this tries a few times over
+ * the following seconds instead of once; each call is a no-op once the
+ * window is found and focused, or once the game has already closed.
+ */
+function focusLaunchedGame(exeName) {
+    if (!exeName) return;
+    [500, 2000, 5000, 10000].forEach((delay) => {
+        setTimeout(() => focusRunningExe(exeName), delay);
+    });
+}
+
+/*
  * The café's staff-unlock PIN, pushed by the console when this station
  * registers and cached on disk.
  *
@@ -494,6 +595,15 @@ if ($p) { [CafeXPFocus]::Focus($p.MainWindowHandle) }
  */
 let staffUnlockPin = "";
 
+/* Which built-in Station tools (screen resolution, NVIDIA Control Panel,
+   Device Manager) this station's café has switched off for it — e.g.
+   ["nvidia"] on a machine with no NVIDIA card. Empty means everything is
+   offered, the same always-on default every station had before this
+   existed. Cached alongside the unlock PIN for the same reason: a console
+   that cannot be reached must not mean this station forgets what it was
+   told last time. */
+let disabledSystemTools = [];
+
 const unlockPinFile = () => path.join(app.getPath("userData"), "station-config.json");
 
 function loadUnlockPin() {
@@ -501,14 +611,20 @@ function loadUnlockPin() {
     const raw = fs.readFileSync(unlockPinFile(), "utf8");
     const parsed = JSON.parse(raw);
     staffUnlockPin = typeof parsed.staffUnlockPin === "string" ? parsed.staffUnlockPin : "";
+    disabledSystemTools = Array.isArray(parsed.disabledSystemTools) ? parsed.disabledSystemTools : [];
   } catch (e) {
     staffUnlockPin = "";   // never configured, or unreadable — treat as unset
+    disabledSystemTools = [];
   }
 }
 
-function persistUnlockPin(pin) {
+function persistUnlockPin(pin, tools) {
   try {
-    fs.writeFileSync(unlockPinFile(), JSON.stringify({ staffUnlockPin: pin }), "utf8");
+    fs.writeFileSync(
+      unlockPinFile(),
+      JSON.stringify({ staffUnlockPin: pin, disabledSystemTools: tools || [] }),
+      "utf8"
+    );
   } catch (e) {
     log(`Could not cache the staff unlock PIN: ${e.message}`);
   }
@@ -665,6 +781,23 @@ function launchGame(game) {
       // so this is the only launched signal it ever gets — without it the
       // "Getting your game ready…" overlay has nothing to close it.
       sendToWindow(win, 'app-launched', { appName: game.name });
+      /* Tracked under the game's name exactly like the exe path below, just
+         with no real pid — every consumer of runningProcesses (Alt+Tab's
+         currentRunningApp/focusRunningExe, pollRunningProcesses' own-exit
+         detection, closeApplication) already works off appPath/appName
+         alone, never a real pid. Without this a protocol-launched title
+         (Steam, Riot, EA…) was invisible to all three: Alt+Tab had nothing
+         to switch to, a customer quitting the game on their own was never
+         noticed, and cleanup could only fall back to guessing an exe name
+         from the display title. game.process_name is the library's own
+         record of what the title actually runs as, the same field
+         runSessionCleanup already trusts for this. */
+      runningProcesses.set(game.name, {
+        pid: null,
+        appPath: game.process_name || null,
+        timerCardWin: null
+      });
+      focusLaunchedGame(deriveExeName(game.process_name, game.name));
     }).catch((err) => {
       log(`Launch failed for ${game.name}: ${err.message}`);
       const error = 'Could not reach the launcher.';
@@ -730,6 +863,7 @@ function launchGame(game) {
       const mins = sessionRemainingMinutes();
       if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins, sessionBufferRemainingSeconds());
       runningProcesses.set(game.name, info);
+      focusLaunchedGame(deriveExeName(plan.exe, game.name));
     }
   }
 }
@@ -1373,6 +1507,19 @@ function createWindow() {
     }
   });
 
+  /*
+   * The café session's own low-time warning needs to reach the customer even
+   * while a game has focus and CafeXP is sitting behind it — same
+   * win.show()+focus() already used to bring CafeXP forward on an Alt+Tab
+   * (see handleAltTabToggle). Our own window, so none of focusRunningExe's
+   * foreground-lock workaround is needed here.
+   */
+  ipcMain.on('bring-to-front', () => {
+    if (!alive(win)) return;
+    win.show();
+    win.focus();
+  });
+
   /* The customer opened the game picker while idle and wants to see what they
      could start — this station's games and this café's prices. */
   ipcMain.on('request-start-options', () => {
@@ -1407,17 +1554,22 @@ function createWindow() {
     },
     nvidia: {
       label: 'NVIDIA Control Panel',
-      open: () => {
-        // No universal launch command for this one — different driver
-        // versions install it in different places, and not every station
-        // even has an NVIDIA card. Best-effort across the common paths,
-        // with a plain "not here" instead of a dead click if none match.
+      // No universal launch command for this one — different driver
+      // versions install it in different places, and not every station
+      // even has an NVIDIA card. Checked before the kiosk seal ever drops,
+      // so a station with no NVIDIA Control Panel gets a plain message
+      // with no visible minimise/restore flicker.
+      precheck: () => {
         const candidates = [
           'C:\\Program Files\\NVIDIA Corporation\\Control Panel Client\\nvcplui.exe',
           'C:\\Windows\\System32\\nvcplui.exe'
         ];
         const found = candidates.find((p) => { try { return fs.existsSync(p); } catch (e) { return false; } });
-        if (!found) return { success: false, message: 'NVIDIA Control Panel is not installed on this station.' };
+        return found
+          ? { success: true, path: found }
+          : { success: false, message: 'NVIDIA Control Panel is not installed on this station.' };
+      },
+      open: (found) => {
         exec(`"${found}"`, (err) => { if (err) log(`NVIDIA Control Panel failed to launch: ${err.message}`); });
         return { success: true };
       }
@@ -1435,20 +1587,58 @@ function createWindow() {
     const entry = SYSTEM_PANELS[panel];
     if (!entry) return { success: false, message: 'Unknown panel' };
     if (!alive(win)) return { success: false, message: 'The client window is not available' };
+    // Enforced here too, not just by hiding the button in the Help menu —
+    // a stale renderer (still showing an option the console just disabled)
+    // must not be able to open it anyway.
+    if (disabledSystemTools.includes(panel)) {
+      return { success: false, message: `${entry.label} has been switched off for this station.` };
+    }
 
-    const result = entry.open();
-    if (!result.success) return result;
+    // Whether there is anything to open at all, checked before the kiosk seal
+    // drops — a station missing this panel gets a plain message with no
+    // visible minimise/restore flicker.
+    const pre = entry.precheck ? entry.precheck() : { success: true };
+    if (!pre.success) return pre;
 
+    /*
+     * Kiosk/fullscreen dropped BEFORE launching the panel, not after.
+     *
+     * This used to run the other way round: open() fired first, then the
+     * kiosk window un-fullscreened and minimised. NVIDIA Control Panel is a
+     * plain user-mode app with no special foregrounding help from Windows
+     * (unlike ms-settings:, which the Settings app's own protocol activation
+     * gets to jump above most things anyway) — launched while CafeXP still
+     * held exclusive fullscreen, it had nothing to actually appear onto and
+     * the click looked like it did nothing. Restoring the desktop first
+     * gives every panel, nvcplui.exe included, a normal desktop to open on.
+     */
     stopWindowsKeyboardBlocker();
     win.setKiosk(false);
     win.setFullScreen(false);
     win.minimize();
+
+    const result = entry.open(pre.path);
+    if (!result.success) {
+      // Nothing actually opened — put the kiosk right back rather than
+      // leaving the station unsealed for no reason. win.restore() fires the
+      // same 'restore' handler a customer clicking the taskbar icon would,
+      // so reseal() re-applies it correctly (only if still kioskLocked).
+      if (alive(win)) win.restore();
+      return result;
+    }
+
     log(`[Station tools] Opened ${entry.label} — kiosk dropped until the client window is restored.`);
     return {
       success: true,
       message: entry.openMessage || `${entry.label} opening — click the CafeXP icon in the taskbar to come back.`
     };
   });
+
+  // What the Help menu should offer right now — read once on open rather
+  // than only pushed, so a menu built before the console's first push
+  // arrives (a station's very first boot) still reflects the cached value
+  // from the last time it connected.
+  ipcMain.handle('system:get-disabled-tools', () => disabledSystemTools);
 
   /*
    * The customer picked a game and a price and tapped Start.
@@ -1476,6 +1666,25 @@ function createWindow() {
       log("Sent START_SESSION_REQUEST to console");
     } else {
       sendToWindow(win, "start-session-failed", { message: "Not connected to the café server" });
+    }
+  });
+
+  /*
+   * Occupancy billing: fired once, right after a successful login, before
+   * the customer has picked anything. The console decides whether this
+   * station's category actually bills this way (see store.js) — this is a
+   * background attempt, not a customer action, so there is no failure toast
+   * here; if the console declines, the customer simply sees the normal game
+   * and price picker, exactly as before this existed.
+   */
+  ipcMain.on('request-occupancy-session-start', () => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({
+        type: "START_SESSION_REQUEST", simId: SIM_ID,
+        customer_id: userInfo && userInfo.customer_id,
+        occupancy_login_start: true
+      }));
+      log("Sent occupancy-start START_SESSION_REQUEST to console");
     }
   });
 
@@ -2245,13 +2454,10 @@ function getInstalledApps() {
     }
 
     const scriptPath = path.join(__dirname, "get_apps.ps1");
-    const outputDir = path.join(__dirname, "output");
-    const outputFile = path.join(outputDir, "apps.json");
-
-    // Create output directory if it doesn't exist
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
-    }
+    /* get_apps.ps1 itself writes here now — under LOCALAPPDATA, not relative
+       to this script's own (Program-Files, read-only-to-a-standard-account)
+       install folder. Read from the same place the script actually writes to. */
+    const outputFile = path.join(LOCAL_APPDATA, "CafeXP", "apps.json");
 
     const startTime = Date.now();
     let retryCount = 0;
@@ -2791,9 +2997,14 @@ function listen() {
       if (msg.type === "STATION_CONFIG") {
         if (typeof msg.staffUnlockPin === "string") {
           staffUnlockPin = msg.staffUnlockPin;
-          persistUnlockPin(staffUnlockPin);
-          log(`Station config received — staff unlock PIN is ${staffUnlockPin ? "set" : "not set"}.`);
         }
+        if (Array.isArray(msg.disabledSystemTools)) {
+          disabledSystemTools = msg.disabledSystemTools;
+        }
+        persistUnlockPin(staffUnlockPin, disabledSystemTools);
+        log(`Station config received — staff unlock PIN is ${staffUnlockPin ? "set" : "not set"}` +
+          (disabledSystemTools.length ? `, tools disabled: ${disabledSystemTools.join(", ")}` : "") + ".");
+        sendToWindow(win, "system-tools-updated", { disabled: disabledSystemTools });
       }
 
       // Power actions issued from the admin console. The console has already

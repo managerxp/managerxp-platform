@@ -62,6 +62,10 @@ contextBridge.exposeInMainWorld("api", {
   onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
   // A customer tapped "Call staff" on the Help menu at their station.
   onStationCallStaff: (cb) => ipcRenderer.on("station:call-staff", (_, d) => cb(d)),
+  // A station's own low-level keyboard lock (Alt+Tab, the Windows key, etc.)
+  // failed to install, or came back after having failed.
+  onStationKioskGuardFailed: (cb) => ipcRenderer.on("station:kiosk-guard-failed", (_, d) => cb(d)),
+  onStationKioskGuardRecovered: (cb) => ipcRenderer.on("station:kiosk-guard-recovered", (_, d) => cb(d)),
   // A customer signed in or out at a station's kiosk, before any session exists.
   onCustomerSignedIn: (cb) => ipcRenderer.on("station:customer-signed-in", (_, d) => cb(d)),
   onCustomerSignedOut: (cb) => ipcRenderer.on("station:customer-signed-out", (_, d) => cb(d)),

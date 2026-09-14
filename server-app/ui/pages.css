@@ -131,6 +131,14 @@
   box-shadow: 0 0 0 3px var(--warn-soft);
 }
 
+/* This station's keyboard lock is not actually active — stronger than the
+   help-request styling above (danger, not warn) and, unlike it, not cleared
+   by opening the station: only the hook actually reinstalling does that. */
+.station[data-kiosk-alert="1"] {
+  border-color: var(--danger-line);
+  box-shadow: 0 0 0 3px var(--danger-soft);
+}
+
 /* Unregistered / discovered station variant */
 .station.is-discovered {
   border-style: dashed;

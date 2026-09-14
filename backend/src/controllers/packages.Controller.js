@@ -263,8 +263,12 @@ export const purchasePackage = async (req, res) => {
       return res.status(409).json({ success: false, message: 'That package is not on sale' });
     }
 
+    // Scoped to the package's own café (already verified above) — without
+    // this, a cross-café customer_id in the body got a package filed (and
+    // its wallet debited) under a café it has no account with.
     const customer = await client.query(
-      'SELECT customer_id, customer_name FROM customers WHERE customer_id = $1', [customerId]
+      'SELECT customer_id, customer_name FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [customerId, req.actor?.cafe_id ?? null]
     );
     if (customer.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -423,6 +427,18 @@ export const listCustomerPackages = async (req, res) => {
     if (!req.actor?.isStaff && Number(req.actor?.customer_id) !== customerId) {
       return res.status(403).json({ success: false, message: 'You can only view your own packages' });
     }
+    // A staff token can name any customerId; scope to their own café. The
+    // customer's own token needs no such check — the equality above already
+    // proves ownership, and it carries no cafe_id claim to check against.
+    if (req.actor?.isStaff) {
+      const owned = await pool.query(
+        'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+        [customerId, req.actor.cafe_id ?? null]
+      );
+      if (owned.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Customer not found' });
+      }
+    }
 
     // Expire anything past its date before reading, so the list is truthful.
     await pool.query(
@@ -456,8 +472,15 @@ export const consumeUnits = async (req, res) => {
     }
 
     await client.query('BEGIN');
+    // Scoped through the owning customer's café — staff-only route, so any
+    // café's staff.manage-equivalent token could otherwise deplete or
+    // cancel any other café's customer's prepaid package by bare id.
     const held = await client.query(
-      'SELECT * FROM customer_packages WHERE customer_package_id = $1 FOR UPDATE', [id]
+      `SELECT cp.* FROM customer_packages cp
+       JOIN customers c ON c.customer_id = cp.customer_id
+       WHERE cp.customer_package_id = $1 AND c.cafe_id IS NOT DISTINCT FROM $2
+       FOR UPDATE OF cp`,
+      [id, req.actor?.cafe_id ?? null]
     );
     if (held.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -508,10 +531,15 @@ export const consumeUnits = async (req, res) => {
 // POST /api/packages/customer-package/:id/cancel
 export const cancelCustomerPackage = async (req, res) => {
   try {
+    // Scoped through the owning customer's café — see consumeUnits above.
     const result = await pool.query(
-      `UPDATE customer_packages SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
-       WHERE customer_package_id = $1 AND status = 'ACTIVE' RETURNING customer_package_id`,
-      [parseInt(req.params.id, 10)]
+      `UPDATE customer_packages cp SET status = 'CANCELLED', updated_at = CURRENT_TIMESTAMP
+       FROM customers c
+       WHERE cp.customer_id = c.customer_id
+         AND cp.customer_package_id = $1 AND cp.status = 'ACTIVE'
+         AND c.cafe_id IS NOT DISTINCT FROM $2
+       RETURNING cp.customer_package_id`,
+      [parseInt(req.params.id, 10), req.actor?.cafe_id ?? null]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'No active package with that id' });
