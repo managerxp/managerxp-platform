@@ -260,16 +260,30 @@ export const createPC = async (req, res) => {
     }
 
     /* Only meaningful for a networked station. Two pool tables both having no
-       address is not a clash — it is the normal case. */
+       address is not a clash — it is the normal case.
+       IP is scoped to this café: a private LAN address like 192.168.1.100 or
+       a link-local 169.254.x.x is routinely reused across completely
+       unrelated cafés' own networks, so a global check would wrongly refuse
+       a second café's station over an address that means nothing outside
+       its own network. MAC stays global — a MAC really is one physical
+       adapter, so the same one legitimately existing at two cafés at once
+       means it moved without being released from the first, which is worth
+       surfacing rather than silently allowing a duplicate row for the same
+       hardware. */
     if (networked) {
       const existingCheck = await pool.query(
-        'SELECT pc_id FROM pcs WHERE ip_address = $1 OR UPPER(mac_address) = UPPER($2)',
-        [ip_address, mac_address]
+        `SELECT pc_id, cafe_id, UPPER(mac_address) = UPPER($2) AS mac_clash
+         FROM pcs
+         WHERE (ip_address = $1 AND cafe_id = $3) OR UPPER(mac_address) = UPPER($2)`,
+        [ip_address, mac_address, cafe_id]
       );
       if (existingCheck.rows.length > 0) {
+        const macClash = existingCheck.rows.find((r) => r.mac_clash);
         return res.status(409).json({
           success: false,
-          message: 'A station with this IP address or MAC address already exists'
+          message: macClash
+            ? 'This MAC address is already registered at another café — it needs to be released there first'
+            : 'A station with this IP address already exists at this café'
         });
       }
     }
@@ -387,10 +401,11 @@ export const updatePC = async (req, res) => {
     }
     
     if (ip_address !== undefined) {
-      // Check if IP address already exists for another PC
+      // Scoped to this station's own café — see createPC for why a global
+      // check is wrong for a private/link-local address.
       const ipCheck = await pool.query(
-        'SELECT pc_id FROM pcs WHERE ip_address = $1 AND pc_id != $2',
-        [ip_address, id]
+        'SELECT pc_id FROM pcs WHERE ip_address = $1 AND pc_id != $2 AND cafe_id = $3',
+        [ip_address, id, existingPc.cafe_id]
       );
       if (ipCheck.rows.length > 0) {
         return res.status(409).json({
@@ -934,10 +949,12 @@ export const registerDiscoveredPC = async (req, res) => {
       });
     }
     
-    // Check if IP address already exists for another PC
+    // Scoped to the café this station is being registered into — see
+    // createPC for why a global check is wrong for a private/link-local
+    // address shared across unrelated cafés' own networks.
     const ipExistsCheck = await pool.query(
-      'SELECT pc_id FROM pcs WHERE ip_address = $1',
-      [ip_address]
+      'SELECT pc_id FROM pcs WHERE ip_address = $1 AND cafe_id = $2',
+      [ip_address, final_cafe_id]
     );
     
     if (ipExistsCheck.rows.length > 0) {
