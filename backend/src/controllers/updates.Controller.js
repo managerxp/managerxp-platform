@@ -477,6 +477,56 @@ export const createRelease = async (req, res) => {
   }
 };
 
+/*
+ * Where the download link points — this backend's OWN public origin, not
+ * platform.Controller.js's publicBase (that one is PUBLIC_BASE_URL, the
+ * FRONTEND's origin, deliberately, since a pay link opens a page the React
+ * app renders). A file this server itself serves from /uploads needs this
+ * server's own address, which in production is a different host entirely
+ * — hence a separate env var rather than reusing that one and getting a
+ * frontend URL back for a backend file.
+ */
+const publicBase = (req) => {
+  const configured = process.env.API_PUBLIC_URL;
+  const base = configured || `${req.protocol}://${req.get('host')}`;
+  /* A download link handed to a browser on an https:// page must itself be
+   * https:// — a scheme mismatch is a cross-origin change as far as the
+   * `download` attribute is concerned, so the browser silently refuses to
+   * force-download it. Two independent things can produce http:// here, and
+   * this is cheaper than relying on neither ever recurring: a mistyped
+   * API_PUBLIC_URL, or (when it's unset) req.protocol reporting the scheme
+   * between nginx and Node — always "http" — because nothing here tells
+   * Express to trust nginx's X-Forwarded-Proto. Never upgrade localhost —
+   * that's the one case (local dev, `npm start` with no TLS at all) where
+   * http:// is genuinely correct, not a misconfiguration. */
+  return /^http:\/\/(?!(?:localhost|127\.0\.0\.1)(?::|$))/.test(base) ? base.replace(/^http:\/\//, 'https://') : base;
+};
+
+/*
+ * POST /api/platform/releases/upload
+ *
+ * The release workflow's first step for a given build: hand over the .exe
+ * it just produced, get back the absolute URL and file facts (name, size)
+ * that the very next call — POST /api/platform/releases, unchanged — needs
+ * to actually publish it. Two calls, not one, so createRelease keeps taking
+ * plain JSON and this stays the only place that ever touches a multipart
+ * upload this large.
+ */
+export const uploadReleaseBinary = async (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: 'No installer was uploaded' });
+  // Matches releaseUpload.js's own componentDir() — client and server each
+  // get a subfolder so their same-named latest.yml manifests never collide.
+  const component = req.body?.component === 'server' ? 'server' : 'client';
+  res.status(201).json({
+    success: true,
+    data: {
+      download_url: `${publicBase(req)}/uploads/releases/${component}/${req.file.filename}`,
+      file_name: req.file.filename,
+      file_size: req.file.size
+    }
+  });
+};
+
 // PATCH /api/platform/releases/:id
 export const updateRelease = async (req, res) => {
   const client = await pool.connect();
