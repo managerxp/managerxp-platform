@@ -43,6 +43,16 @@ export const reportClientVersion = async (req, res) => {
  * The vendor sees everything — supporting an install means seeing it. Everyone
  * else sees the café their token names.
  */
+/* A MAC address is the same address whatever case it's written in — but
+   `WHERE mac_address = $1` is a bare string comparison, so a station that
+   reports itself in a different case than what got stored the first time
+   (common: different tools/drivers on the same machine format it
+   differently) fails to match its own row. Every comparison below goes
+   through UPPER() on both sides so this holds even against rows already
+   stored inconsistently; new writes are also normalized so the column
+   converges on one case over time. */
+const normMac = (mac) => (mac ? String(mac).trim().toUpperCase() : mac);
+
 const cafeOf = (req) => {
   const actor = req.actor || {};
   if (actor.isPlatformAdmin) return null;          // no restriction
@@ -253,7 +263,7 @@ export const createPC = async (req, res) => {
        address is not a clash — it is the normal case. */
     if (networked) {
       const existingCheck = await pool.query(
-        'SELECT pc_id FROM pcs WHERE ip_address = $1 OR mac_address = $2',
+        'SELECT pc_id FROM pcs WHERE ip_address = $1 OR UPPER(mac_address) = UPPER($2)',
         [ip_address, mac_address]
       );
       if (existingCheck.rows.length > 0) {
@@ -283,7 +293,7 @@ export const createPC = async (req, res) => {
       orgId || null,
       name,
       ip_address || null,
-      mac_address || null,
+      normMac(mac_address),
       // A station with no address has nothing to connect to, so no port either.
       networked ? (port || await getSetting('station.default_port', 9090)) : null,
       is_active !== undefined ? is_active : true,
@@ -395,7 +405,7 @@ export const updatePC = async (req, res) => {
     if (mac_address !== undefined) {
       // Check if MAC address already exists for another PC
       const macCheck = await pool.query(
-        'SELECT pc_id FROM pcs WHERE mac_address = $1 AND pc_id != $2',
+        'SELECT pc_id FROM pcs WHERE UPPER(mac_address) = UPPER($1) AND pc_id != $2',
         [mac_address, id]
       );
       if (macCheck.rows.length > 0) {
@@ -405,7 +415,7 @@ export const updatePC = async (req, res) => {
         });
       }
       updates.push(`mac_address = $${paramCounter++}`);
-      queryParams.push(mac_address);
+      queryParams.push(normMac(mac_address));
     }
     
     if (is_active !== undefined) {
@@ -792,7 +802,7 @@ export const checkPCExists = async (req, res) => {
 
     // First check if PC exists by MAC address (since MAC is more reliable)
     if (mac_address) {
-      const macQuery = 'SELECT pc_id, name, ip_address, mac_address FROM pcs WHERE mac_address = $1';
+      const macQuery = 'SELECT pc_id, name, ip_address, mac_address FROM pcs WHERE UPPER(mac_address) = UPPER($1)';
       const macResult = await pool.query(macQuery, [mac_address]);
 
       if (macResult.rows.length > 0) {
@@ -805,7 +815,7 @@ export const checkPCExists = async (req, res) => {
           const updateQuery = `
             UPDATE pcs
             SET ip_address = $1, updated_at = CURRENT_TIMESTAMP
-            WHERE mac_address = $2
+            WHERE UPPER(mac_address) = UPPER($2)
             RETURNING pc_id, name, ip_address
           `;
 
@@ -885,21 +895,21 @@ export const registerDiscoveredPC = async (req, res) => {
     
     // Check if MAC address already exists (case where PC moved/changed IP)
     const macExistsCheck = await pool.query(
-      'SELECT pc_id, ip_address FROM pcs WHERE mac_address = $1',
+      'SELECT pc_id, ip_address FROM pcs WHERE UPPER(mac_address) = UPPER($1)',
       [mac_address]
     );
-    
+
     if (macExistsCheck.rows.length > 0) {
       const existingPC = macExistsCheck.rows[0];
-      
+
       // If IP is different, update it
       if (existingPC.ip_address !== ip_address) {
         console.log(`🔄 IP Auto-Update on Register: MAC ${mac_address} found. Updating IP from ${existingPC.ip_address} to ${ip_address}`);
-        
+
         const updateQuery = `
-          UPDATE pcs 
-          SET ip_address = $1, updated_at = CURRENT_TIMESTAMP 
-          WHERE mac_address = $2 
+          UPDATE pcs
+          SET ip_address = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE UPPER(mac_address) = UPPER($2)
           RETURNING *
         `;
         
@@ -950,7 +960,7 @@ export const registerDiscoveredPC = async (req, res) => {
       final_branch_id,
       pc_name,
       ip_address,
-      mac_address,
+      normMac(mac_address),
       port || await getSetting('station.default_port', 9090),
       true
     ]);
