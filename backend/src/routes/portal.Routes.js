@@ -7,6 +7,7 @@ import {
   listUsers, inviteUser, acceptInvite
 } from '../controllers/portal.Controller.js';
 import { requirePortalUser, withOrganization, withBranch, requireOwner } from '../middleware/tenancy.js';
+import { getLatestDownloads } from '../controllers/updates.Controller.js';
 import {
   portalListTickets, portalCreateTicket, portalGetTicket, portalReply, portalCloseTicket,
   portalGetAttachment
@@ -38,6 +39,9 @@ router.use(requirePortalUser);
 
 // Spans every organization the user belongs to, so it takes no org scope.
 router.get('/me', me);
+// Same reason: what's downloadable doesn't depend on having a business set
+// up yet, or which one — see getLatestDownloads.
+router.get('/downloads', getLatestDownloads);
 
 router.get('/dashboard', withOrganization(), withBranch(), dashboard);
 
