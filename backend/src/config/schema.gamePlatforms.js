@@ -71,17 +71,6 @@ export const initializeGamePlatforms = async (client) => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
     )
   `);
-  /* CREATE TABLE IF NOT EXISTS is a no-op on a `games` table that already
-     existed before these two columns were added here — it never widens an
-     existing table. On such a database, uploadCatalogLogo/uploadCatalogCover
-     (gameCatalog.Controller.js's saveAsset) would fail with "column
-     icon_url/banner_url does not exist" on every attempt, surfacing to the
-     admin as a generic "Could not save that logo/cover image". */
-  await client.query(`
-    ALTER TABLE games
-      ADD COLUMN IF NOT EXISTS icon_url VARCHAR(255),
-      ADD COLUMN IF NOT EXISTS banner_url VARCHAR(255)
-  `);
 
   /* One row per (game, store). A game with no platform configured yet still
      exists in the catalog — ManagerXP can register "Hollow Knight" and add
@@ -157,21 +146,26 @@ export const initializeGamePlatforms = async (client) => {
   `);
 
   /*
-   * cafe_games gains the account policy and an optional per-game rate. This
-   * is additive to the table the previous game-catalog migration created —
-   * its rows, and their cafe_id/game_id pairing, are kept; only game_id's
-   * target and these two new columns change.
+   * cafe_games gains the account policy. This is additive to the table the
+   * previous game-catalog migration created — its rows, and their
+   * cafe_id/game_id pairing, are kept; only game_id's target and this new
+   * column change.
    */
   await client.query(`
     ALTER TABLE cafe_games
-      ADD COLUMN IF NOT EXISTS account_mode VARCHAR(24) NOT NULL DEFAULT 'CUSTOMER_ACCOUNT',
-      ADD COLUMN IF NOT EXISTS price_per_hour NUMERIC(10,2)
+      ADD COLUMN IF NOT EXISTS account_mode VARCHAR(24) NOT NULL DEFAULT 'CUSTOMER_ACCOUNT'
   `);
   await client.query(`ALTER TABLE cafe_games DROP CONSTRAINT IF EXISTS cafe_games_account_mode_check`);
   await client.query(`
     ALTER TABLE cafe_games ADD CONSTRAINT cafe_games_account_mode_check
       CHECK (account_mode IN ('CUSTOMER_ACCOUNT','VENUE_ACCOUNT','CUSTOMER_OR_VENUE'))
   `);
+  /* The per-game rate override this column once held was never read by
+     billing — every session is priced from the Gaming Price Master (game +
+     session length + station category), never from this. It only ever sat
+     on cafe_games unread once written, so it comes back off the table
+     rather than staying as a column nothing uses. */
+  await client.query(`ALTER TABLE cafe_games DROP COLUMN IF EXISTS price_per_hour`);
 
   /* A session may (not must) be tied to a specific game — most sessions are
      open-ended counter play or a customer who launched nothing in particular. */

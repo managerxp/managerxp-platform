@@ -416,25 +416,111 @@
     return Object.keys(seen).sort();
   }
 
+  /*
+   * Every category this café already has a word for — its own activities
+   * AND the station types "Add station" offers, merged case-insensitively.
+   * The two lists mean the same thing (a Pool Table activity's category has
+   * to match a Pool-type station's category for pricing to actually reach
+   * it — see resolveGamingPrice's exact category check), so a customer
+   * typing "pool" here while a station is filed under "Pool" would silently
+   * price nothing for that station. Sharing one merged, deduped list is
+   * what stops that mismatch from ever being typed in the first place.
+   */
+  function categoryOptions() {
+    var byKey = {};
+    function note(v) {
+      if (!v) return;
+      var key = String(v).trim().toLowerCase();
+      if (key) byKey[key] = String(v).trim();
+    }
+    knownCategories().forEach(note);
+    var fromStations = (global.CXRates && global.CXRates.stationTypes)
+      ? global.CXRates.stationTypes().catch(function () { return []; })
+      : Promise.resolve([]);
+    return fromStations.then(function (types) {
+      (types || []).forEach(note);
+      return Object.keys(byKey).map(function (k) { return byKey[k]; })
+        .sort(function (a, b) { return a.localeCompare(b); });
+    });
+  }
+
+  /** A freshly typed category ("Other…") snapped to an existing spelling if
+      one already matches case-insensitively, so re-typing "pool" beside an
+      existing "Pool" joins it instead of filing a near-duplicate. */
+  function snapToKnownCategory(value, known) {
+    var trimmed = String(value || "").trim();
+    if (!trimmed) return trimmed;
+    var match = (known || []).filter(function (c) {
+      return c.toLowerCase() === trimmed.toLowerCase();
+    })[0];
+    return match || trimmed;
+  }
+
+  /** The Category field shared by "Add activity" and "something else" in the
+      price picker below — a real dropdown of what this café already calls
+      things, with "Other…" as the only way to type a brand new one. */
+  function categoryFieldMarkup(selectId, wrapId, inputId) {
+    return '<div class="field"><label class="field-label" for="' + selectId + '">Category</label>' +
+      '<select class="select" id="' + selectId + '">' +
+        '<option value="">— No category —</option>' +
+        '<option value="__other">Other…</option>' +
+      "</select>" +
+      '<div class="field-hint">Groups it on the till — the same word a station\'s own type ' +
+        'uses, so its price actually reaches that station.</div></div>' +
+    '<div class="field hidden" id="' + wrapId + '">' +
+      '<label class="field-label field-req" for="' + inputId + '">New category</label>' +
+      '<input class="input" id="' + inputId + '" maxlength="60" placeholder="Pool">' +
+    "</div>";
+  }
+
+  /** Wires a category select + its "Other…" reveal input, painting the
+      shared option list once immediately (from what's already loaded) and
+      again once the station-types merge resolves. Returns a function that
+      reads the field's final, snapped value. */
+  function wireCategoryField(body, selectId, wrapId, inputId) {
+    var select = body.querySelector("#" + selectId);
+    var wrap = body.querySelector("#" + wrapId);
+    var input = body.querySelector("#" + inputId);
+    var options = knownCategories();
+
+    function paint(list) {
+      options = list;
+      var current = select.value;
+      select.innerHTML =
+        '<option value="">— No category —</option>' +
+        list.map(function (c) { return '<option value="' + UI.esc(c) + '">' + UI.esc(c) + "</option>"; }).join("") +
+        '<option value="__other">Other…</option>';
+      if (current && list.indexOf(current) !== -1) select.value = current;
+    }
+    paint(options);
+    categoryOptions().then(paint);
+
+    select.addEventListener("change", function () {
+      var other = select.value === "__other";
+      wrap.classList.toggle("hidden", !other);
+      if (other) input.focus();
+    });
+
+    return function value() {
+      var raw = select.value === "__other" ? input.value.trim() : select.value;
+      return snapToKnownCategory(raw, options);
+    };
+  }
+
   function activityForm() {
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
       '<div class="field"><label class="field-label field-req" for="gaName">Name</label>' +
         '<input class="input" id="gaName" placeholder="Pool Table" data-autofocus>' +
         '<div class="field-hint">What staff and the bill will call it.</div></div>' +
-      '<div class="field"><label class="field-label" for="gaCategory">Category</label>' +
-        '<input class="input" id="gaCategory" list="gaCategoryList" maxlength="60" placeholder="Pool">' +
-        '<datalist id="gaCategoryList">' +
-          knownCategories().map(function (c) {
-            return '<option value="' + UI.esc(c) + '"></option>';
-          }).join("") +
-        "</datalist>" +
-        '<div class="field-hint">Groups it on the till. Type a new one to create it.</div></div>' +
+      categoryFieldMarkup("gaCategory", "gaCustomWrap", "gaCustomCategory") +
       '<div class="notice" data-status="idle">' + Icon("info", 16) +
         "<div>Added to this café's own list. Give it a price next, and it appears " +
         "on the till.</div></div>";
 
-    return UI.modal({
+    var getCategory = null;
+
+    var dialog = UI.modal({
       title: "Add activity",
       description: "Something you charge for that is not in the catalogue — a pool table, a dartboard, a racing rig.",
       body: body,
@@ -451,7 +537,7 @@
             }
             return Store.createHouseActivity({
               software_name: name,
-              category: ctx.body.querySelector("#gaCategory").value.trim()
+              category: getCategory()
             })
               .then(function (r) {
                 UI.toast.ok("Activity added", r.data.software_name);
@@ -466,6 +552,9 @@
         }
       ]
     });
+
+    getCategory = wireCategoryField(body, "gaCategory", "gaCustomWrap", "gaCustomCategory");
+    return dialog;
   }
 
   /* ==========================================================================
@@ -483,6 +572,8 @@
       syncTab();
       return;
     }
+
+    var getNewCategory = null;
 
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
@@ -510,17 +601,10 @@
       '<div class="field hidden" id="gpNewWrap">' +
         '<label class="field-label field-req" for="gpNewName">New activity</label>' +
         '<input class="input" id="gpNewName" maxlength="255" placeholder="VR Arena">' +
-        '<div class="row gap-2" style="margin-top:var(--s-2)">' +
-          '<input class="input" id="gpNewCategory" list="gpNewCatList" maxlength="60" ' +
-            'placeholder="Category — VR, Pool, Darts">' +
-          '<datalist id="gpNewCatList">' +
-            knownCategories().map(function (c) {
-              return '<option value="' + UI.esc(c) + '"></option>';
-            }).join("") +
-          "</datalist>" +
-        "</div>" +
-        '<div class="field-hint">Added to this café\'s own list and priced in one go. ' +
-          "The category is the tab it appears under on the till.</div>" +
+        '<div class="field-hint">Added to this café\'s own list and priced in one go.</div>' +
+      "</div>" +
+      '<div class="hidden" id="gpNewCategoryOuter">' +
+        categoryFieldMarkup("gpNewCategory", "gpNewCustomWrap", "gpNewCustomCategory") +
       "</div>" +
 
       '<div class="field">' +
@@ -618,7 +702,7 @@
             var resolveGame = creating
               ? Store.createHouseActivity({
                   software_name: newName,
-                  category: ctx.body.querySelector("#gpNewCategory").value.trim()
+                  category: getNewCategory()
                 }).then(function (r) { return r.data.software_id; })
               : Promise.resolve(softwareId);
 
@@ -664,7 +748,9 @@
     }
 
     var newWrap = body.querySelector("#gpNewWrap");
+    var newCategoryOuter = body.querySelector("#gpNewCategoryOuter");
     var newName = body.querySelector("#gpNewName");
+    getNewCategory = wireCategoryField(body, "gpNewCategory", "gpNewCustomWrap", "gpNewCustomCategory");
 
     function refresh() {
       var session = selectedSession();
@@ -674,6 +760,7 @@
 
       var creating = gameSelect.value === "__new";
       newWrap.classList.toggle("hidden", !creating);
+      newCategoryOuter.classList.toggle("hidden", !creating);
 
       /* A brand new activity cannot clash with an existing price, and its name
          is the thing being previewed rather than a row in `games`. */

@@ -38,7 +38,6 @@ export const register = async (req, res) => {
       address,
       pc_name
     } = req.body;
-    const username = String(req.body.username || '').trim() || null;
 
     const normalizedAddress = normalizeAddress(address);
 
@@ -104,16 +103,6 @@ export const register = async (req, res) => {
       });
     }
 
-    // A username is optional at sign-up — it can also be set later from the
-    // account screen — but whatever is offered here has to meet the same
-    // rule updateMyProfile enforces.
-    if (username && !USERNAME_REGEX.test(username)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores'
-      });
-    }
-
     // Check if user already exists
     const checkUserQuery = 'SELECT email FROM customers WHERE email = $1';
     const existingUser = await pool.query(checkUserQuery, [email]);
@@ -125,33 +114,18 @@ export const register = async (req, res) => {
       });
     }
 
-    // Same idea as the email check above, scoped to this café — the whole
-    // reason a username is only unique per café (idx_customers_cafe_username).
-    if (username) {
-      const existingUsername = await pool.query(
-        'SELECT 1 FROM customers WHERE cafe_id = $1 AND LOWER(username) = LOWER($2)',
-        [cafeId, username]
-      );
-      if (existingUsername.rows.length > 0) {
-        return res.status(409).json({
-          success: false,
-          message: 'That username is already taken at this café'
-        });
-      }
-    }
-
     // Hash the password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // Insert new customer
     const insertQuery = `
-      INSERT INTO customers (customer_name, email, username, phone_number, password, address, cafe_id)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-      RETURNING customer_id, customer_name, email, username, phone_number, address, cafe_id, created_at, updated_at
+      INSERT INTO customers (customer_name, email, phone_number, password, address, cafe_id)
+      VALUES ($1, $2, $3, $4, $5, $6)
+      RETURNING customer_id, customer_name, email, phone_number, address, cafe_id, created_at, updated_at
     `;
 
-    const values = [customer_name, email, username, phone_number, hashedPassword, normalizedAddress, cafeId];
+    const values = [customer_name, email, phone_number, hashedPassword, normalizedAddress, cafeId];
     const result = await pool.query(insertQuery, values);
 
     const newCustomer = result.rows[0];
@@ -188,14 +162,11 @@ export const register = async (req, res) => {
   } catch (error) {
     console.error('Registration error:', error);
     
-    // Handle unique constraint violation — the pre-checks above catch this
-    // in the ordinary case, so this is only the race where two signups for
-    // the same email or username land at the same instant.
+    // Handle unique constraint violation
     if (error.code === '23505') {
-      const onUsername = String(error.constraint || '').includes('username');
       return res.status(409).json({
         success: false,
-        message: onUsername ? 'That username is already taken at this café' : 'Email already exists'
+        message: 'Email already exists'
       });
     }
 
@@ -210,59 +181,29 @@ export const register = async (req, res) => {
 // Login function
 export const login = async (req, res) => {
   try {
-    const identifier = String(req.body.identifier ?? req.body.email ?? req.body.username ?? '').trim();
-    const { password, pc_name } = req.body;
+    const { email, password } = req.body;
 
     // Validate required fields
-    if (!identifier || !password) {
+    if (!email || !password) {
       return res.status(400).json({
         success: false,
-        message: 'Email/username and password are required'
+        message: 'Email and password are required'
       });
     }
 
-    const looksLikeEmail = identifier.includes('@');
-    const SELECT_FIELDS = `customer_id, customer_name, email, username, phone_number, password, address, created_at, updated_at, email_verified`;
+    // Find user by email
+    const findUserQuery = `
+      SELECT customer_id, customer_name, email, phone_number, password, address, created_at, updated_at, email_verified
+      FROM customers
+      WHERE email = $1
+    `;
 
-    let result;
-    if (looksLikeEmail) {
-      // Unchanged from before username existed: email has always been
-      // looked up platform-wide here, so this path carries zero behaviour
-      // change for every account that already signs in this way.
-      result = await pool.query(
-        `SELECT ${SELECT_FIELDS} FROM customers WHERE LOWER(email) = LOWER($1)`,
-        [identifier]
-      );
-    } else {
-      /*
-       * A username is unique only within one café (idx_customers_cafe_username),
-       * so a bare username with no café to scope it to is ambiguous — the same
-       * handle can belong to a different person at another café. Resolved the
-       * same way register() resolves a station to a café: by the station's own
-       * name, never a café id the caller could simply assert.
-       */
-      let cafeId = null;
-      if (pc_name) {
-        const pc = await pool.query(
-          `SELECT cafe_id FROM pcs WHERE name = $1 AND cafe_id IS NOT NULL LIMIT 1`, [pc_name]);
-        cafeId = pc.rows[0]?.cafe_id ?? null;
-      }
-      if (!cafeId) {
-        return res.status(400).json({
-          success: false,
-          message: "This station isn't recognized by any café yet. Ask a staff member for help."
-        });
-      }
-      result = await pool.query(
-        `SELECT ${SELECT_FIELDS} FROM customers WHERE LOWER(username) = LOWER($1) AND cafe_id = $2`,
-        [identifier, cafeId]
-      );
-    }
+    const result = await pool.query(findUserQuery, [email]);
 
     if (result.rows.length === 0) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email/username or password'
+        message: 'Invalid email or password'
       });
     }
 
@@ -274,7 +215,7 @@ export const login = async (req, res) => {
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
-        message: 'Invalid email/username or password'
+        message: 'Invalid email or password'
       });
     }
 
@@ -336,7 +277,7 @@ export const login = async (req, res) => {
  */
 
 const CUSTOMER_FIELDS = `
-  c.customer_id, c.customer_name, c.email, c.username, c.phone_number,
+  c.customer_id, c.customer_name, c.email, c.phone_number,
   c.address, c.created_at, c.updated_at,
   c.customer_type, c.discount_percent, c.credit_limit, c.tier_note
 `;
@@ -360,7 +301,6 @@ const shapeCustomer = (row) => ({
   customer_id: row.customer_id,
   customer_name: row.customer_name,
   email: row.email,
-  username: row.username || null,
   phone_number: row.phone_number,
   address: row.address,
   created_at: row.created_at,
@@ -594,208 +534,6 @@ export const getMyProfile = async (req, res) => {
   }
 };
 
-const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/;
-
-/*
- * PATCH /api/customers/me
- *
- * A customer editing their own username, phone number or address — the
- * fields client-app's account screen offers. Name and email stay out of
- * reach here: email is the verified identity behind email OTP and password
- * reset, and letting either drift through a self-service edit would break
- * both without anybody meaning to.
- */
-export const updateMyProfile = async (req, res) => {
-  try {
-    const id = req.actor?.customer_id;
-    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
-
-    const sets = [];
-    const params = [id];
-
-    if (req.body.username !== undefined) {
-      const username = String(req.body.username || '').trim();
-      if (!username) {
-        // Blank clears it back to none rather than being refused — a
-        // customer un-setting a handle they no longer want is a valid choice.
-        sets.push('username = NULL');
-      } else if (!USERNAME_REGEX.test(username)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores'
-        });
-      } else {
-        params.push(username);
-        sets.push(`username = $${params.length}`);
-      }
-    }
-
-    if (req.body.phone_number !== undefined) {
-      const phone = String(req.body.phone_number || '').trim();
-      if (phone.length < 10) {
-        return res.status(400).json({ success: false, message: 'Phone number must be at least 10 characters' });
-      }
-      params.push(phone);
-      sets.push(`phone_number = $${params.length}`);
-    }
-
-    if (req.body.address !== undefined) {
-      const address = normalizeAddress(req.body.address);
-      if (!address) {
-        return res.status(400).json({ success: false, message: 'Address is required' });
-      }
-      params.push(address);
-      sets.push(`address = $${params.length}`);
-    }
-
-    if (!sets.length) {
-      return res.status(400).json({ success: false, message: 'Nothing to change' });
-    }
-
-    const updated = await pool.query(
-      `UPDATE customers c SET ${sets.join(', ')}, updated_at = CURRENT_TIMESTAMP
-       WHERE c.customer_id = $1 RETURNING ${CUSTOMER_FIELDS}`,
-      params
-    );
-
-    res.json({ success: true, message: 'Profile updated', data: shapeCustomer(updated.rows[0]) });
-  } catch (error) {
-    if (error.code === '23505') {
-      return res.status(409).json({ success: false, message: 'That username is already taken at this café' });
-    }
-    console.error('Customer profile update failed:', error);
-    res.status(500).json({ success: false, message: 'Could not update your profile' });
-  }
-};
-
-/*
- * GET /api/customers/me/export
- *
- * Everything ManagerXP holds about this customer, as one JSON document —
- * the DPDP Act's data-portability right. Buffered rather than streamed:
- * this is one person's own history, never a café's whole customer base, so
- * the row counts involved are small enough that buffering costs nothing.
- */
-export const exportMyData = async (req, res) => {
-  try {
-    const id = req.actor?.customer_id;
-    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
-
-    const [profile, wallet, transactions, sessions, bills, orders, reservations] = await Promise.all([
-      pool.query(
-        `SELECT customer_id, customer_name, email, phone_number, address, created_at, updated_at
-           FROM customers WHERE customer_id = $1`, [id]),
-      pool.query(
-        `SELECT wallet_id, balance, currency, created_at, updated_at
-           FROM wallets WHERE customer_id = $1`, [id]),
-      pool.query(
-        `SELECT transaction_id, direction, amount, balance_after, category, method, note, created_at
-           FROM wallet_transactions WHERE customer_id = $1 ORDER BY created_at`, [id]),
-      pool.query(
-        `SELECT session_id, cafe_id, pc_id, status, started_at, ended_at, billable_seconds,
-                rate_per_hour, amount_charged, payment_status
-           FROM sessions WHERE customer_id = $1 ORDER BY started_at`, [id]),
-      pool.query(
-        `SELECT bill_id, bill_number, cafe_id, session_id, subtotal, discount, tax, total,
-                paid_amount, currency, status, created_at
-           FROM bills WHERE customer_id = $1 ORDER BY created_at`, [id]),
-      pool.query(
-        `SELECT order_id, order_number, session_id, pc_name, subtotal, tax, total, currency,
-                status, payment_status, created_at
-           FROM orders WHERE customer_id = $1 ORDER BY created_at`, [id]),
-      pool.query(
-        `SELECT reservation_id, cafe_id, pc_id, category, start_time, end_time, status,
-                party_size, created_at
-           FROM reservations WHERE customer_id = $1 ORDER BY start_time`, [id])
-    ]);
-
-    if (profile.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Customer not found' });
-    }
-
-    res.json({
-      success: true,
-      data: {
-        exported_at: new Date().toISOString(),
-        profile: profile.rows[0],
-        wallet: wallet.rows[0] || null,
-        wallet_transactions: transactions.rows,
-        sessions: sessions.rows,
-        bills: bills.rows,
-        orders: orders.rows,
-        reservations: reservations.rows
-      }
-    });
-  } catch (error) {
-    console.error('Customer data export failed:', error);
-    res.status(500).json({ success: false, message: 'Could not export your data' });
-  }
-};
-
-/*
- * DELETE /api/customers/me
- *
- * Self-service erasure — anonymize rather than hard-delete. wallets,
- * wallet_transactions, bills, orders and reservations all FK to
- * customer_id and are financial/audit history a café may need to keep
- * (tax records, dispute resolution); it is the name/email/phone tied to
- * them that this right actually concerns, not the ledger rows themselves.
- * The email is overwritten with a value nobody can collide with, freeing
- * the original address for reuse — this is a real anonymization, not a
- * status flag with the old data still sitting behind it.
- */
-export const deleteMyAccount = async (req, res) => {
-  const client = await pool.connect();
-  try {
-    const id = req.actor?.customer_id;
-    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
-
-    await client.query('BEGIN');
-    const existing = (await client.query(
-      'SELECT customer_id, is_active FROM customers WHERE customer_id = $1 FOR UPDATE', [id]
-    )).rows[0];
-    if (!existing) {
-      await client.query('ROLLBACK');
-      return res.status(404).json({ success: false, message: 'Customer not found' });
-    }
-    if (!existing.is_active) {
-      await client.query('ROLLBACK');
-      return res.status(409).json({ success: false, message: 'This account is already deleted' });
-    }
-
-    // Same "nobody can sign in with this" pattern a staff-created customer
-    // with no password gets — see createCustomer below.
-    const randomPassword = await bcrypt.hash(Math.random().toString(36).slice(2) + Date.now(), 10);
-    await client.query(
-      `UPDATE customers SET
-         customer_name = 'Deleted customer',
-         email = $2,
-         phone_number = '0000000000',
-         address = '{}'::jsonb,
-         password = $3,
-         is_active = FALSE,
-         anonymized_at = CURRENT_TIMESTAMP,
-         updated_at = CURRENT_TIMESTAMP
-       WHERE customer_id = $1`,
-      [id, `deleted-${id}@managerxp.invalid`, randomPassword]
-    );
-    await client.query('COMMIT');
-
-    await recordAudit(req, {
-      action: 'customer.delete', category: 'account', entity: 'customer', entity_id: id,
-      summary: `Customer ${id} deleted their own account (DPDP erasure request)`
-    });
-
-    res.json({ success: true, message: 'Your account has been deleted.' });
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => {});
-    console.error('Customer self-delete failed:', error);
-    res.status(500).json({ success: false, message: 'Could not delete your account' });
-  } finally {
-    client.release();
-  }
-};
-
 // GET /api/customers/:id
 export const getCustomerById = async (req, res) => {
   try {
@@ -933,6 +671,16 @@ export const getCustomerCredit = async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
     const cafeId = req.actor?.cafe_id ?? null;
+    // customerStanding takes a bare id with no café of its own to check —
+    // every other call site already reaches it through an already-scoped
+    // customer row, so the check belongs here, the one place that didn't.
+    const owned = await pool.query(
+      'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [id, cafeId]
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
     const standing = await customerStanding(pool, id);
     const owed = await outstandingFor(pool, id, cafeId);
     res.status(200).json({

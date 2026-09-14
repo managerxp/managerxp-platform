@@ -282,13 +282,19 @@
     // Independent of whether a session exists — a customer stuck at the
     // login or picker screen still needs a person, not a running bill.
     var needsHelp = !!Store.state.helpRequests[pc.name];
+    var kioskAlert = !!Store.state.kioskAlerts[pc.name];
+
+    var cardDataset = { status: status, pc: pc.name };
+    if (needsHelp) cardDataset.help = "1";
+    if (kioskAlert) cardDataset.kioskAlert = "1";
 
     var card = UI.el("div", {
       class: "station",
-      dataset: needsHelp ? { status: status, pc: pc.name, help: "1" } : { status: status, pc: pc.name },
+      dataset: cardDataset,
       tabindex: "0",
       role: "button",
-      "aria-label": pc.name + " — " + (STATUS_TEXT[status] || status) + (needsHelp ? " — needs help" : "")
+      "aria-label": pc.name + " — " + (STATUS_TEXT[status] || status) +
+        (needsHelp ? " — needs help" : "") + (kioskAlert ? " — keyboard lock not active" : "")
     });
 
     var session = Store.sessionFor(pc.name);
@@ -695,12 +701,24 @@
     var networkFields = body.querySelector("#addNetworkFields");
     var nameInput = body.querySelector("#addName");
 
+    /* Keyed case-insensitively so a raw "pc" already sitting on the floor
+       and the canonical "PC" the shared helper below returns collapse into
+       one option instead of showing up as two. Whichever call names a key
+       last wins its displayed spelling — CXRates.stationTypes() always runs
+       after this dialog's own initial (unnormalized) floor read, so its
+       already-deduped, canonical-cased list is what actually gets shown. */
     var seenTypes = {};
-    Store.state.pcs.forEach(function (p) { if (p.category) seenTypes[p.category] = true; });
+    function noteType(value) {
+      if (!value) return;
+      var key = String(value).trim().toLowerCase();
+      if (key) seenTypes[key] = String(value).trim();
+    }
+    Store.state.pcs.forEach(function (p) { noteType(p.category); });
 
     function paintTypes(extra) {
-      (extra || []).forEach(function (c) { if (c) seenTypes[c] = true; });
-      var list = Object.keys(seenTypes).sort();
+      (extra || []).forEach(noteType);
+      var list = Object.keys(seenTypes).map(function (k) { return seenTypes[k]; })
+        .sort(function (a, b) { return a.localeCompare(b); });
       typeSelect.innerHTML =
         '<option value="">— Select type —</option>' +
         list.map(function (c) {
@@ -721,8 +739,12 @@
      * next pool table does not. The switch stays visible either way, because
      * the guess is only a default.
      */
+    function sameType(a, b) {
+      return !!a && !!b && String(a).trim().toLowerCase() === String(b).trim().toLowerCase();
+    }
+
     function typeIsUsuallyNetworked(type) {
-      var of = Store.state.pcs.filter(function (p) { return p.category === type; });
+      var of = Store.state.pcs.filter(function (p) { return sameType(p.category, type); });
       if (!of.length) return null;                     // nothing to learn from
       var withIp = of.filter(function (p) { return !!p.ip_address; }).length;
       return withIp > of.length / 2;
@@ -741,7 +763,7 @@
       if (type && !nameInput.value.trim()) {
         /* A gentle head start on naming: PS5 → "PS5-01". Only ever a
            placeholder, never typed in for them. */
-        var count = Store.state.pcs.filter(function (p) { return p.category === type; }).length;
+        var count = Store.state.pcs.filter(function (p) { return sameType(p.category, type); }).length;
         nameInput.placeholder = type.toUpperCase().replace(/\s+/g, "-") +
           "-" + String(count + 1).padStart(2, "0");
       }

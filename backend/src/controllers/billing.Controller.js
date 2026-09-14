@@ -388,7 +388,7 @@ export const createBill = async (req, res) => {
   const client = await pool.connect();
   try {
     const { customer_id, guest_name, guest_phone, contact_channel,
-            session_id, cafe_id, notes, items } = req.body || {};
+            session_id, notes, items } = req.body || {};
 
     if (!customer_id && !guest_name) {
       return res.status(400).json({
@@ -398,6 +398,21 @@ export const createBill = async (req, res) => {
     }
 
     await client.query('BEGIN');
+
+    // A registered customer belongs to the café raising the bill — checked
+    // up front, inside the transaction, so a cross-café customer_id in the
+    // body cannot get a bill (and, downstream, a wallet debit) filed against
+    // someone else's café.
+    if (customer_id) {
+      const owned = await client.query(
+        'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+        [customer_id, req.actor?.cafe_id ?? null]
+      );
+      if (owned.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ success: false, message: 'Customer not found' });
+      }
+    }
 
     const currency = await getSetting('wallet.currency', 'XP');
 
@@ -434,11 +449,14 @@ export const createBill = async (req, res) => {
        * silently, which is invisible on a single-café install and data loss
        * on a second one.
        *
-       * Order of preference: what the caller said, the session's café, the
-       * station's café, then the café on the authenticated token.
+       * Order of preference: the session's café, then the café on the
+       * authenticated token. Never a client-supplied cafe_id — this is a
+       * staff-only route, so the token's own café is already authoritative;
+       * trusting the body ahead of it let a request file a bill under any
+       * café it named.
        */
-      let resolvedCafeId = cafe_id || null;
-      if (!resolvedCafeId && session_id) {
+      let resolvedCafeId = null;
+      if (session_id) {
         const fromSession = await client.query(
           `SELECT COALESCE(s.cafe_id, p.cafe_id) AS cafe_id
            FROM sessions s LEFT JOIN pcs p ON p.pc_id = s.pc_id
@@ -670,6 +688,11 @@ export const listBills = async (req, res) => {
     const filters = [];
     const params = [];
 
+    // Staff only ever see their own café's bills — every sibling read in
+    // this codebase scopes the same way; this list was the one that didn't.
+    params.push(req.actor?.cafe_id ?? null);
+    filters.push(`b.cafe_id IS NOT DISTINCT FROM $${params.length}`);
+
     if (req.query.status) {
       params.push(String(req.query.status).toUpperCase().split(','));
       filters.push(`b.status = ANY($${params.length})`);
@@ -757,9 +780,15 @@ export const getBill = async (req, res) => {
     const bill = await loadBill(client, id);
     if (!bill) return res.status(404).json({ success: false, message: 'Bill not found' });
 
-    // A customer may only read their own bill; staff may read any.
+    // A customer may only read their own bill; staff may read any bill in
+    // their own café. A cross-café bill reads as absent, the same as a
+    // cross-café customer id does elsewhere — not 403, which would confirm
+    // it exists.
     if (!req.actor?.isStaff && Number(req.actor?.customer_id) !== bill.customer_id) {
       return res.status(403).json({ success: false, message: 'You can only view your own bills' });
+    }
+    if (req.actor?.isStaff && bill.cafe_id != null && bill.cafe_id !== (req.actor.cafe_id ?? null)) {
+      return res.status(404).json({ success: false, message: 'Bill not found' });
     }
 
     res.status(200).json({ success: true, data: bill });
@@ -783,10 +812,16 @@ export const listCustomerBills = async (req, res) => {
     }
 
     const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100);
+    // A staff token can name any customerId — scope to their own café so
+    // one café's staff cannot read another café's customer's bill history.
+    // The customer's own token needs no such check: customer_id equality
+    // above already fully proves ownership.
+    const staffCafeId = req.actor?.isStaff ? (req.actor.cafe_id ?? null) : undefined;
     const result = await pool.query(
       `${SELECT_BILL} WHERE b.customer_id = $1 AND b.status <> 'VOID'
+       ${staffCafeId !== undefined ? 'AND b.cafe_id IS NOT DISTINCT FROM $3' : ''}
        ORDER BY b.created_at DESC LIMIT $2`,
-      [customerId, limit]
+      staffCafeId !== undefined ? [customerId, limit, staffCafeId] : [customerId, limit]
     );
 
     res.status(200).json({ success: true, data: result.rows.map((r) => shapeBill(r)) });
@@ -799,8 +834,19 @@ export const listCustomerBills = async (req, res) => {
 /* ==========================================================================
    MUTATE
    ========================================================================== */
-const openBill = async (client, id) => {
-  const bill = await client.query('SELECT * FROM bills WHERE bill_id = $1 FOR UPDATE', [id]);
+/**
+ * `cafeId` is the calling staff token's own café (`req.actor.cafe_id`) — a
+ * bill belonging to another café reads as "not found" here, the same way a
+ * cross-café customer id does elsewhere, rather than being loaded and acted
+ * on. Every mutation on a bill funnels through this (or the equivalent
+ * inline check on the handlers that lock a bill directly), so this is the
+ * one place that check has to exist.
+ */
+const openBill = async (client, id, cafeId) => {
+  const bill = await client.query(
+    'SELECT * FROM bills WHERE bill_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 FOR UPDATE',
+    [id, cafeId]
+  );
   if (bill.rows.length === 0) return { error: 'Bill not found', status: 404 };
   if (bill.rows[0].status === 'VOID') return { error: 'That bill has been voided', status: 409 };
   if (bill.rows[0].status === 'PAID') return { error: 'That bill is already settled', status: 409 };
@@ -821,7 +867,7 @@ export const addItem = async (req, res) => {
     if (!Number.isFinite(price) || price < 0) return res.status(400).json({ success: false, message: 'Price must be zero or more' });
 
     await client.query('BEGIN');
-    const found = await openBill(client, id);
+    const found = await openBill(client, id, req.actor?.cafe_id ?? null);
     if (found.error) {
       await client.query('ROLLBACK');
       return res.status(found.status).json({ success: false, message: found.error });
@@ -908,7 +954,7 @@ export const removeItem = async (req, res) => {
     const itemId = parseInt(req.params.itemId, 10);
 
     await client.query('BEGIN');
-    const found = await openBill(client, id);
+    const found = await openBill(client, id, req.actor?.cafe_id ?? null);
     if (found.error) {
       await client.query('ROLLBACK');
       return res.status(found.status).json({ success: false, message: found.error });
@@ -967,7 +1013,10 @@ export const applyDiscountCode = async (req, res) => {
 
     await client.query('BEGIN');
 
-    const bill = await client.query('SELECT * FROM bills WHERE bill_id = $1 FOR UPDATE', [id]);
+    const bill = await client.query(
+      'SELECT * FROM bills WHERE bill_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 FOR UPDATE',
+      [id, req.actor?.cafe_id ?? null]
+    );
     if (bill.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Bill not found' });
@@ -1110,7 +1159,7 @@ export const applyAdjustment = async (req, res) => {
     }
 
     await client.query('BEGIN');
-    const found = await openBill(client, id);
+    const found = await openBill(client, id, req.actor?.cafe_id ?? null);
     if (found.error) {
       await client.query('ROLLBACK');
       return res.status(found.status).json({ success: false, message: found.error });
@@ -1176,7 +1225,7 @@ export const recordPayment = async (req, res) => {
     }
 
     await client.query('BEGIN');
-    const found = await openBill(client, id);
+    const found = await openBill(client, id, req.actor?.cafe_id ?? null);
     if (found.error) {
       await client.query('ROLLBACK');
       return res.status(found.status).json({ success: false, message: found.error });
@@ -1322,7 +1371,10 @@ export const refundBill = async (req, res) => {
 
     await client.query('BEGIN');
 
-    const billRow = await client.query('SELECT * FROM bills WHERE bill_id = $1 FOR UPDATE', [id]);
+    const billRow = await client.query(
+      'SELECT * FROM bills WHERE bill_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 FOR UPDATE',
+      [id, req.actor?.cafe_id ?? null]
+    );
     if (billRow.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Bill not found' });
@@ -1480,7 +1532,10 @@ export const claimBill = async (req, res) => {
 
     await client.query('BEGIN');
 
-    const billRow = await client.query('SELECT * FROM bills WHERE bill_id = $1 FOR UPDATE', [id]);
+    const billRow = await client.query(
+      'SELECT * FROM bills WHERE bill_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 FOR UPDATE',
+      [id, req.actor?.cafe_id ?? null]
+    );
     if (billRow.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Bill not found' });
@@ -1493,8 +1548,12 @@ export const claimBill = async (req, res) => {
       });
     }
 
+    // Scoped to the bill's own café (already verified against the actor's
+    // café above) — a guest bill can only be claimed by a customer of the
+    // same café it was raised at.
     const customer = await client.query(
-      'SELECT customer_name FROM customers WHERE customer_id = $1', [customerId]
+      'SELECT customer_name FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [customerId, billRow.rows[0].cafe_id]
     );
     if (customer.rows.length === 0) {
       await client.query('ROLLBACK');
@@ -1544,7 +1603,10 @@ export const voidBill = async (req, res) => {
     const id = parseInt(req.params.id, 10);
 
     await client.query('BEGIN');
-    const bill = await client.query('SELECT * FROM bills WHERE bill_id = $1 FOR UPDATE', [id]);
+    const bill = await client.query(
+      'SELECT * FROM bills WHERE bill_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 FOR UPDATE',
+      [id, req.actor?.cafe_id ?? null]
+    );
     if (bill.rows.length === 0) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Bill not found' });

@@ -97,7 +97,23 @@ if (-not $json) {
   $json = "[]"
 }
 
-$utf8NoBOM = New-Object System.Text.UTF8Encoding $false
-[System.IO.File]::WriteAllText("output\apps.json", $json, $utf8NoBOM)
+<#
+  Written under LOCALAPPDATA, not "output\apps.json" relative to this
+  script's own folder. This script ships inside the client-app install,
+  which — like volume.ps1 right beside it — is a per-machine NSIS install
+  under Program Files: read-only to the standard, non-admin Windows account
+  every station actually runs as. WriteAllText against a relative path
+  there failed silently from the customer's side (main.js saw no output
+  file appear and reported the scan as broken), which is exactly the
+  regression this fixes. Same folder volume.ps1 already caches into, so
+  there is one CafeXP-owned, always-writable folder per station instead of
+  a second convention to remember.
+#>
+$outDir = Join-Path $env:LOCALAPPDATA 'CafeXP'
+if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+$outFile = Join-Path $outDir 'apps.json'
 
-Write-Output "[Success] Exported $($results.Count) applications to output\apps.json"
+$utf8NoBOM = New-Object System.Text.UTF8Encoding $false
+[System.IO.File]::WriteAllText($outFile, $json, $utf8NoBOM)
+
+Write-Output "[Success] Exported $($results.Count) applications to $outFile"

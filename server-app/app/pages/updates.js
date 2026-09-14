@@ -203,8 +203,16 @@
     if (!host) return;
     UI.clear(host);
 
-    if (!Store.state.pcs.length) {
-      host.appendChild(UI.emptyState({ icon: "devices", title: "No stations registered" }));
+    /* Only stations that actually run the client agent belong here — a pool
+       table, a PS5 or a VR rig has no client to update and will never
+       report a version, so listing them just filled this table with
+       permanent "Not reported yet" rows for machines an update could never
+       reach. Same fact games.js's configurableStations() already keys its
+       own client-only list on: having a network address. */
+    var stations = Store.state.pcs.filter(function (p) { return Store.isNetworked(p); });
+
+    if (!stations.length) {
+      host.appendChild(UI.emptyState({ icon: "devices", title: "No client stations registered" }));
       return;
     }
 
@@ -215,7 +223,7 @@
     table.innerHTML = "<thead><tr><th>Station</th><th>Client version</th><th>Last reported</th><th>Status</th><th></th></tr></thead>";
     var tbody = UI.el("tbody");
 
-    Store.state.pcs.forEach(function (pc) {
+    stations.forEach(function (pc) {
       var version = pc.client_version || null;
       var behind = !!(version && latest && localVersionSort(version) < localVersionSort(latest));
       var status = "—";
@@ -322,7 +330,7 @@
       function paintStationCount() {
         var el = page.querySelector("#updStationCount");
         if (!el) return;
-        var n = Store.state.pcs.length;
+        var n = Store.state.pcs.filter(function (p) { return Store.isNetworked(p); }).length;
         el.textContent = n + " station" + (n === 1 ? "" : "s");
       }
 

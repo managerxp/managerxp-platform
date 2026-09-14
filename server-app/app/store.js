@@ -42,6 +42,7 @@
     running: {},                // pcName -> { appName, appPath, remaining, totalSeconds } (launch timer)
     sessions: {},               // pcName -> live session from /api/sessions
     helpRequests: {},           // pcName -> { at } — customer tapped Call staff, cleared once staff open that station
+    kioskAlerts: {},            // pcName -> { at, reason } — station's keyboard lock is not actually active
     signedIn: {},               // pcName -> { customerName, since } — signed in at the kiosk, no session yet
     consoleUpdate: null,        // last snapshot from this console's own updater.js (main process)
     launchers: {},              // pcName -> { Steam: {installed, path}, ... } reported by the station
@@ -375,6 +376,13 @@
 
   function deletePcSoftware(softwareId) {
     return request("/api/pc-software/" + softwareId, { method: "DELETE" });
+  }
+
+  /* Hides (or restores) an app without losing its saved path — deleting was
+     previously the only way to stop offering something scanned in by
+     mistake, which meant re-typing the path from scratch to bring it back. */
+  function togglePcSoftware(softwareId) {
+    return request("/api/pc-software/" + softwareId + "/toggle-status", { method: "PATCH" });
   }
 
   function getSoftwareMaster() {
@@ -800,6 +808,16 @@
       // station is offline, and this survives a missed "clients" event.
       state.pcs.forEach(function (pc) {
         pushSessionToStation(pc.name, sessions[pc.name] || null);
+      });
+      // Tell the backend which open sessions still have a connected station
+      // watching them, so a crashed or disconnected kiosk's session shows up
+      // as heartbeat_stale rather than silently running forever unobserved.
+      // Never ends or charges a session — staff still decide that.
+      Object.keys(sessions).forEach(function (pcName) {
+        var cs = state.connectionStatus[pcName];
+        if (!cs || cs.status !== "connected") return;
+        request("/api/sessions/" + sessions[pcName].session_id + "/heartbeat", { method: "POST" })
+          .catch(function () {});
       });
     }).catch(function (err) {
       // Never let one failure stop the loop — the next tick tries again.
@@ -1507,8 +1525,8 @@
   function addGame(gameId) {
     return request("/api/games", { method: "POST", body: JSON.stringify({ game_id: gameId }) });
   }
-  /* enabled / account_mode / price_per_hour — the whole of what a café may
-     decide about a title it has taken from the catalog. */
+  /* enabled / account_mode — the whole of what a café may decide about a
+     title it has taken from the catalog. */
   function updateCafeGame(cafeGameId, patch) {
     return request("/api/games/" + cafeGameId, { method: "PATCH", body: JSON.stringify(patch) });
   }
@@ -2039,6 +2057,33 @@
     }
 
     /*
+     * A station's own low-level keyboard hook — the thing that actually
+     * blocks Alt+Tab, the Windows key, etc. — failed to install repeatedly.
+     * Kept separate from help requests and NOT cleared by staff opening the
+     * station: looking at the alert does not fix the underlying failure,
+     * only the station confirming its hook is installed again does (see
+     * onStationKioskGuardRecovered below). The seal still looks normal on
+     * that station's own screen the whole time this is true.
+     */
+    if (api.onStationKioskGuardFailed) {
+      api.onStationKioskGuardFailed(function (data) {
+        var pcName = data && data.pcName;
+        if (!pcName) return;
+        state.kioskAlerts[pcName] = { at: Date.now(), reason: (data && data.reason) || null };
+        emit("kiosk-alerts", state.kioskAlerts);
+        emit("kiosk-alert:new", { pcName: pcName, reason: state.kioskAlerts[pcName].reason });
+      });
+    }
+    if (api.onStationKioskGuardRecovered) {
+      api.onStationKioskGuardRecovered(function (data) {
+        var pcName = data && data.pcName;
+        if (!pcName || !state.kioskAlerts[pcName]) return;
+        delete state.kioskAlerts[pcName];
+        emit("kiosk-alerts", state.kioskAlerts);
+      });
+    }
+
+    /*
      * A customer signed in at a station's kiosk with no session running yet,
      * or signed out again without ever starting one. Visibility only — see
      * pcStatus() below, which reads this map to tell "occupied but not
@@ -2169,6 +2214,29 @@
         var fail = function (message) { if (api.pushStartFailed) api.pushStartFailed(pcName, message); };
         if (!pc) return fail("Station not recognised");
         if (state.sessions[pcName]) return fail("A session is already running here");
+
+        /*
+         * Occupancy billing: fired automatically the moment a customer logs
+         * in, before any game or price is picked — only for a station
+         * category that has no catalog (block/flat) pricing at all. A PS5 or
+         * VR category is sold by the block on purpose; auto-starting an
+         * hourly meter there would bypass that price, so this silently does
+         * nothing and the customer still sees the normal picker. A
+         * genuinely uncatalogued category (plain counter PCs) starts an
+         * open-ended HOUR session at the café's default rate — no
+         * require_prepaid, matching the existing open-ended path, which has
+         * no fixed total to check a wallet against up front.
+         */
+        if (data.occupancy_login_start) {
+          return previewRates().catch(function () { return []; }).then(function (prices) {
+            var hasCatalogPricing = (prices || []).some(function (p) {
+              return !pc.category || !p.category || p.category === pc.category;
+            });
+            if (hasCatalogPricing) return;
+            return startSession({ pc_id: pc.pc_id, customer_id: data.customer_id }).catch(function () {});
+          });
+        }
+
         if (!data.gaming_price_id) return fail("Choose a duration to start");
 
         startSession({
@@ -2450,6 +2518,7 @@
     getPcSoftwareViaIPC: getPcSoftwareViaIPC,
     addPcSoftware: addPcSoftware,
     deletePcSoftware: deletePcSoftware,
+    togglePcSoftware: togglePcSoftware,
     getSoftwareMaster: getSoftwareMaster,
     scanPcSoftware: scanPcSoftware,
 

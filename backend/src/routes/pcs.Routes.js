@@ -13,8 +13,8 @@ import {
   registerDiscoveredPC,
   reportClientVersion
 } from '../controllers/pcs.Controller.js';
-import { listStationTypes } from '../controllers/admin.Controller.js';
 import { requireAuth, requireStaff } from '../middleware/authGuards.js';
+import { deviceCheckLimiter } from '../middleware/rateLimit.js';
 
 const pcsRouter = express.Router();
 
@@ -36,20 +36,15 @@ const staff = requireStaff('Café staff access required');
 pcsRouter.get('/', requireAuth, getAllPCs);
 pcsRouter.get('/active', requireAuth, getActivePCs);
 pcsRouter.get('/branch/:branchId', requireAuth, getPCsByBranch);
-
-/* The same canonical list (PC, PS5, Pool, …) the super-admin plan editor
-   offers — reused verbatim rather than re-derived, so a café's "Add
-   station" dropdown and ManagerXP's own limits editor can never drift into
-   naming the same type two different ways. Must come before "/:id" or
-   Express would read "station-types" as an id. */
-pcsRouter.get('/station-types', requireAuth, listStationTypes);
-
 pcsRouter.get('/:id', requireAuth, getPCById);
 pcsRouter.get('/cafe/:cafeId', requireAuth, getPCsByCafe);
 
-// check-exists only answers "is this MAC known", and the discovery listener
-// calls it as stations announce themselves, so it stays open.
-pcsRouter.post('/check-exists', checkPCExists);
+// check-exists is called by a station reporting its own MAC/IP before it has
+// any credential to present, so it stays unauthenticated — rate-limited
+// instead, since a MAC match here also rewrites the row (the IP auto-update)
+// and a guessed MAC would otherwise let anyone on the internet rewrite a
+// station's registered IP for free.
+pcsRouter.post('/check-exists', deviceCheckLimiter, checkPCExists);
 
 pcsRouter.post('/', staff, createPC);
 pcsRouter.post('/register-discovered', staff, registerDiscoveredPC);

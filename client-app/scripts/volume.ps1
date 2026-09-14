@@ -73,8 +73,13 @@ public static class AudioEndpoint {
   static IAudioEndpointVolume Vol() {
     var enumerator = (IMMDeviceEnumerator)(new MMDeviceEnumeratorComObject());
     IMMDevice dev;
-    // dataFlow 0 = eRender (playback), role 1 = eMultimedia
-    enumerator.GetDefaultAudioEndpoint(0, 1, out dev);
+    // dataFlow 0 = eRender (playback), role 0 = eConsole — games/system sounds
+    // and what the taskbar's own volume flyout controls. Was 1 (eMultimedia,
+    // for music/video players): same device as eConsole on a single-output
+    // machine, but a different one wherever a station has more than one
+    // playback device — which is why the slider moved but nothing audible
+    // changed.
+    enumerator.GetDefaultAudioEndpoint(0, 0, out dev);
     var iid = typeof(IAudioEndpointVolume).GUID;
     IAudioEndpointVolume epv;
     dev.Activate(ref iid, 23, IntPtr.Zero, out epv);
@@ -121,7 +126,18 @@ public static class AudioEndpoint {
 #>
 $cacheDir = Join-Path $env:LOCALAPPDATA 'CafeXP'
 if (-not (Test-Path $cacheDir)) { New-Item -ItemType Directory -Path $cacheDir -Force | Out-Null }
-$dllPath = Join-Path $cacheDir 'AudioEndpoint.dll'
+
+# Named by a hash of $sig, not a fixed name: a station that already compiled
+# an older version of this C# (e.g. before the eConsole fix below) would
+# otherwise keep loading that stale cached DLL forever — "Test-Path $dllPath"
+# being true says nothing about whether it matches the source above. A
+# content change earns a new filename automatically, so an old cached
+# assembly is simply never matched again rather than needing to be found and
+# deleted on every station by hand.
+$sigHash = [BitConverter]::ToString(
+  [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::UTF8.GetBytes($sig))
+).Replace('-', '').Substring(0, 12)
+$dllPath = Join-Path $cacheDir "AudioEndpoint.$sigHash.dll"
 
 if (-not (Test-Path $dllPath)) {
   # -OutputAssembly only writes the file — it does not also register the

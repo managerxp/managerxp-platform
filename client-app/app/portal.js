@@ -20,6 +20,18 @@
   var host = null;
   var buttons = {};
 
+  /* Which Station tools this café has switched off for this station — read
+     once here rather than fetched fresh every time the Help menu opens, and
+     kept current by the same push main.js already uses for the staff
+     unlock PIN. */
+  var disabledTools = [];
+  if (global.api && global.api.getDisabledSystemTools) {
+    global.api.getDisabledSystemTools().then(function (list) { disabledTools = list || []; }).catch(function () {});
+  }
+  if (global.api && global.api.onSystemToolsUpdated) {
+    global.api.onSystemToolsUpdated(function (data) { disabledTools = (data && data.disabled) || []; });
+  }
+
   /* ==========================================================================
      NAVIGATION
      ========================================================================== */
@@ -112,13 +124,26 @@
     var cafeSession = Session.state.session;
 
     if (cafeSession) {
-      // The café session outranks the launch timer in the nav bar.
-      var st = Session.sessionState();
-      chip.setAttribute("data-timer", st === "paused" ? "warning" : st);
-      chip.setAttribute("data-status",
-        st === "critical" ? "expired" : st === "warning" || st === "paused" ? "warning" : "gaming");
-      value.textContent = st === "paused" ? "Paused" : Session.clock(Session.sessionClockSeconds());
-      value.classList.add("timer-digits");
+      // Free setup time — the customer isn't billed yet, so this outranks
+      // every other chip state. Falls back to the server's own billing_phase
+      // until the ticker has run its first tick on a freshly-pushed session.
+      var inGrace = (cafeSession.live_phase || cafeSession.billing_phase) === "grace";
+      if (inGrace) {
+        chip.removeAttribute("data-timer");
+        chip.setAttribute("data-status", "preparing");
+        var graceLeft = cafeSession.live_grace_remaining != null
+          ? cafeSession.live_grace_remaining : cafeSession.grace_remaining_seconds;
+        value.textContent = "Preparing · " + Session.clock(graceLeft);
+        value.classList.add("timer-digits");
+      } else {
+        // The café session outranks the launch timer in the nav bar.
+        var st = Session.sessionState();
+        chip.setAttribute("data-timer", st === "paused" ? "warning" : st);
+        chip.setAttribute("data-status",
+          st === "critical" ? "expired" : st === "warning" || st === "paused" ? "warning" : "gaming");
+        value.textContent = st === "paused" ? "Paused" : Session.clock(Session.sessionClockSeconds());
+        value.classList.add("timer-digits");
+      }
     } else if (play) {
       // Live countdown, mirrored from the launch timer.
       var timerState = Session.timerState();
@@ -579,7 +604,7 @@
     document.getElementById("notifyBtn").innerHTML = Icon("bell", 18);
     document.getElementById("helpBtn").innerHTML = Icon("help", 18);
     document.getElementById("volumeBtn").innerHTML = Icon("volume", 18);
-    document.getElementById("walletChipCoin").innerHTML = global.CXCoin(22, { detail: "plain" });
+    document.getElementById("walletChipCoin").innerHTML = global.CXCoin(22);
 
     if (global.api && global.api.getAppVersion) {
       global.api.getAppVersion(function (v) { global.__cxAppVersion = v; });
@@ -683,29 +708,96 @@
       var sessionId = session && session.session_id;
       if (!sessionId || extendPromptShownFor === sessionId) return;
       extendPromptShownFor = sessionId;
+
+      // Reaches the customer whether they're on the dashboard or mid-game —
+      // a fullscreen game leaves CafeXP's own window behind it otherwise.
+      if (global.api && global.api.bringToFront) global.api.bringToFront();
+
       var canExtend = !!(session && session.can_extend);
+      // A wallet check only means anything for a signed-in customer's own
+      // wallet — a guest has none, pays at the counter, and staff already
+      // extend those without a balance check (see the backend's own extend
+      // endpoint), so this gate does not apply to them.
+      var blockCost = Number(session && session.block_unit_amount) || 0;
+      var balance = Number(session && session.wallet_balance);
+      var canAfford = !session.customer_id || (Number.isFinite(balance) && balance >= blockCost);
+
+      var actions;
+      var description;
+      var body;
+
+      if (!canExtend) {
+        description = "Ask a staff member if you'd like more time.";
+        body = "This session's length was set by staff and can't be extended from here.";
+        actions = [{ label: "OK", variant: "primary" }];
+      } else if (!canAfford) {
+        description = "Your balance won't cover another block right now.";
+        body = "Recharge your wallet to add another block, then come back and extend.";
+        actions = [
+          { label: "Not now", variant: "ghost" },
+          {
+            label: "Recharge", variant: "primary", icon: "billing",
+            onClick: function () { if (global.CXTopup) global.CXTopup.open(); }
+          }
+        ];
+      } else {
+        description = "Add another block now, or recharge and keep going.";
+        body = "Extending adds a block to your session — it's added to your bill, not charged now.";
+        actions = [
+          { label: "Not now", variant: "ghost" },
+          {
+            label: "Recharge", variant: "ghost", icon: "billing",
+            onClick: function () { if (global.CXTopup) global.CXTopup.open(); }
+          },
+          {
+            label: "Extend", variant: "primary", icon: "plus",
+            onClick: function () {
+              if (global.api && global.api.extendRequest) global.api.extendRequest(1);
+              UI.toast.ok("Block added", "Your session time will update in a moment.");
+            }
+          }
+        ];
+      }
+
       UI.modal({
         title: "5 minutes left on your session",
-        description: canExtend
-          ? "Add another block now, or keep going and staff will settle it at the end."
-          : "Ask a staff member if you'd like more time.",
-        body: '<div style="font-size:var(--t-body);line-height:1.6;color:var(--text-2)">' +
-          (canExtend
-            ? "Extending adds a block to your session — it's added to your bill, not charged now."
-            : "This session's length was set by staff and can't be extended from here.") +
-          "</div>",
-        actions: canExtend
-          ? [
-              { label: "Not now", variant: "ghost" },
-              {
-                label: "Extend", variant: "primary", icon: "plus",
-                onClick: function () {
-                  if (global.api && global.api.extendRequest) global.api.extendRequest(1);
-                  UI.toast.ok("Block added", "Your session time will update in a moment.");
-                }
-              }
-            ]
-          : [{ label: "OK", variant: "primary" }]
+        description: description,
+        body: '<div style="font-size:var(--t-body);line-height:1.6;color:var(--text-2)">' + body + "</div>",
+        actions: actions
+      });
+    });
+    /*
+     * Occupancy billing's own low-balance warning — an estimate only, never
+     * a debit (the wallet is settled once at logout, see the backend's
+     * endSession). Guests have no wallet to run low on, so this only ever
+     * fires for a signed-in customer. Two tiers, each fired once per session
+     * as its threshold is crossed, same edge-triggered shape as warning/
+     * critical above.
+     */
+    var LOW_BALANCE_AT = 20;
+    var CRITICAL_BALANCE_AT = 10;
+    var balanceTierShownFor = null; // session_id + tier already shown
+    Session.on("session-tick", function (session) {
+      if (!session || !session.customer_id) return;
+      var Wallet = global.CXWallet;
+      if (Wallet.state.error || Wallet.state.balance === null) return;
+
+      var estimate = session.live_running_amount != null ? session.live_running_amount : (session.running_amount || 0);
+      var remaining = Number(Wallet.state.balance) - estimate;
+      var tier = remaining <= CRITICAL_BALANCE_AT ? "critical" : remaining <= LOW_BALANCE_AT ? "low" : null;
+      if (!tier) return;
+
+      var key = session.session_id + ":" + tier;
+      if (balanceTierShownFor === key) return;
+      balanceTierShownFor = key;
+
+      UI.toast({
+        title: tier === "critical" ? "Critically low balance" : "Low balance",
+        message: remaining <= 0
+          ? "Your session usage has reached your available credits. Please recharge to keep playing."
+          : "You have approximately " + Wallet.amount(Math.max(0, remaining)) + " remaining. Please recharge to continue.",
+        status: tier === "critical" ? "error" : "warn",
+        duration: 9000
       });
     });
     Session.on("overtime", function () {
@@ -751,8 +843,18 @@
       );
     });
 
+    /* All three, filtered per station by disabledTools (see its own
+       comment above) — a café without an NVIDIA card on this machine turns
+       that one off from the console, and it simply stops appearing here. */
+    var ALL_TOOLS = [
+      { id: "display", panel: "display", label: "Screen resolution", icon: "monitor" },
+      { id: "nvidia", panel: "nvidia", label: "NVIDIA Control Panel", icon: "settings" },
+      { id: "devicemgmt", panel: "devicemgmt", label: "Device Manager", icon: "settings" }
+    ];
+
     document.getElementById("helpBtn").addEventListener("click", function () {
       var here = Session.state.pcName || "your station";
+      var tools = ALL_TOOLS.filter(function (t) { return disabledTools.indexOf(t.id) === -1; });
 
       var body = UI.el("div", { class: "col gap-4" });
       body.innerHTML =
@@ -760,15 +862,15 @@
           "Need a hand? Call a staff member and they'll come to " + UI.esc(here) +
           " to see what's going on." +
         "</div>" +
-        '<div class="col gap-2">' +
-          '<div class="faint" style="font-size:12px">Station tools</div>' +
-          '<button class="btn btn-outline btn-block" type="button" id="toolDisplay">' + Icon("monitor", 15) +
-            '<span class="btn-label">Screen resolution</span></button>' +
-          '<button class="btn btn-outline btn-block" type="button" id="toolNvidia">' + Icon("settings", 15) +
-            '<span class="btn-label">NVIDIA Control Panel</span></button>' +
-          '<button class="btn btn-outline btn-block" type="button" id="toolDevices">' + Icon("settings", 15) +
-            '<span class="btn-label">Device Manager</span></button>' +
-        "</div>" +
+        (tools.length
+          ? '<div class="col gap-2">' +
+              '<div class="faint" style="font-size:12px">Station tools</div>' +
+              tools.map(function (t) {
+                return '<button class="btn btn-outline btn-block" type="button" data-panel="' + t.panel + '">' +
+                  Icon(t.icon, 15) + '<span class="btn-label">' + UI.esc(t.label) + "</span></button>";
+              }).join("") +
+            "</div>"
+          : "") +
         '<div class="faint" style="font-size:12px;line-height:1.5">' +
           "Press <strong>Alt+Tab</strong> any time during your session to switch between CafeXP and your game." +
         "</div>";
@@ -783,9 +885,11 @@
           }
         });
       }
-      body.querySelector("#toolDisplay").addEventListener("click", function () { openPanel("display", "Screen resolution"); });
-      body.querySelector("#toolNvidia").addEventListener("click", function () { openPanel("nvidia", "NVIDIA Control Panel"); });
-      body.querySelector("#toolDevices").addEventListener("click", function () { openPanel("devicemgmt", "Device Manager"); });
+      tools.forEach(function (t) {
+        body.querySelector('[data-panel="' + t.panel + '"]').addEventListener("click", function () {
+          openPanel(t.panel, t.label);
+        });
+      });
 
       UI.modal({
         title: "Help",

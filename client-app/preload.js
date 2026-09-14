@@ -75,6 +75,9 @@ contextBridge.exposeInMainWorld("api", {
   // Station tools from the Help menu — screen resolution, NVIDIA Control
   // Panel, Device Manager. panel is "display" | "nvidia" | "devicemgmt".
   openSystemPanel: (panel) => ipcRenderer.invoke("system:open-panel", panel),
+  // Which of those this café has switched off for this specific station.
+  getDisabledSystemTools: () => ipcRenderer.invoke("system:get-disabled-tools"),
+  onSystemToolsUpdated: (cb) => ipcRenderer.on("system-tools-updated", (_, data) => cb(data)),
   // The console added a block; grow the timer card's clock by these minutes.
   onExtendTimer: (cb) => ipcRenderer.on("extend-timer", (_, data) => cb(data)),
   // Self-service: ask what this station's customer could start (its games,
@@ -83,6 +86,8 @@ contextBridge.exposeInMainWorld("api", {
   onStartOptions: (cb) => ipcRenderer.on("start-options", (_, data) => cb(data)),
   // The customer picked a game and a price and tapped Start.
   requestStartSession: (payload) => ipcRenderer.send("request-start-session", payload),
+  requestOccupancySessionStart: () => ipcRenderer.send("request-occupancy-session-start"),
+  bringToFront: () => ipcRenderer.send("bring-to-front"),
   onStartSessionFailed: (cb) => ipcRenderer.on("start-session-failed", (_, data) => cb(data)),
   navigateTo: (page) => ipcRenderer.send("navigate", page),
   storeToken: (token) => ipcRenderer.send("store-token", token),

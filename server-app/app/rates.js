@@ -126,22 +126,34 @@
    * a type nothing is priced for.
    */
   function stationTypes() {
-    var seen = {};
     var pcs = (Store && Store.state && Store.state.pcs) || [];
-    pcs.forEach(function (p) { if (p.category) seen[p.category] = true; });
+    var floorValues = pcs.map(function (p) { return p.category; }).filter(Boolean);
 
     var pricedTypes = list()
-      .then(function (rows) { rows.forEach(function (r) { if (r.category) seen[r.category] = true; }); })
+      .then(function (rows) { return rows.map(function (r) { return r.category; }).filter(Boolean); })
       /* The floor's own types are enough to proceed — a café that cannot reach
          its price master should still be able to file a station. */
-      .catch(function () {});
+      .catch(function () { return []; });
 
     var seededTypes = (Store && Store.listStationTypes ? Store.listStationTypes() : Promise.resolve([]))
-      .then(function (types) { (types || []).forEach(function (t) { if (t) seen[t] = true; }); })
-      .catch(function () {});
+      .then(function (types) { return (types || []).filter(Boolean); })
+      .catch(function () { return []; });
 
-    return Promise.all([pricedTypes, seededTypes]).then(function () {
-      return Object.keys(seen).sort();
+    return Promise.all([seededTypes, pricedTypes]).then(function (res) {
+      var seeded = res[0], priced = res[1];
+      /* Merged case-insensitively, canonical/seeded spellings first: this
+         café's own floor or price-master rows can still carry an old
+         free-typed casing ("pc", "ps5") from before this list existed to
+         offer a choice — without folding those into the same key as their
+         canonical spelling, they showed up as a second, separate option
+         beside it instead of being the same type. */
+      var byKey = {};
+      seeded.concat(priced, floorValues).forEach(function (value) {
+        var key = String(value).trim().toLowerCase();
+        if (key && !(key in byKey)) byKey[key] = String(value).trim();
+      });
+      return Object.keys(byKey).map(function (k) { return byKey[k]; })
+        .sort(function (a, b) { return a.localeCompare(b); });
     });
   }
 

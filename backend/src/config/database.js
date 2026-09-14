@@ -94,16 +94,6 @@ export const initializeDatabase = async () => {
         ON users (google_id) WHERE google_id IS NOT NULL
     `);
 
-    /* DPDP Act, 2023 self-service erasure. Anonymize-in-place rather than a
-       real DELETE — cafes.user_id, organization_users.user_id and audit rows
-       all FK to this table — so this is a flag, following the is_active
-       convention every other table here already uses, not a new pattern. */
-    await client.query(`
-      ALTER TABLE users
-        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ
-    `);
-
     // subscription plans table
     await client.query(`
       CREATE TABLE IF NOT EXISTS subscription_plans (
@@ -272,17 +262,6 @@ export const initializeDatabase = async () => {
         ADD COLUMN IF NOT EXISTS verify_otp_attempts SMALLINT NOT NULL DEFAULT 0
     `);
     await client.query(`ALTER TABLE customers ALTER COLUMN email_verified SET DEFAULT FALSE`);
-
-    /* DPDP Act, 2023 self-service erasure — same is_active + anonymized_at
-       pair as `users`. wallets/wallet_transactions/sessions/bills/orders/
-       reservations all FK to customer_id and are financial or booking
-       history a café may need to retain, so this anonymizes the row rather
-       than deleting it. */
-    await client.query(`
-      ALTER TABLE customers
-        ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE,
-        ADD COLUMN IF NOT EXISTS anonymized_at TIMESTAMPTZ
-    `);
 
     // wallet — one row per customer, holding the authoritative balance.
     // Money is NUMERIC, never floating point.
@@ -480,7 +459,16 @@ export const initializeDatabase = async () => {
         -- keep the unit fixed at the price it was sold at — an extension is
         -- always another block at the original terms, never today's price.
         ADD COLUMN IF NOT EXISTS block_unit_amount NUMERIC(10,2),
-        ADD COLUMN IF NOT EXISTS block_unit_minutes INTEGER
+        ADD COLUMN IF NOT EXISTS block_unit_minutes INTEGER,
+        -- The pro-rata figure before ₹10 rounding, kept alongside
+        -- amount_charged (the rounded figure actually debited) so a dispute
+        -- can be answered with both numbers.
+        ADD COLUMN IF NOT EXISTS exact_amount NUMERIC(12,2),
+        -- Last time a connected station's console confirmed this session is
+        -- still being watched. NULL on a session nobody has heartbeated yet
+        -- (e.g. one created before this column existed) — never treated as
+        -- "just heartbeated".
+        ADD COLUMN IF NOT EXISTS last_heartbeat_at TIMESTAMP
     `);
 
     /* 'cancelled' joins the existing statuses. A session started by mistake is
@@ -1770,19 +1758,6 @@ export const initializeDatabase = async () => {
       ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS station_limits JSONB
     `);
 
-    /* Combined ceiling across every non-PC station type together (PS5 + Pool
-       + Dart + VR + whatever a café invents, all counted as one total) — so a
-       plan can cap "other stations" overall without the super-admin having to
-       pre-select and cap each type by name first. A type with its own entry
-       in station_limits above is still checked against that specific number
-       instead; this is only the fallback for types nobody capped individually. */
-    await client.query(`
-      ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS other_stations_limit INTEGER
-    `);
-    await client.query(`
-      ALTER TABLE subscriptions ADD COLUMN IF NOT EXISTS other_stations_limit INTEGER
-    `);
-
     /*
      * Payment links.
      *
@@ -2044,6 +2019,18 @@ export const initializeDatabase = async () => {
     await client.query(`ALTER TABLE pcs ADD COLUMN IF NOT EXISTS client_version_seen_at TIMESTAMPTZ`);
     await client.query(`ALTER TABLE pcs ADD COLUMN IF NOT EXISTS update_state VARCHAR(24)`);
     await client.query(`ALTER TABLE pcs ADD COLUMN IF NOT EXISTS update_detail VARCHAR(255)`);
+
+    /* Which of the client's built-in "Station tools" (screen resolution,
+       NVIDIA Control Panel, Device Manager) this particular station offers a
+       customer — an array of the disabled ones, e.g. ["nvidia"] for a
+       station with no NVIDIA card. Defaults to none disabled, matching the
+       always-on behaviour every station already had before this existed. A
+       JSON array on the pc row, not a table, for the same reason
+       client_version above is: current state about one station, not a
+       history. */
+    await client.query(`
+      ALTER TABLE pcs ADD COLUMN IF NOT EXISTS disabled_system_tools JSONB NOT NULL DEFAULT '[]'::jsonb
+    `);
 
     /* Every rollout step, so "why is PC-03 still on the old version" has an
        answer that is not a shrug. */

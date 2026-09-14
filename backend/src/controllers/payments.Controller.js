@@ -877,8 +877,11 @@ export const verifyTopup = async (req, res) => {
     const order = found.rows[0];
     if (!order) return res.status(404).json({ success: false, message: 'Top-up not found' });
 
-    // A customer may only settle their own top-up.
-    if (!req.actor?.isStaff && order.customer_id !== customerId) {
+    // A customer may only settle their own top-up; staff may settle one for
+    // a customer they're helping, but only within their own café.
+    const ownedByCustomer = !req.actor?.isStaff && order.customer_id === customerId;
+    const ownedByStaff = req.actor?.isStaff && order.cafe_id === (req.actor.cafe_id ?? null);
+    if (!ownedByCustomer && !ownedByStaff) {
       return res.status(403).json({ success: false, message: 'This top-up is not yours' });
     }
 
@@ -1167,6 +1170,18 @@ export const rejectCashTopup = async (req, res) => {
   try {
     const topupId = Number(req.params.id);
     const reason = req.body?.reason ? String(req.body.reason).slice(0, 255) : 'Declined at the counter';
+
+    // Same café-ownership check as approveCashTopup, just above — without
+    // it, any café's staff could decline another café's pending cash
+    // request by id.
+    const existing = await client.query('SELECT cafe_id FROM topup_orders WHERE topup_id = $1', [topupId]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Top-up not found' });
+    }
+    const actorCafe = req.actor?.cafe_id ?? null;
+    if (actorCafe != null && existing.rows[0].cafe_id != null && Number(actorCafe) !== Number(existing.rows[0].cafe_id)) {
+      return res.status(403).json({ success: false, message: 'This request belongs to another café' });
+    }
 
     const { rows } = await client.query(
       `UPDATE topup_orders

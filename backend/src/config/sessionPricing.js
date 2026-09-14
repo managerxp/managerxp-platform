@@ -95,7 +95,8 @@ export const resolveGamingPrice = async (client, gamingPriceId, { stationCategor
   /* A PS5 price on a pool table is a mis-charge, not a preference. Only
      enforced when the station says what it is; an uncategorised station is
      treated as general purpose rather than refused. */
-  if (stationCategory && row.category && stationCategory !== row.category) {
+  if (stationCategory && row.category &&
+      stationCategory.trim().toLowerCase() !== row.category.trim().toLowerCase()) {
     return {
       error: `${row.software_name} is a ${row.category} price and this station is ${stationCategory}`
     };

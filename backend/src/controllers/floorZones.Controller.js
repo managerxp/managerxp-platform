@@ -23,8 +23,10 @@ const shape = (row) => ({
   station_count: row.station_count === undefined ? undefined : Number(row.station_count)
 });
 
-const cafeOf = (req) =>
-  req.body?.cafe_id ?? req.query?.cafe_id ?? req.user?.cafe_id ?? null;
+// The token's own café — never a client-supplied cafe_id. `req.user` never
+// gets set anywhere in this codebase (the real field is `req.actor`), so
+// that branch was always dead and the body/query values always won.
+const cafeOf = (req) => req.actor?.cafe_id ?? null;
 
 // GET /api/floor-zones
 export const listZones = async (req, res) => {
@@ -33,8 +35,10 @@ export const listZones = async (req, res) => {
       `SELECT z.*, COUNT(p.pc_id)::int AS station_count
        FROM floor_zones z
        LEFT JOIN pcs p ON p.zone_id = z.zone_id
+       WHERE z.cafe_id IS NOT DISTINCT FROM $1
        GROUP BY z.zone_id
-       ORDER BY z.sort_order, LOWER(z.zone_name)`
+       ORDER BY z.sort_order, LOWER(z.zone_name)`,
+      [cafeOf(req)]
     );
     res.status(200).json({ success: true, data: result.rows.map(shape) });
   } catch (error) {
@@ -56,9 +60,13 @@ export const createZone = async (req, res) => {
       ? parseInt(req.body.sort_order, 10)
       : null;
 
-    // A new zone goes last unless a position was given.
+    // A new zone goes last unless a position was given — last among this
+    // café's own zones, not the whole platform's.
     const nextOrder = order === null
-      ? (await pool.query('SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM floor_zones')).rows[0].n
+      ? (await pool.query(
+          'SELECT COALESCE(MAX(sort_order), 0) + 1 AS n FROM floor_zones WHERE cafe_id IS NOT DISTINCT FROM $1',
+          [cafeOf(req)]
+        )).rows[0].n
       : order;
 
     const result = await pool.query(
@@ -86,7 +94,10 @@ export const updateZone = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid zone id' });
     }
 
-    const existing = await pool.query('SELECT * FROM floor_zones WHERE zone_id = $1', [id]);
+    const existing = await pool.query(
+      'SELECT * FROM floor_zones WHERE zone_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [id, cafeOf(req)]
+    );
     if (existing.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Zone not found' });
     }
@@ -141,7 +152,8 @@ export const deleteZone = async (req, res) => {
       'SELECT COUNT(*)::int AS n FROM pcs WHERE zone_id = $1', [id]
     );
     const result = await pool.query(
-      'DELETE FROM floor_zones WHERE zone_id = $1 RETURNING zone_name', [id]
+      'DELETE FROM floor_zones WHERE zone_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 RETURNING zone_name',
+      [id, cafeOf(req)]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Zone not found' });
@@ -177,6 +189,7 @@ export const assignStations = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Too many assignments in one call' });
     }
 
+    const cafeId = cafeOf(req);
     await client.query('BEGIN');
 
     let changed = 0;
@@ -194,15 +207,30 @@ export const assignStations = async (req, res) => {
         await client.query('ROLLBACK');
         return res.status(400).json({ success: false, message: 'zone_id must be a number or null' });
       }
+      // A zone from another café could otherwise be used to move that
+      // café's PC into this one's fleet, or vice versa.
+      if (zoneId !== null) {
+        const zoneOwned = await client.query(
+          'SELECT zone_id FROM floor_zones WHERE zone_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+          [zoneId, cafeId]
+        );
+        if (zoneOwned.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(404).json({ success: false, message: `Zone ${zoneId} not found` });
+        }
+      }
 
       const order = Number.isInteger(parseInt(entry?.floor_order, 10))
         ? parseInt(entry.floor_order, 10)
         : 0;
 
+      // Scoped to this café's own PCs — without it, any station's zone_id
+      // (and floor_order) could be rewritten by id regardless of which café
+      // actually owns it.
       const result = await client.query(
         `UPDATE pcs SET zone_id = $1, floor_order = $2, updated_at = CURRENT_TIMESTAMP
-         WHERE pc_id = $3 RETURNING pc_id`,
-        [zoneId, order, pcId]
+         WHERE pc_id = $3 AND cafe_id IS NOT DISTINCT FROM $4 RETURNING pc_id`,
+        [zoneId, order, pcId, cafeId]
       );
       changed += result.rowCount;
     }

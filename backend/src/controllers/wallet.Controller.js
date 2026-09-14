@@ -51,17 +51,30 @@ const shapeTransaction = (row) => ({
 /**
  * Fetch the customer's wallet, creating it on first access so customers who
  * registered before wallets existed still work.
+ *
+ * `staffCafeId` scopes the lookup to one café — pass it whenever the caller
+ * is a staff token, which can otherwise name any customerId in the URL and
+ * reach another café's wallet entirely. Leave it `undefined` for the
+ * customer's own token: `customer_id` equality already fully proves
+ * ownership there (checked upstream by `canReadWallet`), and a customer's
+ * JWT carries no `cafe_id` claim to check against in the first place.
  */
-const ensureWallet = async (client, customerId) => {
+const ensureWallet = async (client, customerId, staffCafeId) => {
+  const scoped = staffCafeId !== undefined;
   const existing = await client.query(
-    'SELECT * FROM wallets WHERE customer_id = $1',
-    [customerId]
+    scoped
+      ? `SELECT w.* FROM wallets w JOIN customers c ON c.customer_id = w.customer_id
+          WHERE w.customer_id = $1 AND c.cafe_id IS NOT DISTINCT FROM $2`
+      : 'SELECT * FROM wallets WHERE customer_id = $1',
+    scoped ? [customerId, staffCafeId] : [customerId]
   );
   if (existing.rows.length > 0) return existing.rows[0];
 
   const customer = await client.query(
-    'SELECT customer_id FROM customers WHERE customer_id = $1',
-    [customerId]
+    scoped
+      ? 'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2'
+      : 'SELECT customer_id FROM customers WHERE customer_id = $1',
+    scoped ? [customerId, staffCafeId] : [customerId]
   );
   if (customer.rows.length === 0) return null;
 
@@ -84,7 +97,7 @@ export const getWallet = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid customer id' });
     }
 
-    const wallet = await ensureWallet(client, customerId);
+    const wallet = await ensureWallet(client, customerId, req.actor?.isStaff ? (req.actor.cafe_id ?? null) : undefined);
     if (!wallet) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
@@ -110,7 +123,7 @@ export const getTransactions = async (req, res) => {
     const limit = Math.min(parseInt(req.query.limit, 10) || 25, 100);
     const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0);
 
-    const wallet = await ensureWallet(client, customerId);
+    const wallet = await ensureWallet(client, customerId, req.actor?.isStaff ? (req.actor.cafe_id ?? null) : undefined);
     if (!wallet) {
       return res.status(404).json({ success: false, message: 'Customer not found' });
     }
@@ -164,7 +177,8 @@ const applyMovement = async (req, res, direction) => {
 
     await client.query('BEGIN');
 
-    const wallet = await ensureWallet(client, customerId);
+    // Always a staff token here (canMoveMoney = requireStaff) — always scoped.
+    const wallet = await ensureWallet(client, customerId, req.actor?.cafe_id ?? null);
     if (!wallet) {
       await client.query('ROLLBACK');
       return res.status(404).json({ success: false, message: 'Customer not found' });
@@ -192,7 +206,13 @@ const applyMovement = async (req, res, direction) => {
     const standing = direction === 'debit' ? await customerStanding(client, customerId) : null;
     const floor = standing ? floorFor(standing) : 0;
 
-    if (next < floor) {
+    // Crediting (a top-up) only ever moves the balance toward zero, so it can
+    // never breach a floor — this check is a debit-only guard. Applying it to
+    // credit too meant a café recharging a credit customer who still owed
+    // more than the top-up was rejected as "insufficient balance", with the
+    // credit_limit on the error reading 0 (standing is null on the credit
+    // path) — the exact opposite of what a recharge is for.
+    if (direction === 'debit' && next < floor) {
       await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,

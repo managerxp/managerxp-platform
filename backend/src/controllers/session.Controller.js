@@ -77,6 +77,31 @@ const shape = async (row) => {
   const running = amountForSeconds(row, elapsed);
   const walletBalance = num(row.wallet_balance);
 
+  /* Open (active/paused) vs. still inside the free setup buffer — computed
+     from the same timestamps as everything else here, not a stored column,
+     so it can never drift out of sync with elapsed_seconds/grace_seconds.
+     The UI uses this to show "Preparing" vs. "Active" without re-deriving
+     the grace math itself. */
+  const rawElapsed = (row.status === 'active' || row.status === 'paused')
+    ? elapsedSeconds(row, undefined)
+    : null;
+  const billingPhase = row.status === 'ended' ? 'ended'
+    : row.status === 'cancelled' ? 'cancelled'
+    : rawElapsed < graceSeconds ? 'grace'
+    : 'active';
+  const graceRemainingSeconds = rawElapsed === null ? 0 : Math.max(0, graceSeconds - rawElapsed);
+
+  /* A station whose console has stopped heartbeating it — crashed, lost its
+     connection, or was never reachable to begin with — without anyone having
+     ended the session. Staff-visible only; nothing here ends or charges a
+     session on its own. */
+  const heartbeatStaleSeconds = await getSetting('session.heartbeat_stale_seconds', 90, row.cafe_id);
+  const heartbeatStale = (row.status === 'active' || row.status === 'paused') && (
+    !row.last_heartbeat_at
+      ? (Date.now() - new Date(row.started_at).getTime()) / 1000 > heartbeatStaleSeconds
+      : (Date.now() - new Date(row.last_heartbeat_at).getTime()) / 1000 > heartbeatStaleSeconds
+  );
+
   return {
     /* The price this session was sold at, as captured when it started. A later
        edit to the Gaming Price Master cannot reach back and change it. */
@@ -135,10 +160,18 @@ const shape = async (row) => {
        full amount for the same remaining stretch rather than ticking through
        what the server is still treating as free. */
     grace_seconds: graceSeconds,
+    billing_phase: billingPhase,
+    grace_remaining_seconds: graceRemainingSeconds,
+    last_heartbeat_at: row.last_heartbeat_at || null,
+    heartbeat_stale: heartbeatStale,
     /* What the session would cost if it ended right now — produced by the same
        function that bills it, so the running figure and the final charge can
        never disagree about the arithmetic. */
     running_amount: running,
+    /* The pro-rata figure before ₹10 rounding. Kept alongside amount_charged
+       (what was actually debited) so a dispute can be answered with both
+       numbers rather than just the rounded one. */
+    exact_amount: num(row.exact_amount),
     amount_charged: num(row.amount_charged),
     payment_status: row.payment_status,
     end_reason: row.end_reason,
@@ -857,7 +890,16 @@ export const endSession = async (req, res) => {
        the pro-rated HOUR case gracedSeconds already zeroes out, but a
        BLOCK/FLAT session too, which amountForSeconds bills whole regardless
        of seconds played and would otherwise charge in full for zero play. */
-    const amount = billableSeconds > 0 ? amountForSeconds(row, billableSeconds) : 0;
+    const exactAmount = billableSeconds > 0 ? amountForSeconds(row, billableSeconds) : 0;
+    /* Rounding is scoped to open-ended HOUR play only. A BLOCK/FLAT price is
+       whatever the café advertised it as (often already a round number) —
+       rounding those up too would silently inflate a price a customer was
+       already shown before they sat down. Ceiling, never nearer-rounding, so
+       the café is never short a few rupees against what the meter actually
+       owed. */
+    const amount = (row.pricing_unit === 'HOUR' && exactAmount > 0)
+      ? Math.ceil(exactAmount / 10) * 10
+      : exactAmount;
 
     let paymentStatus = 'not_applicable';
     let walletTransactionId = null;
@@ -970,13 +1012,14 @@ export const endSession = async (req, res) => {
            paused_at = NULL,
            billable_seconds = $1,
            amount_charged = $2,
-           payment_status = $3,
-           wallet_transaction_id = $4,
-           end_reason = $5,
-           ended_by = $6,
+           exact_amount = $3,
+           payment_status = $4,
+           wallet_transaction_id = $5,
+           end_reason = $6,
+           ended_by = $7,
            updated_at = CURRENT_TIMESTAMP
-       WHERE session_id = $7`,
-      [billableSeconds, amount, paymentStatus, walletTransactionId, reason, req.actor?.label || null, id]
+       WHERE session_id = $8`,
+      [billableSeconds, amount, exactAmount, paymentStatus, walletTransactionId, reason, req.actor?.label || null, id]
     );
 
     // A venue account this session was using goes back into the pool the
@@ -1136,6 +1179,36 @@ export const cancelSession = async (req, res) => {
     res.status(500).json({ success: false, message: 'Error cancelling session' });
   } finally {
     client.release();
+  }
+};
+
+/*
+ * POST /api/sessions/:id/heartbeat
+ *
+ * A connected station is still being watched — not a billing signal, and
+ * never treated as one. Ending or charging a session never depends on this;
+ * it only powers heartbeat_stale (shape(), above) so staff can see a station
+ * that crashed or lost connection without anyone ending its session.
+ */
+export const heartbeatSession = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid session id' });
+    }
+    const result = await pool.query(
+      `UPDATE sessions SET last_heartbeat_at = CURRENT_TIMESTAMP
+        WHERE session_id = $1 AND status IN ('active','paused')
+      RETURNING session_id`,
+      [id]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'No open session with that id' });
+    }
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error recording session heartbeat:', error);
+    res.status(500).json({ success: false, message: 'Error recording heartbeat' });
   }
 };
 

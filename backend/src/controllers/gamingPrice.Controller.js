@@ -364,7 +364,7 @@ export const setPriceStatus = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Price not found' });
     }
 
-    const full = await pool.query(`${selectPrice(2)} WHERE gp.id = $1`, [id, cafeId]);
+    const full = await pool.query(`${selectPrice(2)} WHERE gp.id = $1`, [id, cafeOf(req)]);
     res.status(200).json({
       success: true,
       message: status === 'ACTIVE' ? 'Price activated' : 'Price deactivated',

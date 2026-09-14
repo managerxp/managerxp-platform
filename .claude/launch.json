@@ -8,6 +8,12 @@
       "port": 5173
     },
     {
+      "name": "backend-api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "../Manager-XP-Website/backend", "run", "start"],
+      "port": 5000
+    },
+    {
       "name": "flowxp-api",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "../flowxp/backend", "run", "start"],

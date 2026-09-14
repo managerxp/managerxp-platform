@@ -213,6 +213,7 @@
 
           window.api.storeToken(token);
           window.api.storeUserInfo(user);
+          if (window.api.requestOccupancySessionStart) window.api.requestOccupancySessionStart();
           window.api.navigateTo("userdashboard");
         } catch (error) {
           console.error("Login error:", error);
@@ -269,6 +270,7 @@
             var user = data.data && data.data.user;
             window.api.storeToken(token);
             window.api.storeUserInfo(user);
+            if (window.api.requestOccupancySessionStart) window.api.requestOccupancySessionStart();
             window.api.navigateTo("userdashboard");
           })
           .catch(function (err) {

@@ -204,8 +204,12 @@ export const createPC = async (req, res) => {
        if the plan sets one — see getUsage's category filter for why these two
        checks are mutually exclusive, not additive. */
     const normalizedCategory = category ? String(category).trim().slice(0, 60) || null : null;
+    // Case-insensitive: a station saved as "pc" or "Pc" before this dropdown
+    // existed is still a Gaming PC for plan-limit purposes, not an
+    // uncapped/mis-typed category of its own.
+    const isPcCategory = !normalizedCategory || normalizedCategory.toUpperCase() === 'PC';
     if (orgId) {
-      const room = (!normalizedCategory || normalizedCategory === 'PC')
+      const room = isPcCategory
         ? await checkLimit(orgId, 'pc')
         : await checkStationLimit(orgId, normalizedCategory);
       if (!room.ok) {
@@ -229,11 +233,11 @@ export const createPC = async (req, res) => {
        (see adminBranches.Controller.js's PC pool), so it only ever gates a
        PC — the same condition the org-wide check above uses. Unset means the
        branch draws from the shared pool with no allocation of its own. */
-    if (branch.max_pcs != null && (!normalizedCategory || normalizedCategory === 'PC')) {
+    if (branch.max_pcs != null && isPcCategory) {
       const used = (await pool.query(`
         SELECT COUNT(*)::int AS n FROM pcs
         WHERE branch_id = $1 AND is_active AND device_type = 'GAMING_PC'
-          AND (category = 'PC' OR category IS NULL)
+          AND (UPPER(category) = 'PC' OR category IS NULL)
       `, [branch_id])).rows[0].n;
       if (used >= branch.max_pcs) {
         return res.status(409).json({
@@ -310,7 +314,7 @@ export const updatePC = async (req, res) => {
     const { id } = req.params;
     const {
       cafe_id, branch_id, name, ip_address, mac_address, is_active,
-      category, status, description
+      category, status, description, disabled_system_tools
     } = req.body;
 
     // Check if PC exists, and that it is this café's to change
@@ -330,6 +334,18 @@ export const updatePC = async (req, res) => {
     let paramCounter = 1;
     
     if (cafe_id !== undefined) {
+      /* Reassigning a station to a different café at all — not merely
+         changing one within it — is a ManagerXP-level move, not something an
+         ordinary café's own staff token should be able to do to their own
+         station. Without this, a café could "donate" (or a bug could
+         accidentally move) its own PC into another café's fleet, or detach
+         it from its plan's station-limit accounting. */
+      if (!req.actor?.isPlatformAdmin) {
+        return res.status(403).json({
+          success: false,
+          message: 'Only ManagerXP staff can move a station to a different café'
+        });
+      }
       // Check if cafe exists
       const cafeCheck = await pool.query('SELECT cafe_id FROM cafes WHERE cafe_id = $1', [cafe_id]);
       if (cafeCheck.rows.length === 0) {
@@ -438,6 +454,23 @@ export const updatePC = async (req, res) => {
       }
       updates.push(`status = $${paramCounter++}`);
       queryParams.push(next);
+    }
+
+    /* Which of the client's built-in Station tools this PC does NOT offer —
+       e.g. ["nvidia"] on a machine with no NVIDIA card. Validated against
+       the fixed set the client actually knows how to open, so a typo here
+       cannot silently disable nothing while looking like it worked. */
+    if (disabled_system_tools !== undefined) {
+      const KNOWN_TOOLS = ['display', 'nvidia', 'devicemgmt'];
+      if (!Array.isArray(disabled_system_tools) ||
+          disabled_system_tools.some((t) => !KNOWN_TOOLS.includes(t))) {
+        return res.status(400).json({
+          success: false,
+          message: `disabled_system_tools must be an array made up of: ${KNOWN_TOOLS.join(', ')}`
+        });
+      }
+      updates.push(`disabled_system_tools = $${paramCounter++}::jsonb`);
+      queryParams.push(JSON.stringify([...new Set(disabled_system_tools)]));
     }
 
     if (updates.length === 0) {
@@ -747,27 +780,37 @@ export const checkPCExists = async (req, res) => {
       });
     }
     
+    /*
+     * Unauthenticated by necessity (see pcs.Routes.js) — so the response here
+     * is deliberately thin. `cafe_id`/`branch_id` used to come back on a MAC
+     * match; neither caller (client-app's own IP report, the console's
+     * discovery listener) reads them, and hosting a café's internal
+     * organisation id behind a guessable MAC was pure disclosure with no
+     * operational purpose.
+     */
+    const publicShape = (row) => ({ pc_id: row.pc_id, name: row.name, ip_address: row.ip_address });
+
     // First check if PC exists by MAC address (since MAC is more reliable)
     if (mac_address) {
-      const macQuery = 'SELECT pc_id, name, ip_address, mac_address, cafe_id, branch_id FROM pcs WHERE mac_address = $1';
+      const macQuery = 'SELECT pc_id, name, ip_address, mac_address FROM pcs WHERE mac_address = $1';
       const macResult = await pool.query(macQuery, [mac_address]);
-      
+
       if (macResult.rows.length > 0) {
         const existingPC = macResult.rows[0];
-        
+
         // If IP address is provided and different from database IP, auto-update it
         if (ip_address && existingPC.ip_address !== ip_address) {
           console.log(`🔄 IP Auto-Update: MAC ${mac_address} found. Updating IP from ${existingPC.ip_address} to ${ip_address}`);
-          
+
           const updateQuery = `
-            UPDATE pcs 
-            SET ip_address = $1, updated_at = CURRENT_TIMESTAMP 
-            WHERE mac_address = $2 
-            RETURNING *
+            UPDATE pcs
+            SET ip_address = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE mac_address = $2
+            RETURNING pc_id, name, ip_address
           `;
-          
+
           const updateResult = await pool.query(updateQuery, [ip_address, mac_address]);
-          
+
           return res.status(200).json({
             success: true,
             exists: true,
@@ -776,28 +819,28 @@ export const checkPCExists = async (req, res) => {
             data: updateResult.rows[0]
           });
         }
-        
+
         // If IP is same or not provided, just return the existing PC
         return res.status(200).json({
           success: true,
           exists: true,
           ip_updated: false,
-          data: existingPC
+          data: publicShape(existingPC)
         });
       }
     }
-    
+
     // If MAC not found, check by IP address
     if (ip_address) {
       const ipQuery = 'SELECT pc_id, name, ip_address, mac_address FROM pcs WHERE ip_address = $1';
       const ipResult = await pool.query(ipQuery, [ip_address]);
-      
+
       if (ipResult.rows.length > 0) {
         return res.status(200).json({
           success: true,
           exists: true,
           ip_updated: false,
-          data: ipResult.rows[0]
+          data: publicShape(ipResult.rows[0])
         });
       }
     }

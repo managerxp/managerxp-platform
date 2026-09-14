@@ -412,6 +412,18 @@ export const listCustomerReservations = async (req, res) => {
     if (!req.actor?.isStaff && Number(req.actor?.customer_id) !== customerId) {
       return res.status(403).json({ success: false, message: 'You can only view your own reservations' });
     }
+    // A staff token can name any customerId; scope to their own café. The
+    // customer's own token needs no such check — the equality above already
+    // proves ownership.
+    if (req.actor?.isStaff) {
+      const owned = await pool.query(
+        'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+        [customerId, req.actor.cafe_id ?? null]
+      );
+      if (owned.rows.length === 0) {
+        return res.status(404).json({ success: false, message: 'Customer not found' });
+      }
+    }
 
     const result = await pool.query(
       `${SELECT_RESERVATION} WHERE r.customer_id = $1 ORDER BY r.start_time DESC`,
@@ -429,6 +441,11 @@ const loadOwned = async (req, id) => {
   if (!row) return { error: 404, message: 'Reservation not found' };
   if (!req.actor?.isStaff && Number(req.actor?.customer_id) !== row.customer_id) {
     return { error: 403, message: 'You can only manage your own reservations' };
+  }
+  // A staff token could otherwise name any reservation id and cancel
+  // another café's booking.
+  if (req.actor?.isStaff && row.cafe_id !== (req.actor.cafe_id ?? null)) {
+    return { error: 404, message: 'Reservation not found' };
   }
   return { row };
 };
