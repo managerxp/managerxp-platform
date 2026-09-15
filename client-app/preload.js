@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("api", {
   getStatus: (cb) => ipcRenderer.invoke("get-status").then(cb),
   onPcName: (cb) => ipcRenderer.on("pc-name", (_, name) => cb(name)),
   getPcName: (cb) => ipcRenderer.invoke("get-pc-name").then(cb),
+  onCafeName: (cb) => ipcRenderer.on("cafe-name", (_, name) => cb(name)),
+  getCafeName: (cb) => ipcRenderer.invoke("get-cafe-name").then(cb),
   getAppVersion: (cb) => ipcRenderer.invoke("get-app-version").then(cb),
 
   // Volume — real level + mute state, from the actual Windows device.

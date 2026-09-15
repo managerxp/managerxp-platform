@@ -110,6 +110,7 @@ class AuthContext {
       address: userData.address,
       role: userData.role || claims.role,
       cafe_id: userData.cafe_id || claims.cafe_id || null,
+      cafe_name: userData.cafe_name || null,
       created_at: userData.created_at
     };
     
@@ -177,6 +178,15 @@ class AuthContext {
    */
   getCafeId() {
     return this.user?.cafe_id || null;
+  }
+
+  /**
+   * Get the café's display name for the current user, for anywhere a
+   * station needs to show which café it belongs to (see SET_NAME in main.js).
+   * @returns {string|null} Café name or null
+   */
+  getCafeName() {
+    return this.user?.cafe_name || null;
   }
 
   /**

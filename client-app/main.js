@@ -24,6 +24,7 @@ for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __di
 }
 
 let SIM_ID = "SIM-01"; // Will be updated by server
+let CAFE_NAME = ""; // This station's café — set by the console's SET_NAME, shown on the login screen
 const CLIENT_PORT = Number(process.env.CLIENT_PORT) || 9090; // Port this client listens on
 const SERVER_APP_PORT = Number(process.env.SERVER_APP_PORT) || 3334; // Server app HTTP port for discovery
 let LOCAL_IP = null; // Will be set on startup
@@ -1852,6 +1853,12 @@ function createWindow() {
     return SIM_ID;
   });
 
+  // Same pull-on-load reasoning as get-pc-name — the login screen loads
+  // before SET_NAME necessarily arrives.
+  ipcMain.handle('get-cafe-name', async (event) => {
+    return CAFE_NAME;
+  });
+
   // The portal loads before SET_NAME necessarily arrives, so it pulls the
   // current address rather than trusting a push it might have missed.
   ipcMain.handle('get-backend-base', async (event) => {
@@ -3052,6 +3059,13 @@ function listen() {
 
         // Send PC name to renderer
         sendToWindow(win, "pc-name", SIM_ID);
+
+        // Same idea as pc-name — always resent, always cheap, so the login
+        // screen shows this café's real name rather than a generic label.
+        if (msg.cafeName) {
+          CAFE_NAME = msg.cafeName;
+          sendToWindow(win, "cafe-name", CAFE_NAME);
+        }
 
         /* The console's own address, so the renderer's wallet calls and the
            checkout window reach the backend wherever it actually is rather

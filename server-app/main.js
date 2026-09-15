@@ -2359,7 +2359,8 @@ async function heartbeat() {
             ws.send(JSON.stringify({
               type: "SET_NAME",
               name: pcName,
-              apiBase: backendBaseUrl()
+              apiBase: backendBaseUrl(),
+              cafeName: authContext.getCafeName()
             }));
             setupClientHandlers();
             clientConnections.set(pcName, ws);
@@ -2492,7 +2493,8 @@ function connectToSpecificPC(ip, port, pcName) {
     ws.send(JSON.stringify({
       type: "SET_NAME",
       name: pcName,
-      apiBase: backendBaseUrl()
+      apiBase: backendBaseUrl(),
+      cafeName: authContext.getCafeName()
     }));
     setupClientHandlers();
     clientConnections.set(pcName, ws);
@@ -2660,7 +2662,8 @@ async function connectToClients() {
       ws.send(JSON.stringify({
         type: "SET_NAME",
         name: simId,
-        apiBase: backendBaseUrl()
+        apiBase: backendBaseUrl(),
+        cafeName: authContext.getCafeName()
       }));
       log(`Sent PC name to client: ${simId}`);
       setupClientHandlers();

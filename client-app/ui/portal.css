@@ -696,15 +696,23 @@
 .stage {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   place-items: center;
   padding: var(--s-8);
+  /* A tall card (register, especially once the error banner appears) could
+     exceed the kiosk window's height with no way to reach the submit button
+     below it — body deliberately hides overflow app-wide ("panes scroll, not
+     the page"), so this pane needs its own scroll the same way .portal-scroll
+     already does for the main dashboard. Short content still centers via
+     place-items above; only tall content scrolls. */
+  overflow-y: auto;
 }
 
 .auth-card {
   width: 100%;
   max-width: 440px;
+  margin: auto 0;
   padding: var(--s-10) var(--s-8) var(--s-8);
   background: var(--glass);
   backdrop-filter: blur(24px);
@@ -722,6 +730,20 @@
   color: #fff;
   box-shadow: 0 12px 36px rgba(255, 23, 68, 0.36);
 }
+/* The real CafeXP wordmark, when the asset is present — same
+   present-vs-fallback pattern as the console's own .brand-logo (see
+   server-app/ui/layout.css): the badge glyph steps aside rather than
+   showing both at once, and steps back in if the image ever fails to load. */
+.auth-logo {
+  height: 48px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto var(--s-5);
+}
+.auth-card:not(.auth-no-logo) .auth-mark { display: none; }
+.auth-card.auth-no-logo .auth-logo { display: none; }
 .auth-title {
   text-align: center;
   font-size: var(--t-h1);
