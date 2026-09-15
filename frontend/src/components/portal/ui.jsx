@@ -16,11 +16,15 @@ import React from 'react';
  * hard border — which is a real, documented difference in how the two
  * consoles should feel, not drift to unify away.
  */
+/* eslint-disable react-refresh/only-export-components -- re-exporting the shared
+   module's own mix of components and constants (surface, inputClass);
+   dashboardUi.jsx is the file that actually defines them. */
 export {
   surface, Page, Card, Button, Field, inputClass, Input, Select,
   Banner, Empty, Skeleton, Table, StatusDot, Stat, Meter,
   CopySecret as CopyBox
 } from '../shared/dashboardUi';
+/* eslint-enable react-refresh/only-export-components */
 
 export const Pill = ({ tone = 'mute', children }) => {
   const tones = {

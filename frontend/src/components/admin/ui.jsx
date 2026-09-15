@@ -16,10 +16,14 @@ import React from 'react';
  * which is a real, documented difference in how the two consoles should
  * feel, not drift to unify away.
  */
+/* eslint-disable react-refresh/only-export-components -- re-exporting the shared
+   module's own mix of components and constants (surface, primaryButtonClass,
+   inputClass); dashboardUi.jsx is the file that actually defines them. */
 export {
   surface, primaryButtonClass, Page, Card as Panel, Button, Field, inputClass, Input, Select,
   Banner, Empty, Skeleton, Table, CopySecret as CopyableSecret
 } from '../shared/dashboardUi';
+/* eslint-enable react-refresh/only-export-components */
 
 export const Pill = ({ tone = 'mute', children }) => {
   const tones = {
