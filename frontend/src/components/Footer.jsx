@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import logo from '../assets/logo.png';
+import startupIndiaBadge from '../assets/startupIndiaBadge.png';
 import { Mail, Phone, MapPin } from 'lucide-react';
-import { FaXTwitter, FaLinkedin, FaInstagram } from 'react-icons/fa6';
+import { FaLinkedin, FaInstagram } from 'react-icons/fa6';
 
 // Explicit paths: deriving them from the label produced dead routes (/ourproducts).
 const navLinks = [
@@ -22,7 +23,6 @@ const legalLinks = [
 ];
 
 const socialLinks = [
-  { label: 'ManagerXP on X', href: 'https://twitter.com/managerxp', Icon: FaXTwitter },
   { label: 'ManagerXP on LinkedIn', href: 'https://linkedin.com/company/managerxp', Icon: FaLinkedin },
   { label: 'ManagerXP on Instagram', href: 'https://www.instagram.com/manager.xp', Icon: FaInstagram },
 ];
@@ -72,6 +72,8 @@ const Footer = () => {
               <img
                 src={logo}
                 alt="ManagerXP"
+                width="359"
+                height="64"
                 className="h-8 w-auto object-contain"
                 style={logoStyle}
               />
@@ -79,6 +81,25 @@ const Footer = () => {
             <p className="text-neutral-400 text-sm leading-relaxed font-light max-w-sm">
               Empowering businesses with innovative management solutions for the modern workplace.
             </p>
+
+            {/* The badge's own artwork (the Ashoka emblem, "DPIIT") is black —
+                a colour this footer has no way to show, so it sits on a small
+                white chip of its own rather than the transparent black behind
+                everything else here. The caption beside it says in words what
+                the badge otherwise only shows as a logo. */}
+            <div className="flex items-center gap-3 w-fit">
+              <div className="inline-flex w-fit shrink-0 items-center rounded-lg bg-white px-3 py-2">
+                <img
+                  src={startupIndiaBadge}
+                  alt="Recognised by DPIIT, Government of India — Startup India"
+                  className="h-9 w-auto"
+                />
+              </div>
+              <span className="text-neutral-400 text-xs font-medium leading-snug max-w-[9rem]">
+                Startup India Recognised
+              </span>
+            </div>
+
             <div className="flex space-x-3">
               {socialLinks.map((social) => (
                 <a

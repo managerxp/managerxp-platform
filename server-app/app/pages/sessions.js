@@ -267,7 +267,7 @@
           (rates.length === 1 ? "" : '<option value="">— Select price —</option>') +
           rates.map(function (r) {
             return '<option value="' + r.price_id + '">' +
-              UI.esc(r.software_name + " · " + r.session_name) + " — " +
+              UI.esc(r.software_name + " · " + r.session_name + global.CXRates.playersSuffix(r)) + " — " +
               UI.esc(global.CXRates.money(r.price, r.currency)) +
               (r.changed ? " (" + UI.esc(r.rule_label) + ")" : "") + "</option>";
           }).join("");

@@ -1,6 +1,37 @@
 @import "tailwindcss";
 
 /*
+ * Type tokens ----------------------------------------------------------
+ * The site's terminal/HUD identity leans on font-sans and font-mono
+ * everywhere (labels, headlines, data) but never actually loaded a
+ * typeface — every page rendered on whichever default the visitor's OS
+ * happened to ship. Geist + Geist Mono (linked in index.html) replace
+ * that default globally, through the same two utilities already used
+ * site-wide, so no component needs to change.
+ */
+@theme {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+}
+
+/*
+ * Formalizes the red-tinted glow shadow that was hand-copied as a literal
+ * rgba() arbitrary value into 30+ files, each with its own slightly
+ * different opacity/spread. Three sizes cover the range those literals
+ * actually used: a resting glow, a stronger hover state, and a large soft
+ * one for full panels.
+ */
+.shadow-glow {
+  box-shadow: 0 0 20px -5px rgba(220, 38, 38, 0.4);
+}
+.shadow-glow-hover:hover {
+  box-shadow: 0 0 28px -5px rgba(220, 38, 38, 0.55);
+}
+.shadow-glow-lg {
+  box-shadow: 0 0 50px -20px rgba(220, 38, 38, 0.4);
+}
+
+/*
  * The default OS scrollbar is white/light-grey regardless of page theme —
  * stark against this site's black background, most visible on the admin
  * portal's own scrolling sidebar and content panes. Applies everywhere

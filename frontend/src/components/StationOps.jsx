@@ -3,6 +3,7 @@ import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { Monitor, Power, RotateCcw, Lock, LogOut, Cpu, MemoryStick, Wifi } from 'lucide-react';
 import DemoBadge from './DemoBadge';
 import { EASE_MOTION, SPRING, prefersReducedMotion } from '../lib/motion';
+import { glassPanel } from '../lib/ui';
 
 /**
  * Floor map + station control, as one connected experience: pick a machine on
@@ -79,7 +80,7 @@ const StationOps = () => {
   const busy = stations.filter((s) => s.state === 'gaming').length;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/70 backdrop-blur-xl shadow-[0_0_60px_-30px_rgba(220,38,38,0.5)]">
+    <div className={glassPanel}>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3">
         <div className="flex items-center gap-2" role="tablist" aria-label="Zone">

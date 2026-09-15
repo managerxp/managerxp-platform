@@ -1044,7 +1044,7 @@
       host.appendChild(tile({
         name: r.software_name,
         price: global.CXRates.money(r.price, r.currency),
-        flag: r.session_name + " · " + global.CXRates.durationText(r),
+        flag: r.session_name + global.CXRates.playersSuffix(r) + " · " + global.CXRates.durationText(r),
         onPick: function () {
           addLine({
             item_type: "gaming",

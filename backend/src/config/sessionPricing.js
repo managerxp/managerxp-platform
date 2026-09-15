@@ -68,7 +68,7 @@ export const resolveGamingPrice = async (client, gamingPriceId, { stationCategor
      lines below. Resolving it differently here than the dropdown that offered
      the price would refuse a price the operator was just shown. */
   const result = await db.query(
-    `SELECT gp.id, gp.price, gp.currency, gp.status,
+    `SELECT gp.id, gp.price, gp.currency, gp.status, gp.player_count,
             sm.software_id, sm.software_name,
             ${categoryExpr()} AS category,
             sm.is_active AS software_active,
@@ -124,8 +124,13 @@ export const resolveGamingPrice = async (client, gamingPriceId, { stationCategor
   const price = applyRule(basePrice, rule);
   const ruleLabel = describeRule(rule);
 
+  // Only spoken when it is more than the default — a solo PC session never
+  // needed to say "1 Player" and starting now would just be new noise on an
+  // old receipt shape.
+  const playersLabel = row.player_count > 1 ? ` · ${row.player_count} Players` : '';
+
   const symbol = row.currency === 'INR' ? '₹' : `${row.currency} `;
-  const label = `${row.software_name} · ${row.session_name} · ${symbol}${price}` +
+  const label = `${row.software_name} · ${row.session_name}${playersLabel} · ${symbol}${price}` +
     (ruleLabel ? ` · ${ruleLabel}` : '');
 
   const unlimited = row.duration_type === 'UNLIMITED' || row.duration_minutes === null;
@@ -147,7 +152,8 @@ export const resolveGamingPrice = async (client, gamingPriceId, { stationCategor
         category: row.category,
         software_name: row.software_name,
         session_name: row.session_name,
-        currency: row.currency
+        currency: row.currency,
+        player_count: row.player_count
       }
     };
   }
@@ -182,7 +188,8 @@ export const resolveGamingPrice = async (client, gamingPriceId, { stationCategor
       category: row.category,
       software_name: row.software_name,
       session_name: row.session_name,
-      currency: row.currency
+      currency: row.currency,
+      player_count: row.player_count
     }
   };
 };

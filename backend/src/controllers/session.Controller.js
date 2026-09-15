@@ -109,6 +109,7 @@ const shape = async (row) => {
     pricing_unit: row.pricing_unit || 'HOUR',
     flat_amount: num(row.flat_amount),
     price_label: row.price_label || null,
+    player_count: row.player_count || 1,
     /* One block's price and length. A BLOCK session can be extended by another
        of these — the station shows an Extend affordance when this is set, and
        adding one is a bill line, not a wallet debit (settled at end). */
@@ -304,7 +305,8 @@ export const startSession = async (req, res) => {
         pricing_unit: 'HOUR',
         rate_per_hour: rate,
         flat_amount: null,
-        price_label: null
+        price_label: null,
+        player_count: 1
       };
     }
     const rate = pricing.rate_per_hour;
@@ -503,8 +505,8 @@ export const startSession = async (req, res) => {
           membership_discount_percent, membership_label,
           pricing_rule_id, pricing_rule_label, base_rate_per_hour, base_flat_amount,
           block_unit_amount, block_unit_minutes,
-          game_id, game_platform_id, game_account_id)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+          game_id, game_platform_id, game_account_id, player_count)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING session_id`,
       [
         cafe_id || station.cafe_id || null,
@@ -529,7 +531,8 @@ export const startSession = async (req, res) => {
            bare minutes with no charge, exactly as before. */
         pricing.pricing_unit === 'BLOCK' ? pricing.flat_amount : null,
         pricing.pricing_unit === 'BLOCK' ? (pricing.block_minutes ?? minutes) : null,
-        gameId, gamePlatformId, gameAccountId
+        gameId, gamePlatformId, gameAccountId,
+        pricing.player_count ?? 1
       ]
     );
 
@@ -554,13 +557,15 @@ export const startSession = async (req, res) => {
         (minutes ? ` — ${minutes} minutes` : ' — open-ended') +
         (pricing.pricing_unit === 'BLOCK'
           ? ` · ${pricing.flat_amount} fixed`
-          : ` at ${rate}/hr`),
+          : ` at ${rate}/hr`) +
+        (pricing.player_count > 1 ? ` · ${pricing.player_count} players` : ''),
       meta: {
         pc_id: pcId,
         customer_id: customerId,
         guest_name: customerId ? null : guestName,
         planned_minutes: minutes,
-        rate_per_hour: rate
+        rate_per_hour: rate,
+        player_count: pricing.player_count ?? 1
       }
     });
 

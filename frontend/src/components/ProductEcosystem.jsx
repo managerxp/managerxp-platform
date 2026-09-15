@@ -1,7 +1,7 @@
-import React from 'react';
-import { motion as Motion } from 'framer-motion';
+import React, { useEffect, useRef } from 'react';
+import { motion as Motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 import { Boxes, Gamepad2, Flag } from 'lucide-react';
-import { EASE_MOTION, VIEWPORT } from '../lib/motion';
+import { EASE_MOTION, VIEWPORT, supportsPointerParallax } from '../lib/motion';
 
 /**
  * The ManagerXP product tree: platform -> CafeXP (shipping, three packages)
@@ -37,6 +37,44 @@ const Connector = ({ label }) => (
 );
 
 const ProductEcosystem = () => {
+  /*
+   * CommandCenter's exact pointer-tilt technique (see that file), reused
+   * here rather than reinvented — the site's one real depth system, applied
+   * to the one node in this tree that's an actual, present product rather
+   * than a roadmap entry. RaceXP and the package tiers stay flat: depth
+   * here is marking "this is real and tactile," not decorating every node.
+   */
+  const cafeXpRef = useRef(null);
+  const pointerX = useMotionValue(0);
+  const pointerY = useMotionValue(0);
+  const springX = useSpring(pointerX, { stiffness: 150, damping: 18, mass: 0.5 });
+  const springY = useSpring(pointerY, { stiffness: 150, damping: 18, mass: 0.5 });
+  const rotateY = useTransform(springX, [-0.5, 0.5], [-8, 8]);
+  const rotateX = useTransform(springY, [-0.5, 0.5], [6, -6]);
+
+  useEffect(() => {
+    if (!supportsPointerParallax()) return;
+    const el = cafeXpRef.current;
+    if (!el) return;
+
+    const onMove = (event) => {
+      const rect = el.getBoundingClientRect();
+      pointerX.set((event.clientX - rect.left) / rect.width - 0.5);
+      pointerY.set((event.clientY - rect.top) / rect.height - 0.5);
+    };
+    const onLeave = () => {
+      pointerX.set(0);
+      pointerY.set(0);
+    };
+
+    el.addEventListener('pointermove', onMove);
+    el.addEventListener('pointerleave', onLeave);
+    return () => {
+      el.removeEventListener('pointermove', onMove);
+      el.removeEventListener('pointerleave', onLeave);
+    };
+  }, [pointerX, pointerY]);
+
   return (
     <Motion.div
       variants={treeVariants}
@@ -61,19 +99,23 @@ const ProductEcosystem = () => {
 
       <Connector />
 
-      {/* CafeXP */}
-      <Motion.div
-        variants={nodeVariants}
-        className="mx-auto w-fit rounded-2xl border border-red-500/40 bg-red-500/[0.07] px-6 py-4 text-center shadow-[0_0_40px_-18px_rgba(220,38,38,0.9)] backdrop-blur-sm"
-      >
-        <span className="flex items-center justify-center gap-2 text-base font-semibold text-white">
-          <Gamepad2 className="w-4 h-4 text-red-500" aria-hidden="true" />
-          CafeXP
-        </span>
-        <span className="mt-1 block text-[10px] font-mono uppercase tracking-wider text-red-400">
-          Primary product · available
-        </span>
-      </Motion.div>
+      {/* CafeXP — the one node with real depth, see the pointer-tilt setup above */}
+      <div style={{ perspective: 800 }}>
+        <Motion.div
+          ref={cafeXpRef}
+          variants={nodeVariants}
+          style={{ rotateX, rotateY, transformStyle: 'preserve-3d' }}
+          className="mx-auto w-fit rounded-2xl border border-red-500/40 bg-red-500/[0.07] px-6 py-4 text-center shadow-[0_0_40px_-18px_rgba(220,38,38,0.9)] backdrop-blur-sm"
+        >
+          <span className="flex items-center justify-center gap-2 text-base font-semibold text-white">
+            <Gamepad2 className="w-4 h-4 text-red-500" aria-hidden="true" />
+            CafeXP
+          </span>
+          <span className="mt-1 block text-[10px] font-mono uppercase tracking-wider text-red-400">
+            Primary product · available
+          </span>
+        </Motion.div>
+      </div>
 
       <Connector />
 

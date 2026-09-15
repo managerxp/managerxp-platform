@@ -1,4 +1,9 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import {
+  UserCheck, Building2, MapPin, Download, Radio, Monitor, Users as UsersIcon, PlayCircle,
+  LayoutGrid, Library, Tag, UserCog
+} from 'lucide-react';
 import { usePortal } from '../../components/portal/PortalShell';
 import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Page, Card, Button, Field, Input, Banner, Pill } from '../../components/portal/ui';
@@ -178,6 +183,155 @@ export const Billing = () => (
 );
 
 /* ── Help ──────────────────────────────────────────────────────────────── */
+
+/*
+ * The first-time setup manual.
+ *
+ * Mirrors the Dashboard "Finish setting up" checklist exactly — same eight
+ * steps, same order, same labels — because a manual that describes a
+ * different journey than the one the checklist sends you on is worse than no
+ * manual. That checklist links each unfinished step straight to the page for
+ * it; this is the "how" to go with its "where".
+ *
+ * No app screenshots: this repo has no way to capture and ship real ones, and
+ * a stale or placeholder screenshot misleads worse than none. The numbered
+ * icon in place of one still gives a first-time reader something to scan for.
+ */
+const SETUP_STEPS = [
+  {
+    icon: UserCheck,
+    title: '1. Your account',
+    body: 'Already done — creating your sign-in is how you got here. Nothing to do on this one.'
+  },
+  {
+    icon: Building2,
+    title: '2. Your business',
+    body: 'Named the first time you signed up (or from "Finish setting up" if you arrived by invite). ' +
+      'Change the name or address any time from Organization.',
+    to: '/dashboard/organization', cta: 'Go to Organization'
+  },
+  {
+    icon: MapPin,
+    title: '3. Your first branch',
+    body: 'Created in the same step as your business — one location, with its own PCs and staff. ' +
+      'Running more than one café on this account? Add each one from Branches.',
+    to: '/dashboard/branches', cta: 'Go to Branches'
+  },
+  {
+    icon: Download,
+    title: '4. Install CafeXP Server',
+    body: 'One install, on the machine at your counter. Download it, run the installer, and sign in ' +
+      'with this same account — no licence key. Pick which branch it runs when it asks.',
+    to: '/dashboard/downloads', cta: 'Go to Downloads'
+  },
+  {
+    icon: Radio,
+    title: '5. Confirm it connected',
+    body: 'Within a few seconds of signing in, that install registers itself here — you should see it ' +
+      'listed and online.',
+    to: '/dashboard/installations', cta: 'Go to Installations'
+  },
+  {
+    icon: Monitor,
+    title: '6. Install CafeXP Client on every gaming PC',
+    body: 'One per station. It finds your server on the café\'s own network by itself — nothing to type. ' +
+      'Each PC appears here the moment it connects.',
+    to: '/dashboard/devices', cta: 'Go to Devices / PCs'
+  },
+  {
+    icon: UsersIcon,
+    title: '7. Invite your team',
+    body: 'This is for people who need to sign in to the portal or the console — managers, co-owners. ' +
+      'Counter staff who only take payments and start sessions are added inside CafeXP itself, not here.',
+    to: '/dashboard/users', cta: 'Go to Users & Staff'
+  },
+  {
+    icon: PlayCircle,
+    title: '8. Start your first session',
+    body: 'The one step that happens away from this website — at the counter, in the CafeXP Server app ' +
+      'you just installed. Pick a station, pick a customer, start the clock.'
+  }
+];
+
+/*
+ * Setting up the CafeXP Server console — everything after step 4 above that
+ * happens inside the installed app rather than on this website, so it has no
+ * portal route to link to. Same reasoning as SETUP_STEPS above for skipping
+ * screenshots.
+ */
+const CONSOLE_STEPS = [
+  {
+    icon: LayoutGrid,
+    title: '1. Add your stations',
+    body: 'Floor → Add station. A gaming PC with the CafeXP Client installed already added itself — this ' +
+      'is for anything without it: pool tables, VR rigs, a PS5, a simulator. Give each one a Type ' +
+      '(PC, PS5, Pool…) — that Type is what decides which prices it can be sold at.'
+  },
+  {
+    icon: Library,
+    title: '2. Build your game library',
+    body: 'Game Library → pick the titles you offer from ManagerXP\'s catalog. Nothing to install by hand; ' +
+      'picking a game here is what makes it launchable from a station.'
+  },
+  {
+    icon: Tag,
+    title: '3. Set your prices',
+    body: 'Gaming Prices → Add activity for each category you charge for (PC, PS5, Pool…), Add session for ' +
+      'the durations you sell (30 min, 1 hour…), then Add price to combine a category with a duration and ' +
+      'a rate.'
+  },
+  {
+    icon: UserCog,
+    title: '4. Add your floor staff',
+    body: 'Staff → Add staff member. This is separate from Users & Staff on the website — these are the ' +
+      'counter sign-ins (cashiers, floor managers) with their own role and permissions, not portal access.'
+  },
+  {
+    icon: PlayCircle,
+    title: '5. Start your first session',
+    body: 'Floor → click any available station → start a session. That is the whole setup, start to finish.'
+  }
+];
+
+const StepList = ({ steps }) => (
+  <ol className="space-y-5">
+    {steps.map((step) => (
+      <li key={step.title} className="flex gap-4">
+        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-white/[0.06] text-neutral-300">
+          <step.icon className="h-4 w-4" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium text-white">{step.title}</div>
+          <p className="mt-1 text-sm leading-relaxed text-neutral-400">{step.body}</p>
+          {step.to && (
+            <Link to={step.to} className="mt-2 inline-block">
+              <Button variant="ghost" size="sm">{step.cta}</Button>
+            </Link>
+          )}
+        </div>
+      </li>
+    ))}
+  </ol>
+);
+
+const SetupGuide = () => (
+  <Card
+    title="First-time setup, start to finish"
+    description="The same eight steps as your Dashboard checklist, with what each one actually asks you to do."
+  >
+    <StepList steps={SETUP_STEPS} />
+  </Card>
+);
+
+const ConsoleGuide = () => (
+  <Card
+    title="Setting up CafeXP Server"
+    description="Once it's installed and signed in, this is what to do inside the console itself — on the counter machine, not this website."
+  >
+    <StepList steps={CONSOLE_STEPS} />
+  </Card>
+);
+
 const FAQS = [
   {
     q: 'Do I need a licence key?',
@@ -202,7 +356,11 @@ const FAQS = [
 ];
 
 export const Help = () => (
-  <Page title="Help Center" lede="The questions we are asked most.">
+  <Page title="Help Center" lede="Setting up for the first time, or a question we're asked a lot — both live here.">
+    <SetupGuide />
+    <ConsoleGuide />
+
+    <h2 className="text-sm font-semibold text-white">Frequently asked</h2>
     <div className="space-y-3">
       {FAQS.map((f) => (
         <details key={f.q} className="group rounded-xl border border-white/10 bg-white/[0.03] p-4">

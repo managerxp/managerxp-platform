@@ -70,6 +70,11 @@ const Dashboard = () => {
         <Card
           title="Finish setting up"
           description={`${done} of ${STEPS.length} done — the rest takes a few minutes.`}
+          actions={
+            <Link to="/dashboard/help">
+              <Button variant="ghost" size="sm">Full setup guide</Button>
+            </Link>
+          }
         >
           <ol className="space-y-2">
             {STEPS.map((step) => {

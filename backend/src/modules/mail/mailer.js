@@ -205,6 +205,21 @@ export const mailConfigured = async () => !!(await resolveSecret('SMTP_HOST', 'm
    message so it stays readable where HTML is refused.
    ========================================================================== */
 
+/*
+ * Every other template below interpolates values this backend itself
+ * generated (an invoice number, a random OTP). contactFormEmail and
+ * demoRequestEmail are the first to carry raw text an anonymous visitor
+ * typed into a public form straight into an HTML body — escaped here so a
+ * "name" of `<a href="...">` renders as literal text instead of a link,
+ * image or broken layout in whoever reads the mail.
+ */
+const escapeHtml = (value) => String(value ?? '')
+  .replace(/&/g, '&amp;')
+  .replace(/</g, '&lt;')
+  .replace(/>/g, '&gt;')
+  .replace(/"/g, '&quot;')
+  .replace(/'/g, '&#39;');
+
 const shell = (title, body) => `
 <div style="background:#0a0a0a;padding:32px 16px;font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif">
   <div style="max-width:520px;margin:0 auto;background:#141414;border:1px solid #262626;border-radius:14px;overflow:hidden">
@@ -365,6 +380,51 @@ export const emailVerificationOtpEmail = ({ name, code, minutes, cafeName }) => 
   ].join('\n');
 
   return { subject, html: shell(subject, body), text };
+};
+
+/*
+ * Contact and Book a Demo — the two marketing-site forms. Both land in
+ * ManagerXP's own inbox, not a customer's, so the shape is closer to a
+ * support ticket than a transactional notice: the visitor's own details up
+ * top so whoever reads it can just hit reply.
+ */
+export const contactFormEmail = ({ name, email, subject, message }) => {
+  const mailSubject = `Contact form: ${subject}`;
+  const body = `
+    <p style="margin:0 0 16px;color:#a3a3a3;font-size:14px;line-height:1.6">
+      From <strong style="color:#fff">${escapeHtml(name)}</strong> &lt;${escapeHtml(email)}&gt;
+    </p>
+    <p style="margin:0;color:#d4d4d4;font-size:14px;line-height:1.6;white-space:pre-wrap">${escapeHtml(message)}</p>`;
+
+  const text = [`From: ${name} <${email}>`, ``, message].join('\n');
+
+  return { subject: mailSubject, html: shell(mailSubject, body), text };
+};
+
+export const demoRequestEmail = ({ name, organization, email, phone, software, subject, message }) => {
+  const mailSubject = `Demo request: ${organization}`;
+  const body = `
+    <table style="width:100%;border-collapse:collapse;margin:0 0 20px">
+      <tr><td style="padding:6px 0;color:#737373;font-size:13px">Name</td>
+          <td style="padding:6px 0;color:#fff;font-size:13px;text-align:right">${escapeHtml(name)}</td></tr>
+      <tr><td style="padding:6px 0;color:#737373;font-size:13px;border-top:1px solid #262626">Organization</td>
+          <td style="padding:6px 0;color:#fff;font-size:13px;text-align:right;border-top:1px solid #262626">${escapeHtml(organization)}</td></tr>
+      <tr><td style="padding:6px 0;color:#737373;font-size:13px;border-top:1px solid #262626">Email</td>
+          <td style="padding:6px 0;color:#fff;font-size:13px;text-align:right;border-top:1px solid #262626">${escapeHtml(email)}</td></tr>
+      <tr><td style="padding:6px 0;color:#737373;font-size:13px;border-top:1px solid #262626">Phone</td>
+          <td style="padding:6px 0;color:#fff;font-size:13px;text-align:right;border-top:1px solid #262626">${escapeHtml(phone)}</td></tr>
+      <tr><td style="padding:6px 0;color:#737373;font-size:13px;border-top:1px solid #262626">Software</td>
+          <td style="padding:6px 0;color:#fff;font-size:13px;text-align:right;border-top:1px solid #262626">${escapeHtml(software)}</td></tr>
+    </table>
+    <p style="margin:0 0 8px;color:#737373;font-size:13px">${escapeHtml(subject)}</p>
+    <p style="margin:0;color:#d4d4d4;font-size:14px;line-height:1.6;white-space:pre-wrap">${escapeHtml(message)}</p>`;
+
+  const text = [
+    `Name: ${name}`, `Organization: ${organization}`, `Email: ${email}`,
+    `Phone: ${phone}`, `Software: ${software}`, ``, subject, ``, message
+  ].join('\n');
+
+  return { subject: mailSubject, html: shell(mailSubject, body), text };
 };
 
 export const paymentReceiptEmail = ({ invoice, payment, organizationName }) => {

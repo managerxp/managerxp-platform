@@ -626,6 +626,15 @@
         '<div class="field-hint">Taken from Session Master — not stored with the price.</div>' +
       "</div>" +
 
+      '<div class="field">' +
+        '<label class="field-label" for="gpPlayers">Players</label>' +
+        '<input class="input" id="gpPlayers" type="number" min="1" max="8" step="1" style="max-width:120px" ' +
+          'value="' + UI.esc(existing && existing.player_count ? existing.player_count : 1) + '">' +
+        '<div class="field-hint">Only raise this for something more than one person plays at once — a pool ' +
+          'table, a shared VR rig. Add a second price at 2, 3 or 4 for the same game and session instead of ' +
+          'one price staff have to multiply by hand.</div>' +
+      "</div>" +
+
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
         '<div class="field">' +
           '<label class="field-label field-req" for="gpPrice">Price</label>' +
@@ -650,7 +659,7 @@
     var dialog = UI.modal({
       title: isEdit ? "Edit price" : "Add price",
       description: isEdit
-        ? existing.software_name + " · " + existing.session_name
+        ? existing.software_name + " · " + existing.session_name + global.CXRates.playersSuffix(existing)
         : "Set what a game costs for a given session length.",
       body: body,
       actions: [
@@ -666,6 +675,8 @@
             var sessionId = parseInt(ctx.body.querySelector("#gpSession").value, 10);
             var priceRaw = ctx.body.querySelector("#gpPrice").value;
             var newName = ctx.body.querySelector("#gpNewName").value.trim();
+            var playersRaw = ctx.body.querySelector("#gpPlayers").value;
+            var playerCount = playersRaw === "" ? 1 : parseInt(playersRaw, 10);
 
             if (creating && !newName) {
               Motion.shake(ctx.body.querySelector("#gpNewName"));
@@ -687,9 +698,15 @@
               UI.toast.warn("Enter a price of zero or more");
               return false;
             }
+            if (!Number.isInteger(playerCount) || playerCount < 1 || playerCount > 8) {
+              Motion.shake(ctx.body.querySelector("#gpPlayers"));
+              UI.toast.warn("Players must be between 1 and 8");
+              return false;
+            }
 
             var base = {
               session_master_id: sessionId,
+              player_count: playerCount,
               price: Number(priceRaw),
               currency: (ctx.body.querySelector("#gpCurrency").value || "INR").trim().toUpperCase(),
               status: ctx.body.querySelector("#gpStatus").checked ? "ACTIVE" : "INACTIVE"
@@ -715,7 +732,8 @@
               })
               .then(function (r) {
                 UI.toast.ok(isEdit ? "Price updated" : "Price saved",
-                  r.data.software_name + " · " + r.data.session_name + " · " + money(r.data.price, r.data.currency));
+                  r.data.software_name + " · " + r.data.session_name + global.CXRates.playersSuffix(r.data) +
+                    " · " + money(r.data.price, r.data.currency));
                 return load();
               })
               .then(function () { return true; })
@@ -740,7 +758,18 @@
     var sessionSelect = body.querySelector("#gpSession");
     var durationInput = body.querySelector("#gpDuration");
     var priceInput = body.querySelector("#gpPrice");
+    var playersInput = body.querySelector("#gpPlayers");
     var preview = body.querySelector("#gpPreview");
+
+    function selectedPlayerCount() {
+      var n = parseInt(playersInput.value, 10);
+      return Number.isInteger(n) && n >= 1 ? n : 1;
+    }
+    /** "" for the default of 1, else " · 3 Players" — matches how the till and
+        the session-start dialog talk about the same row. */
+    function playersLabel(n) {
+      return n > 1 ? " · " + n + " Players" : "";
+    }
 
     function selectedSession() {
       var id = parseInt(sessionSelect.value, 10);
@@ -764,6 +793,8 @@
 
       /* A brand new activity cannot clash with an existing price, and its name
          is the thing being previewed rather than a row in `games`. */
+      var playerCount = selectedPlayerCount();
+
       if (creating) {
         var typed = newName.value.trim();
         var newPrice = Number(priceInput.value);
@@ -776,7 +807,7 @@
         preview.setAttribute("data-status", "accent");
         preview.innerHTML = Icon("check", 16) +
           "<div>Creates <strong>" + UI.esc(typed) + "</strong> and prices it at " +
-          UI.esc(session.session_name) + " → " +
+          UI.esc(session.session_name) + playersLabel(playerCount) + " → " +
           (session.duration_minutes === null ? "unlimited" : session.duration_minutes + " min") +
           (Number.isFinite(newPrice) && priceInput.value !== ""
             ? " → <strong>" + money(newPrice) + "</strong>" : "") +
@@ -791,17 +822,20 @@
         return;
       }
 
-      // Warn early if this pair is already priced by someone else.
+      // Warn early if this game, session and player count is already priced
+      // by someone else — the same triple the database itself now enforces.
       var clash = rows.filter(function (r) {
         return r.software_id === softwareId && r.session_master_id === session.id &&
+               (r.player_count || 1) === playerCount &&
                (!existing || r.id !== existing.id);
       })[0];
 
       if (clash) {
         preview.setAttribute("data-status", "offline");
         preview.innerHTML = Icon("alert", 16) +
-          "<div>This pair already has a price of <strong>" + money(clash.price, clash.currency) +
-          "</strong>. Edit that record instead — each game and session pair can only be priced once.</div>";
+          "<div>This game, session and player count already has a price of <strong>" +
+          money(clash.price, clash.currency) +
+          "</strong>. Edit that record instead, or pick a different player count.</div>";
         return;
       }
 
@@ -810,7 +844,7 @@
       preview.setAttribute("data-status", "accent");
       preview.innerHTML = Icon("check", 16) +
         "<div><strong>" + UI.esc(game ? game.software_name : "") + "</strong> → " +
-        UI.esc(session.session_name) + " → " +
+        UI.esc(session.session_name) + playersLabel(playerCount) + " → " +
         (session.duration_minutes === null ? "unlimited" : session.duration_minutes + " min") +
         (Number.isFinite(price) && priceInput.value !== "" ? " → <strong>" + money(price) + "</strong>" : "") +
         "</div>";
@@ -822,6 +856,7 @@
     });
     sessionSelect.addEventListener("change", refresh);
     priceInput.addEventListener("input", refresh);
+    playersInput.addEventListener("input", refresh);
     newName.addEventListener("input", refresh);
     refresh();
 
@@ -879,7 +914,7 @@
     var table = UI.el("table", { class: "tbl" });
     table.innerHTML =
       "<thead><tr><th>ID</th><th>Game</th><th>Session</th>" +
-      "<th class='td-num'>Duration</th><th class='td-num'>Price</th>" +
+      "<th class='td-num'>Duration</th><th class='td-num'>Players</th><th class='td-num'>Price</th>" +
       "<th>Status</th><th></th></tr></thead>";
     var tbody = UI.el("tbody");
 
@@ -892,6 +927,9 @@
         "<td>" + UI.esc(row.session_name) +
           (row.is_unlimited ? ' <span class="badge badge-plain">Unlimited</span>' : "") + "</td>" +
         '<td class="td-num mono">' + UI.esc(durationText(row)) + "</td>" +
+        '<td class="td-num mono">' + (row.player_count > 1
+          ? '<span class="badge badge-plain">' + row.player_count + "</span>"
+          : '<span class="faint">—</span>') + "</td>" +
         '<td class="td-num" style="font-weight:700">' + UI.esc(money(row.price, row.currency)) + "</td>" +
         '<td><span class="badge" data-status="' + (active ? "online" : "idle") + '">' +
           (active ? "Active" : "Inactive") + "</span></td>" +
@@ -921,8 +959,8 @@
       delBtn.addEventListener("click", function () {
         UI.confirm({
           title: "Delete this price?",
-          message: row.software_name + " · " + row.session_name + " · " + money(row.price, row.currency) +
-            ". The game and session themselves are not affected.",
+          message: row.software_name + " · " + row.session_name + global.CXRates.playersSuffix(row) +
+            " · " + money(row.price, row.currency) + ". The game and session themselves are not affected.",
           confirmLabel: "Delete",
           variant: "danger"
         }).then(function (ok) {

@@ -3,6 +3,7 @@ import { motion as Motion, AnimatePresence, animate } from 'framer-motion';
 import { Plus, Minus, Receipt, CheckCircle2, IndianRupee } from 'lucide-react';
 import DemoBadge from './DemoBadge';
 import { EASE_MOTION, SPRING, prefersReducedMotion } from '../lib/motion';
+import { glassPanel } from '../lib/ui';
 
 /**
  * Billing counter: a live session charge plus anything ordered against it.
@@ -105,7 +106,7 @@ const BillingDesk = () => {
       </div>
 
       {/* Bill side */}
-      <div className="lg:col-span-3 overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/70 backdrop-blur-xl shadow-[0_0_60px_-30px_rgba(220,38,38,0.5)]">
+      <div className={`lg:col-span-3 ${glassPanel}`}>
         <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-5 py-3">
           <span className="flex items-center gap-2 text-xs font-semibold text-white">
             <Receipt className="h-4 w-4 text-red-500" />

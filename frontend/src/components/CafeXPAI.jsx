@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { Sparkles, CornerDownLeft, TrendingDown, Clock, Utensils } from 'lucide-react';
 import { EASE_MOTION, SPRING, prefersReducedMotion } from '../lib/motion';
+import { glassPanel } from '../lib/ui';
 
 /**
  * CafeXP AI: the step from charts to an answer. Pick a question, watch the
@@ -62,7 +63,7 @@ const CafeXPAI = () => {
   const convo = CONVERSATIONS[active];
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/80 backdrop-blur-xl shadow-[0_0_70px_-30px_rgba(220,38,38,0.7)]">
+    <div className={glassPanel}>
 
       <div className="flex items-center justify-between border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3">
         <span className="flex items-center gap-2 text-sm font-semibold text-white">

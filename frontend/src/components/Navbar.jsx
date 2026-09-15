@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Menu, X } from 'lucide-react';
-import logo from '../assets/whitelogo.png';
+import logo from '../assets/whitelogo-sm.png';
 import { useAuth } from '../context/AuthContext';
 
 const navItems = [
@@ -18,6 +18,8 @@ const Navbar = () => {
   const location = useLocation();
   const { user, isAuthenticated, logout } = useAuth();
   const profileRef = useRef(null);
+  const mobileMenuRef = useRef(null);
+  const menuButtonRef = useRef(null);
 
   // Detect scroll position
   useEffect(() => {
@@ -60,6 +62,48 @@ const Navbar = () => {
     };
   }, [isProfileOpen]);
 
+  /*
+   * Mobile menu: lock the page behind it, trap Tab inside it, and give
+   * Escape the same job it already does for the profile dropdown. Focus
+   * moves to the first link on open and back to the toggle button on close,
+   * so a keyboard user never loses their place.
+   */
+  useEffect(() => {
+    if (!isMenuOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const focusables = mobileMenuRef.current
+      ? Array.from(mobileMenuRef.current.querySelectorAll('a[href], button:not([disabled])'))
+      : [];
+    focusables[0]?.focus();
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setIsMenuOpen(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key !== 'Tab' || focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isMenuOpen]);
+
   const isActive = (path) => location.pathname === path;
   const avatarLabel = (user?.name || user?.email || 'U').charAt(0).toUpperCase();
   const closeMenus = () => {
@@ -68,153 +112,165 @@ const Navbar = () => {
   };
 
   return (
-    <nav
-      className={`fixed z-50 top-0 left-0 right-0 antialiased font-sans border-b transition-all duration-300 ${
-        isScrolled
-          ? 'bg-black/80 backdrop-blur-xl border-white/10 shadow-[0_8px_24px_rgba(0,0,0,0.38)]'
-          : 'bg-black border-white/5'
-      }`}
-    >
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className={`flex items-center justify-between transition-[height] duration-300 ${isScrolled ? 'h-14' : 'h-16'}`}>
+    /*
+     * A floating glass pill, inset from the edge, rather than a full-width
+     * bar — the same iOS-control-centre pattern FlowXP's nav uses: the page
+     * stays visible behind and around it instead of the nav reading as one
+     * more flat stripe stacked on top of the page. The outer <nav> carries
+     * no background of its own — only the pill inside it does — so the
+     * inset margin actually shows page content through.
+     */
+    <nav className="fixed inset-x-0 top-0 z-50 px-3 pt-3 antialiased font-sans sm:px-5 sm:pt-4">
+      <div
+        className={`mx-auto flex max-w-6xl items-center justify-between gap-3 rounded-full border pl-4 pr-2 backdrop-saturate-150 transition-all duration-300 sm:pr-3 ${
+          isScrolled
+            ? 'h-14 border-white/15 bg-black/70 backdrop-blur-2xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.08),0_12px_32px_-12px_rgba(0,0,0,0.6)]'
+            : 'h-16 border-white/10 bg-black/45 backdrop-blur-xl shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_8px_24px_-12px_rgba(0,0,0,0.45)]'
+        }`}
+      >
 
-          {/* Left Side: Logo */}
-          <div className="shrink-0">
+        {/* Left Side: Logo */}
+        <div className="shrink-0">
+          <Link
+            to="/"
+            onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+            className="flex items-center hover:opacity-80 transition-opacity duration-300"
+          >
+            <img
+              src={logo}
+              alt="ManagerXP"
+              width="294"
+              height="56"
+              className={`w-auto transition-all duration-300 ${isScrolled ? 'h-6' : 'h-7'}`}
+            />
+          </Link>
+        </div>
+
+        {/* Center: Desktop Navigation Links */}
+        <div className="hidden md:flex md:items-center md:space-x-7">
+          {navItems.map((item) => (
             <Link
-              to="/"
-              onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-              className="flex items-center hover:opacity-80 transition-opacity duration-300"
+              key={item.to}
+              to={item.to}
+              aria-current={isActive(item.to) ? 'page' : undefined}
+              className={`relative py-1 text-[13px] font-medium tracking-[0.01em] transition-colors duration-200 group ${
+                isActive(item.to) ? 'text-white' : 'text-neutral-300 hover:text-white'
+              }`}
             >
-              <img
-                src={logo}
-                alt="ManagerXP"
-                className={`w-auto transition-all duration-300 ${isScrolled ? 'h-6' : 'h-7'}`}
+              {item.label}
+              <span
+                aria-hidden="true"
+                className={`absolute -bottom-0.5 left-0 h-0.5 rounded-full bg-red-500 transition-all duration-300 ${
+                  isActive(item.to)
+                    ? 'w-full shadow-[0_0_8px_rgba(239,68,68,0.6)]'
+                    : 'w-0 group-hover:w-full'
+                }`}
               />
             </Link>
-          </div>
+          ))}
+        </div>
 
-          {/* Center: Desktop Navigation Links */}
-          <div className="hidden md:flex md:items-center md:space-x-7">
-            {navItems.map((item) => (
+        {/* Right Side: CTA Button */}
+        <div className="hidden md:flex md:items-center md:gap-2.5">
+          {!isAuthenticated && (
+            <>
               <Link
-                key={item.to}
-                to={item.to}
-                aria-current={isActive(item.to) ? 'page' : undefined}
-                className={`relative py-1 text-[13px] font-medium tracking-[0.01em] transition-colors duration-200 group ${
-                  isActive(item.to) ? 'text-white' : 'text-neutral-300 hover:text-white'
-                }`}
+                to="/login"
+                className="inline-flex items-center justify-center px-4 py-2 text-[13px] font-medium text-neutral-300 hover:text-red-400 transition-colors"
               >
-                {item.label}
-                <span
-                  aria-hidden="true"
-                  className={`absolute -bottom-0.5 left-0 h-0.5 rounded-full bg-red-500 transition-all duration-300 ${
-                    isActive(item.to)
-                      ? 'w-full shadow-[0_0_8px_rgba(239,68,68,0.6)]'
-                      : 'w-0 group-hover:w-full'
-                  }`}
-                />
+                Login
               </Link>
-            ))}
-          </div>
+              {/* Signing up and starting a trial are the same act now, so
+                  there is one button for it rather than two links racing to
+                  the same page. */}
+              <Link
+                to="/signup"
+                className="inline-flex items-center justify-center px-4 py-2 text-[13px] font-semibold text-black bg-white rounded-full border border-white/90 hover:bg-neutral-100 active:scale-[0.98] transition-all duration-200"
+              >
+                Start free trial
+              </Link>
+            </>
+          )}
 
-          {/* Right Side: CTA Button */}
-          <div className="hidden md:flex md:items-center md:gap-2.5">
-            {!isAuthenticated && (
-              <>
-                <Link
-                  to="/login"
-                  className="inline-flex items-center justify-center px-4 py-2 text-[13px] font-medium text-neutral-300 hover:text-red-400 transition-colors"
-                >
-                  Login
-                </Link>
-                {/* Signing up and starting a trial are the same act now, so
-                    there is one button for it rather than two links racing to
-                    the same page. */}
-                <Link
-                  to="/signup"
-                  className="inline-flex items-center justify-center px-4 py-2 text-[13px] font-semibold text-black bg-white rounded-full border border-white/90 hover:bg-neutral-100 active:scale-[0.98] transition-all duration-200"
-                >
-                  Start free trial
-                </Link>
-              </>
-            )}
+          {isAuthenticated && (
+            <div className="relative" ref={profileRef}>
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen((prev) => !prev)}
+                className="h-9 w-9 rounded-full bg-white text-black text-sm font-semibold flex items-center justify-center border border-white/90 hover:bg-neutral-100 transition"
+                aria-expanded={isProfileOpen}
+                aria-haspopup="menu"
+                aria-label="Account menu"
+              >
+                {avatarLabel}
+              </button>
 
-            {isAuthenticated && (
-              <div className="relative" ref={profileRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsProfileOpen((prev) => !prev)}
-                  className="h-9 w-9 rounded-full bg-white text-black text-sm font-semibold flex items-center justify-center border border-white/90 hover:bg-neutral-100 transition"
-                  aria-expanded={isProfileOpen}
-                  aria-haspopup="menu"
-                  aria-label="Account menu"
+              {isProfileOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 mt-2 w-48 rounded-xl border border-neutral-800 bg-neutral-950/95 backdrop-blur-xl shadow-2xl p-1.5"
                 >
-                  {avatarLabel}
-                </button>
-
-                {isProfileOpen && (
-                  <div
-                    role="menu"
-                    className="absolute right-0 mt-2 w-48 rounded-xl border border-neutral-800 bg-neutral-950/95 backdrop-blur-xl shadow-2xl p-1.5"
-                  >
-                    {user?.role !== 'admin' && (
-                      <Link
-                        to="/dashboard"
-                        role="menuitem"
-                        onClick={closeMenus}
-                        className="block px-3 py-2 text-sm text-neutral-200 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
-                      >
-                        Dashboard
-                      </Link>
-                    )}
-                    {user?.role === 'admin' && (
-                      <Link
-                        to="/admin"
-                        role="menuitem"
-                        onClick={closeMenus}
-                        className="block px-3 py-2 text-sm text-neutral-200 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
-                      >
-                        Admin Dashboard
-                      </Link>
-                    )}
-                    <button
-                      type="button"
+                  {user?.role !== 'admin' && (
+                    <Link
+                      to="/dashboard"
                       role="menuitem"
-                      onClick={logout}
-                      className="w-full text-left px-3 py-2 text-sm text-neutral-200 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                      onClick={closeMenus}
+                      className="block px-3 py-2 text-sm text-neutral-200 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
                     >
-                      Logout
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+                      Dashboard
+                    </Link>
+                  )}
+                  {user?.role === 'admin' && (
+                    <Link
+                      to="/admin"
+                      role="menuitem"
+                      onClick={closeMenus}
+                      className="block px-3 py-2 text-sm text-neutral-200 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                    >
+                      Admin Dashboard
+                    </Link>
+                  )}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={logout}
+                    className="w-full text-left px-3 py-2 text-sm text-neutral-200 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
 
-          {/* Mobile Menu Button */}
-          <div className="md:hidden flex items-center">
-            <button
-              onClick={() => setIsMenuOpen((prev) => !prev)}
-              type="button"
-              className="inline-flex items-center justify-center p-2 rounded-md text-neutral-300 hover:text-red-400 hover:bg-neutral-900 transition duration-200"
-              aria-controls="mobile-menu"
-              aria-expanded={isMenuOpen}
-              aria-label={isMenuOpen ? 'Close main menu' : 'Open main menu'}
-            >
-              {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-            </button>
-          </div>
+        {/* Mobile Menu Button */}
+        <div className="md:hidden flex items-center">
+          <button
+            ref={menuButtonRef}
+            onClick={() => setIsMenuOpen((prev) => !prev)}
+            type="button"
+            className="inline-flex items-center justify-center p-2 rounded-full text-neutral-300 hover:text-red-400 hover:bg-white/10 transition duration-200"
+            aria-controls="mobile-menu"
+            aria-expanded={isMenuOpen}
+            aria-label={isMenuOpen ? 'Close main menu' : 'Open main menu'}
+          >
+            {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
         </div>
       </div>
 
-      {/* Mobile Menu Overlay */}
+      {/* Mobile Menu Overlay — its own floating glass panel under the pill,
+          not a full-bleed bar, so it keeps the same inset language. */}
       <div
         id="mobile-menu"
-        className={`md:hidden transition-all duration-300 ease-in-out overflow-hidden ${
-          isMenuOpen ? 'max-h-[32rem] opacity-100' : 'max-h-0 opacity-0'
+        ref={mobileMenuRef}
+        inert={!isMenuOpen}
+        className={`mx-auto max-w-6xl overflow-hidden transition-all duration-300 ease-in-out md:hidden ${
+          isMenuOpen ? 'mt-2 max-h-[32rem] opacity-100' : 'mt-0 max-h-0 opacity-0'
         }`}
       >
-        <div className="px-4 pt-2 pb-4 space-y-1 bg-black/95 backdrop-blur-xl border-t border-white/10">
+        <div className="space-y-1 rounded-2xl border border-white/10 bg-black/80 backdrop-blur-2xl backdrop-saturate-150 px-4 pt-3 pb-4 shadow-[inset_0_1px_0_0_rgba(255,255,255,0.06),0_12px_32px_-12px_rgba(0,0,0,0.6)]">
           {navItems.map((item) => (
             <Link
               key={item.to}
