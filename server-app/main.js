@@ -709,111 +709,119 @@ function startTokenServer() {
             if (!isAlreadyConnected) {
               // AUTO-UPDATE: Try to auto-update IP in backend if MAC exists
               try {
+                /* check-exists is deliberately unauthenticated (see
+                   pcs.Routes.js — a station reporting its own MAC has no
+                   credential to present yet), so gating this call on
+                   authState.token was never required by the backend. It did
+                   mean a station this console already knows about landed in
+                   the "unknown" bucket instead of auto-reconnecting for
+                   however long it took this console's own sign-in/token
+                   refresh to finish — on every app restart, in practice.
+                   The token is still attached when it happens to be ready;
+                   it just no longer blocks the attempt when it isn't. */
                 const authState = authContext.getAuthState();
+                console.log(`[PC Auto-Update] Checking if MAC ${mac_address} exists in database...`);
+
+                const headers = { 'Content-Type': 'application/json' };
                 if (authState && authState.token) {
-                  console.log(`[PC Auto-Update] Checking if MAC ${mac_address} exists in database...`);
-                  
-                  const checkResponse = await fetch(`${BACKEND_LOCAL}/api/pcs/check-exists`, {
-                    method: 'POST',
-                    headers: {
-                      'Content-Type': 'application/json',
-                      'Authorization': `Bearer ${authState.token}`
-                    },
-                    body: JSON.stringify({
-                      ip_address: ip_address,
-                      mac_address: mac_address
-                    })
-                  });
-                  
-                  if (checkResponse.ok) {
-                    const checkResult = await checkResponse.json();
-                    
-                    if (checkResult.exists) {
-                      console.log(`[PC Auto-Update] ✅ PC found in database with MAC ${mac_address}`);
-                      // /api/pcs/check-exists returns the station under `data`.
-                      // Reading the name off the top level always missed, so
-                      // every discovered station was renamed to an invented
-                      // PC-xx:xx and no longer matched its own record — which
-                      // is why its telemetry and sessions never attached.
-                      const pcName =
-                        (checkResult.data && (checkResult.data.name || checkResult.data.pc_name)) ||
-                        checkResult.pc_name ||
-                        checkResult.name ||
-                        `PC-${mac_address.substring(mac_address.length - 5)}`;
-                      
-                      if (checkResult.ip_updated) {
-                        console.log(`[PC Auto-Update] 🔄 IP auto-updated for MAC ${mac_address}`);
-                        // Remove from discovered list since it's been auto-updated
-                        discoveredPCs.delete(ip_address);
-                        
-                        // Send updated discovered PCs list to renderer
-                        if (win && !win.isDestroyed()) {
-                          win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
-                          console.log(`[PC Discovery] Updated discovered PCs list - Total: ${discoveredPCs.size}`);
-                        }
-                        
-                        // UPDATE: Now register the PC in allRegisteredPCs and attempt auto-connection
-                        const portNumber = port || 9090;
-                        allRegisteredPCs.set(pcName, {
-                          simId: pcName,
-                          ip: ip_address,
-                          port: portNumber
-                        });
-                        console.log(`[PC Auto-Update] 📋 Registered PC in tracking: ${pcName}`);
-                        
-                        // Automatically connect to the newly updated PC WITHOUT requiring server restart
-                        console.log(`[PC Auto-Update] 🔌 Initiating auto-connection to ${pcName} at ${ip_address}:${portNumber}`);
-                        connectToSpecificPC(ip_address, portNumber, pcName);
-                        
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ 
-                          success: true, 
-                          message: 'PC discovery received, IP auto-updated, and connection established',
-                          auto_updated: true,
-                          pc_name: pcName
-                        }));
-                        return;
-                      } else {
-                        console.log(`[PC Auto-Update] ℹ️ PC exists in database with same IP`);
-                        // PC exists with same IP - register it and attempt connection
-                        const portNumber = port || 9090;
-                        allRegisteredPCs.set(pcName, {
-                          simId: pcName,
-                          ip: ip_address,
-                          port: portNumber
-                        });
-                        
-                        // If not already connected, attempt to connect
-                        if (!clients.has(pcName)) {
-                          console.log(`[PC Auto-Update] 🔌 Attempting connection to ${pcName} at ${ip_address}:${portNumber}`);
-                          connectToSpecificPC(ip_address, portNumber, pcName);
-                        } else {
-                          console.log(`[PC Auto-Update] ✓ ${pcName} is already connected`);
-                        }
-                        
-                        discoveredPCs.delete(ip_address);
-                        
-                        if (win && !win.isDestroyed()) {
-                          win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
-                        }
-                        
-                        res.writeHead(200, { 'Content-Type': 'application/json' });
-                        res.end(JSON.stringify({ 
-                          success: true, 
-                          message: 'PC already registered and connection attempted',
-                          auto_updated: false,
-                          pc_name: pcName
-                        }));
-                        return;
+                  headers['Authorization'] = `Bearer ${authState.token}`;
+                }
+
+                const checkResponse = await fetch(`${BACKEND_LOCAL}/api/pcs/check-exists`, {
+                  method: 'POST',
+                  headers,
+                  body: JSON.stringify({
+                    ip_address: ip_address,
+                    mac_address: mac_address
+                  })
+                });
+
+                if (checkResponse.ok) {
+                  const checkResult = await checkResponse.json();
+
+                  if (checkResult.exists) {
+                    console.log(`[PC Auto-Update] ✅ PC found in database with MAC ${mac_address}`);
+                    // /api/pcs/check-exists returns the station under `data`.
+                    // Reading the name off the top level always missed, so
+                    // every discovered station was renamed to an invented
+                    // PC-xx:xx and no longer matched its own record — which
+                    // is why its telemetry and sessions never attached.
+                    const pcName =
+                      (checkResult.data && (checkResult.data.name || checkResult.data.pc_name)) ||
+                      checkResult.pc_name ||
+                      checkResult.name ||
+                      `PC-${mac_address.substring(mac_address.length - 5)}`;
+
+                    if (checkResult.ip_updated) {
+                      console.log(`[PC Auto-Update] 🔄 IP auto-updated for MAC ${mac_address}`);
+                      // Remove from discovered list since it's been auto-updated
+                      discoveredPCs.delete(ip_address);
+
+                      // Send updated discovered PCs list to renderer
+                      if (win && !win.isDestroyed()) {
+                        win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+                        console.log(`[PC Discovery] Updated discovered PCs list - Total: ${discoveredPCs.size}`);
                       }
+
+                      // UPDATE: Now register the PC in allRegisteredPCs and attempt auto-connection
+                      const portNumber = port || 9090;
+                      allRegisteredPCs.set(pcName, {
+                        simId: pcName,
+                        ip: ip_address,
+                        port: portNumber
+                      });
+                      console.log(`[PC Auto-Update] 📋 Registered PC in tracking: ${pcName}`);
+
+                      // Automatically connect to the newly updated PC WITHOUT requiring server restart
+                      console.log(`[PC Auto-Update] 🔌 Initiating auto-connection to ${pcName} at ${ip_address}:${portNumber}`);
+                      connectToSpecificPC(ip_address, portNumber, pcName);
+
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({
+                        success: true,
+                        message: 'PC discovery received, IP auto-updated, and connection established',
+                        auto_updated: true,
+                        pc_name: pcName
+                      }));
+                      return;
                     } else {
-                      console.log(`[PC Auto-Update] ❌ PC not found in database - will add to discovered list`);
+                      console.log(`[PC Auto-Update] ℹ️ PC exists in database with same IP`);
+                      // PC exists with same IP - register it and attempt connection
+                      const portNumber = port || 9090;
+                      allRegisteredPCs.set(pcName, {
+                        simId: pcName,
+                        ip: ip_address,
+                        port: portNumber
+                      });
+
+                      // If not already connected, attempt to connect
+                      if (!clients.has(pcName)) {
+                        console.log(`[PC Auto-Update] 🔌 Attempting connection to ${pcName} at ${ip_address}:${portNumber}`);
+                        connectToSpecificPC(ip_address, portNumber, pcName);
+                      } else {
+                        console.log(`[PC Auto-Update] ✓ ${pcName} is already connected`);
+                      }
+
+                      discoveredPCs.delete(ip_address);
+
+                      if (win && !win.isDestroyed()) {
+                        win.webContents.send('discovered-pcs', Array.from(discoveredPCs.values()));
+                      }
+
+                      res.writeHead(200, { 'Content-Type': 'application/json' });
+                      res.end(JSON.stringify({
+                        success: true,
+                        message: 'PC already registered and connection attempted',
+                        auto_updated: false,
+                        pc_name: pcName
+                      }));
+                      return;
                     }
                   } else {
-                    console.log(`[PC Auto-Update] Check failed, will add to discovered list`);
+                    console.log(`[PC Auto-Update] ❌ PC not found in database - will add to discovered list`);
                   }
                 } else {
-                  console.log(`[PC Auto-Update] No auth token - will add to discovered list`);
+                  console.log(`[PC Auto-Update] Check failed, will add to discovered list`);
                 }
               } catch (checkError) {
                 console.error(`[PC Auto-Update] Error checking PC:`, checkError.message);
