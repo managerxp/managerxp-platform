@@ -3064,6 +3064,7 @@ function listen() {
         // screen shows this café's real name rather than a generic label.
         if (msg.cafeName) {
           CAFE_NAME = msg.cafeName;
+          log(`Café name set to: ${CAFE_NAME}`);
           sendToWindow(win, "cafe-name", CAFE_NAME);
         }
 

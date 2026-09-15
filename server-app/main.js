@@ -514,14 +514,9 @@ function getMacAddress() {
 }
 
 /*
- * The backend this console talks to — ManagerXP's own, not this machine.
+ * The backend this console talks to.
  *
- * BACKEND_LOCAL used to be a bare "http://localhost:<port>", true only in
- * the single-machine dev setup where the backend happens to run alongside
- * the console — every real café is a different machine from ManagerXP's
- * backend entirely.
- *
- * Two ways to set it, either alone is enough:
+ * Two ways to point it at a real, hosted backend, either alone is enough:
  *   BACKEND_URL in a .env beside the exe — what an already-installed
  *     console is repointed with, no rebuild;
  *   release.yml's "Bake in the production backend URL" step, which
@@ -530,14 +525,19 @@ function getMacAddress() {
  * The .env wins when both are present, which is what makes one café able
  * to point at a staging backend without a build of its own.
  *
- * A station is a different machine again, so "localhost" would mean
- * something different to it: itself, not the backend. It has to be told
- * this same address instead, and the console is the one that knows it —
- * SET_NAME already introduces a station to the console; that address rides
- * along on the same message (see backendBaseUrl() below) rather than
- * inventing a second round trip.
+ * Neither set — a dev checkout, or a café running its own backend on this
+ * same machine — used to fall back to a bare "http://localhost:<port>".
+ * That is correct for this console's own calls (below), but a station is a
+ * different machine: told "localhost" over SET_NAME, it means itself, not
+ * this one, and every login/register call it makes fails with "Can't reach
+ * the café server" even though the backend is right there on the café LAN.
+ * Falling back to this machine's real LAN IP instead fixes that — and
+ * unlike hand-writing that IP into a .env, it is read fresh from the network
+ * adapter every time the console starts, so it never goes stale when DHCP
+ * hands out a new one (a hardcoded .env value would need editing by hand
+ * every time that happens).
  */
-const BACKEND_LOCAL = process.env.BACKEND_URL || "http://localhost:5000";
+const BACKEND_LOCAL = process.env.BACKEND_URL || `http://${getServerLocalIP()}:${process.env.BACKEND_PORT || 5000}`;
 /* The website — a different address from the backend API, same distinction
    as the backend's own PUBLIC_BASE_URL vs API_PUBLIC_URL. "Open web app" /
    "Open signup" below send an operator's browser here, not to the API, so
@@ -549,9 +549,18 @@ const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
     const interfaces = os.networkInterfaces();
+    /* A disconnected or DHCP-less adapter (an unplugged Ethernet port is the
+       common case) self-assigns a 169.254.0.0/16 address rather than having
+       none at all — Windows can and does enumerate that ahead of a perfectly
+       good Wi-Fi connection, so "first non-internal IPv4" alone picks an
+       address nothing else on the LAN can actually reach this machine at.
+       Skipped here rather than trusted as a last resort: a station told to
+       use one fails exactly the way "localhost" did, just less obviously. */
     for (const name of Object.keys(interfaces)) {
       for (const addr of interfaces[name] || []) {
-        if (addr.family === 'IPv4' && !addr.internal) return addr.address;
+        if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.')) {
+          return addr.address;
+        }
       }
     }
   } catch (error) {
