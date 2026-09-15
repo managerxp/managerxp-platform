@@ -1594,9 +1594,15 @@
     return request("/api/pricing-rules/" + id, { method: "DELETE" });
   }
   /* What every catalogue price costs at a given moment. `at` is optional and
-     lets the rate card show any hour of the week, not only right now. */
-  function previewRates(at) {
-    return request("/api/pricing-rules/preview" + qs(at ? { at: at } : null))
+     lets the rate card show any hour of the week, not only right now.
+     `category` is optional too — pass a station's own category to get back
+     only that category's prices (plus anything priced with no category at
+     all, a deliberate café-wide price) instead of the whole rate card. */
+  function previewRates(at, category) {
+    var query = {};
+    if (at) query.at = at;
+    if (category) query.category = category;
+    return request("/api/pricing-rules/preview" + qs(Object.keys(query).length ? query : null))
       .then(function (r) { return r.data; });
   }
 
@@ -2139,6 +2145,18 @@
         var session = pcName && state.sessions[pcName];
         if (!session) return;    // already ended some other way; nothing to undo
         var who = session.customer_name || pcName || "The station";
+
+        /* A kiosk occupancy session is billing the seat, not the game — it
+           started at login, before any game was chosen, and stays valid
+           through any number of launch attempts, failed or not. Cancelling
+           it here (the STAFF_MANUAL behaviour below) would end billing for
+           someone who is still sitting at the station. */
+        if (session.session_type === "KIOSK_OCCUPANCY") {
+          UIToast("warn", "That game didn't start",
+            who + "'s game (" + (data.appName || "the game") + ") could not be launched. The session continues.");
+          return;
+        }
+
         cancelSession(session, { reason: "launch_failed" })
           .then(function () {
             UIToast("warn", "Session cancelled — game did not start",
@@ -2167,8 +2185,11 @@
           /* The current, peak/happy-hour-adjusted rate — not the flat catalogue
              price. A customer choosing at 7pm during a peak window must see
              the same number they are about to be charged, not the base rate
-             a pricing rule is quietly about to mark up. */
-          previewRates().catch(function () { return []; })
+             a pricing rule is quietly about to mark up.
+             This station's own category, so the backend sends back only what
+             actually applies here — a PC station has no business receiving
+             PS5 or Pool prices in the first place. */
+          previewRates(undefined, pc.category).catch(function () { return []; })
         ]).then(function (results) {
           /* Flattened to one entry per (game, platform installed here) — the
              same shape pushGamesToStation sends, so the customer's picker and
@@ -2188,8 +2209,13 @@
               });
             });
           });
+          /* The backend already scoped this to pc.category above; kept as a
+             cheap defensive re-check, not the primary filter — and without
+             the escape hatch the old version had (an untyped station used to
+             fall through to "no category → show everything"; now it
+             correctly reduces to "only the universal, no-category prices"). */
           var prices = (results[1] || []).filter(function (p) {
-            return !pc.category || !p.category || p.category === pc.category;
+            return !p.category || p.category === pc.category;
           }).map(function (p) {
             return {
               price_id: p.gaming_price_id, session_name: p.session_name,
@@ -2217,24 +2243,23 @@
 
         /*
          * Occupancy billing: fired automatically the moment a customer logs
-         * in, before any game or price is picked — only for a station
-         * category that has no catalog (block/flat) pricing at all. A PS5 or
-         * VR category is sold by the block on purpose; auto-starting an
-         * hourly meter there would bypass that price, so this silently does
-         * nothing and the customer still sees the normal picker. A
-         * genuinely uncatalogued category (plain counter PCs) starts an
-         * open-ended HOUR session at the café's default rate — no
-         * require_prepaid, matching the existing open-ended path, which has
-         * no fixed total to check a wallet against up front.
+         * in, before any game or price is picked — for every station
+         * category now, not just an uncatalogued one. The Gaming Price
+         * Master's block/flat prices remain exactly what the staff-manual
+         * dialog (sessions.js, untouched) sells; a kiosk login instead bills
+         * by the hour at this station's occupancy rate (per-category,
+         * configured under Gaming Prices → set from Settings, resolved
+         * server-side from the station's own category — see
+         * resolveOccupancyRate in the backend). No require_prepaid: an
+         * open-ended session has no fixed total to check a wallet against
+         * up front, same as the existing open-ended path always worked.
          */
         if (data.occupancy_login_start) {
-          return previewRates().catch(function () { return []; }).then(function (prices) {
-            var hasCatalogPricing = (prices || []).some(function (p) {
-              return !pc.category || !p.category || p.category === pc.category;
-            });
-            if (hasCatalogPricing) return;
-            return startSession({ pc_id: pc.pc_id, customer_id: data.customer_id }).catch(function () {});
-          });
+          return startSession({
+            pc_id: pc.pc_id,
+            customer_id: data.customer_id,
+            session_type: "KIOSK_OCCUPANCY"
+          }).catch(function () {});
         }
 
         if (!data.gaming_price_id) return fail("Choose a duration to start");
@@ -2252,6 +2277,24 @@
           use_venue_account: !!data.use_venue_account,
           require_prepaid: true
         }).catch(function (e) { fail(e.message || "Could not start the session"); });
+      });
+    }
+
+    /*
+     * The customer logged out at the kiosk. Ends occupancy billing through
+     * the exact same path a staff-driven end uses (endSession, above) — the
+     * server computes the bill from its own timestamps regardless of who
+     * asked. A STAFF_MANUAL session was never started by a kiosk login, so
+     * a kiosk logout has no business ending one; left alone here.
+     */
+    if (api.onStationEndRequest) {
+      api.onStationEndRequest(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        if (!session || session.session_type !== "KIOSK_OCCUPANCY") return;
+        endSession(session, { reason: "customer_logout" }).catch(function (e) {
+          console.error("[occupancy] Could not end session for " + pcName + ":", e.message);
+        });
       });
     }
 

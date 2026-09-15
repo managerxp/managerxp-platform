@@ -87,6 +87,9 @@ contextBridge.exposeInMainWorld("api", {
   // The customer picked a game and a price and tapped Start.
   requestStartSession: (payload) => ipcRenderer.send("request-start-session", payload),
   requestOccupancySessionStart: () => ipcRenderer.send("request-occupancy-session-start"),
+  // Logging out ends occupancy billing — the server computes the actual
+  // charge from its own timestamps; nothing played/timed is sent up here.
+  requestEndSession: () => ipcRenderer.send("request-end-session"),
   bringToFront: () => ipcRenderer.send("bring-to-front"),
   onStartSessionFailed: (cb) => ipcRenderer.on("start-session-failed", (_, data) => cb(data)),
   navigateTo: (page) => ipcRenderer.send("navigate", page),

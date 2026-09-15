@@ -747,6 +747,19 @@ function markSessionGameConfirmed() {
   if (sessionId) sessionGameConfirmed = sessionId;
 }
 
+/* Splits an admin-typed launch-arguments string into an argv array for
+   spawn(), which takes a list rather than a shell string — respects
+   double-quoted segments so a quoted path survives:
+   '-config "C:\My Config.ini"' -> ['-config', 'C:\My Config.ini']. */
+function splitLaunchArguments(str) {
+  if (!str) return [];
+  const out = [];
+  const re = /"([^"]*)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(str))) out.push(m[1] !== undefined ? m[1] : m[2]);
+  return out;
+}
+
 function launchGame(game) {
   if (!game || typeof game !== 'object') return;
   /* Already running — a double-tap on Play, or this function firing twice
@@ -759,11 +772,47 @@ function launchGame(game) {
   }
   // A fresh attempt at the same title supersedes any earlier cancel.
   cancelledLaunches.delete(game.name);
+
+  /*
+   * EA App has no CLI sign-in and no per-game "is this actually installed"
+   * signal to check — but whether EA App itself is on this station at all
+   * is checkable, the same way verifyPassiveLauncher already does it for a
+   * venue-account session. That check only ran when a venue credential was
+   * assigned; every other EA launch (a customer's own personal account, the
+   * common case) went straight to firing the origin2:// URL with no
+   * upfront check at all, so "not installed" and "wrong offer id" both
+   * surfaced as the same vague failure. Checked first, before
+   * buildGameLaunch's own "no launch configuration" message, so a missing
+   * launcher is never confused with a missing App ID.
+   */
+  if (game.platform === 'EA') {
+    detectLaunchers().then((launchers) => {
+      const info = launchers.EA;
+      if (info && info.installed) { launchGameNow(game); return; }
+      log(`No EA App detected on this station for ${game.name}`);
+      const error = 'EA App is not installed on this station.';
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+      reportLaunchFailedIfSessionStart(game, isFirstLaunchForSession(), error);
+    }).catch((e) => {
+      // Detection failing is not proof EA is absent — fall through to the
+      // normal checks rather than blocking a launch on our own error.
+      log(`EA App detection failed for ${game.name}: ${e.message}`);
+      launchGameNow(game);
+    });
+    return;
+  }
+
+  launchGameNow(game);
+}
+
+function launchGameNow(game) {
   const isSessionStart = isFirstLaunchForSession();
   const plan = buildGameLaunch(game);
   if (!plan) {
     log(`No launch config for ${game.name}`);
-    const error = 'This game has no launch configuration yet.';
+    const error = game.platform === 'EA'
+      ? 'EA game launch configuration is missing.'
+      : 'This game has no launch configuration yet.';
     sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
     reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     return;
@@ -837,14 +886,17 @@ function launchGame(game) {
       openGame();
     }
   } else if (plan.exe) {
-    const cmd = game.launch_arguments ? `"${plan.exe}" ${game.launch_arguments}` : `"${plan.exe}"`;
-    const child = exec(cmd, (err) => {
-      if (err) {
-        log(`Launch failed for ${game.name}: ${err.message}`);
-        const error = 'The game could not be started.';
-        sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
-        reportLaunchFailedIfSessionStart(game, isSessionStart, error);
-      }
+    // spawn(exe, args), not exec("exe args") — the path and each argument
+    // reach the OS as their own array entries, never concatenated into a
+    // shell string, so a path or an admin-typed argument containing a
+    // space, quote or shell metacharacter can't be misread as a second
+    // command. No shell is invoked at all.
+    const child = spawn(plan.exe, splitLaunchArguments(game.launch_arguments), { windowsHide: false });
+    child.once('error', (err) => {
+      log(`Launch failed for ${game.name}: ${err.message}`);
+      const error = game.platform === 'EA' ? 'EA game could not be launched.' : 'The game could not be started.';
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+      reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     });
     // Track the process under the game's name so the existing close path can
     // find it, and attach a timer card if the session is timed.
@@ -920,6 +972,7 @@ const LAUNCHER_PATHS = {
   ],
   EA: [
     path.join(PROGRAM_FILES, 'Electronic Arts', 'EA Desktop', 'EA Desktop', 'EADesktop.exe'),
+    path.join(PROGRAM_FILES, 'Electronic Arts', 'EA Desktop', 'EA Desktop', 'EALauncher.exe'),
     path.join(PROGRAM_FILES_X86, 'Origin', 'Origin.exe')
   ],
   Epic: [
@@ -1530,6 +1583,47 @@ function createWindow() {
   });
 
   /*
+   * Auto-reseal once an approved Station Tool's window actually closes.
+   *
+   * The drop below (kiosk off, keyboard guard stopped, minimise) used to
+   * rely entirely on the customer clicking the CafeXP taskbar icon to come
+   * back — win.on('restore', reseal) only fires on that explicit action.
+   * A customer who simply never clicks back kept the raw desktop, Start
+   * menu, Explorer and (with the guard stopped) live Alt+Tab/Win-key for
+   * as long as they liked. This watches for the panel's process to
+   * disappear and calls win.restore() itself — the exact same call the
+   * open-failed fallback below already makes, so it goes through the real
+   * reseal()/keyboard-guard-restart path, not a second one.
+   *
+   * Same tasklist idiom pollRunningProcesses() already uses for game-exit
+   * detection — nothing new to learn here. A short grace period covers the
+   * process not existing yet (shell.openExternal/exec are async); a hard
+   * ceiling forces the restore regardless, so a station is never left
+   * unsealed indefinitely even if a future Settings/driver build ever
+   * changes the process name being watched for.
+   */
+  function watchForPanelClose(processNames, { graceMs = 3000, pollMs = 1500, ceilingMs = 10 * 60 * 1000 } = {}) {
+    if (!processNames || !processNames.length) return;
+    const start = Date.now();
+    const tick = () => {
+      if (!alive(win)) return;                        // app quitting — nothing to reseal
+      if (win.isFullScreen()) return;                  // already resealed (customer clicked back) — done
+      if (Date.now() - start >= ceilingMs) { win.restore(); return; }
+      if (Date.now() - start < graceMs) { setTimeout(tick, pollMs); return; }
+
+      Promise.all(processNames.map((name) => new Promise((resolve) => {
+        exec(`tasklist /FI "IMAGENAME eq ${name}" /NH`, (err, stdout) => {
+          resolve(!err && stdout && stdout.toLowerCase().includes(name.toLowerCase()));
+        });
+      }))).then((stillRunning) => {
+        if (stillRunning.some(Boolean)) setTimeout(tick, pollMs);
+        else if (alive(win) && !win.isFullScreen()) win.restore();
+      });
+    };
+    setTimeout(tick, pollMs);
+  }
+
+  /*
    * Station system tools — screen resolution, NVIDIA Control Panel, Device
    * Manager — from the Help menu, with no staff PIN. Available any time,
    * not just mid-session: there is no gate on who is allowed to reach these.
@@ -1539,8 +1633,10 @@ function createWindow() {
    * client" already makes (see runPowerAction's minimize-client): kiosk
    * mode and the low-level keyboard guard both drop, the window minimises,
    * and reseal() — fired when the customer restores it, e.g. by clicking
-   * the CafeXP taskbar icon — puts both back. kioskLocked itself is never
-   * touched, so nothing here can leave a station permanently unsealed.
+   * the CafeXP taskbar icon, or automatically once watchForPanelClose below
+   * notices the panel's process is gone — puts both back. kioskLocked
+   * itself is never touched, so nothing here can leave a station
+   * permanently unsealed.
    *
    * General desktop access is deliberately NOT offered here — see the
    * ALTTAB handling below instead, which lets a customer switch between
@@ -1550,6 +1646,7 @@ function createWindow() {
   const SYSTEM_PANELS = {
     display: {
       label: 'Screen resolution',
+      watchProcess: () => ['SystemSettings.exe'],
       open: () => { shell.openExternal('ms-settings:display'); return { success: true }; }
     },
     nvidia: {
@@ -1569,6 +1666,7 @@ function createWindow() {
           ? { success: true, path: found }
           : { success: false, message: 'NVIDIA Control Panel is not installed on this station.' };
       },
+      watchProcess: (found) => [path.basename(found)],
       open: (found) => {
         exec(`"${found}"`, (err) => { if (err) log(`NVIDIA Control Panel failed to launch: ${err.message}`); });
         return { success: true };
@@ -1576,6 +1674,7 @@ function createWindow() {
     },
     devicemgmt: {
       label: 'Device Manager',
+      watchProcess: () => ['mmc.exe'],
       open: () => {
         exec('mmc.exe devmgmt.msc', (err) => { if (err) log(`Device Manager failed to launch: ${err.message}`); });
         return { success: true };
@@ -1628,6 +1727,7 @@ function createWindow() {
     }
 
     log(`[Station tools] Opened ${entry.label} — kiosk dropped until the client window is restored.`);
+    watchForPanelClose(entry.watchProcess ? entry.watchProcess(pre.path) : []);
     return {
       success: true,
       message: entry.openMessage || `${entry.label} opening — click the CafeXP icon in the taskbar to come back.`
@@ -1685,6 +1785,19 @@ function createWindow() {
         occupancy_login_start: true
       }));
       log("Sent occupancy-start START_SESSION_REQUEST to console");
+    }
+  });
+
+  /*
+   * Logging out ends occupancy billing. Just the session id's owner (this
+   * station) — no played time, no amount. The console reads its own record
+   * of which session is running here and bills from its own timestamps;
+   * nothing this app believes about elapsed time is sent or trusted.
+   */
+  ipcMain.on('request-end-session', () => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "END_SESSION_REQUEST", simId: SIM_ID }));
+      log("Sent END_SESSION_REQUEST to console");
     }
   });
 
@@ -1790,7 +1903,7 @@ function createWindow() {
    * or even staff holds the machine's Windows credentials, so anything that
    * could leave the station stuck at a real OS lock screen is off the table.
    */
-  const VOLUME_SCRIPT = path.join(__dirname, 'scripts', 'volume.ps1');
+  const VOLUME_SCRIPT = path.join(__dirname, 'scripts', 'volume.ps1').replace('app.asar', 'app.asar.unpacked');
   function runVolumeScript(args) {
     return new Promise((resolve) => {
       exec(
@@ -2095,6 +2208,11 @@ function createWindow() {
   /* Same for a plain show, which is what a task-bar click raises when the
      window was hidden rather than minimised. */
   win.on('show', reseal);
+
+  // The kiosk window must never become a general-purpose browser, same as
+  // checkoutWin already enforces on itself — no renderer code opens one
+  // today, but nothing else stops a future/injected page from trying.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   /*
    * The window cannot be closed from the machine it runs on.
@@ -2453,7 +2571,13 @@ function getInstalledApps() {
       return;
     }
 
-    const scriptPath = path.join(__dirname, "get_apps.ps1");
+    // __dirname is inside app.asar in a packaged build — exec() spawns a real
+    // OS process (powershell), which can't read a file or use a cwd inside
+    // the asar archive, only the unpacked copy alongside it (see VOLUME_SCRIPT
+    // above for the same fix). A no-op in dev, where __dirname never contains
+    // "app.asar".
+    const unpackedDirname = __dirname.replace('app.asar', 'app.asar.unpacked');
+    const scriptPath = path.join(unpackedDirname, "get_apps.ps1");
     /* get_apps.ps1 itself writes here now — under LOCALAPPDATA, not relative
        to this script's own (Program-Files, read-only-to-a-standard-account)
        install folder. Read from the same place the script actually writes to. */
@@ -2466,7 +2590,7 @@ function getInstalledApps() {
     const executeScript = () => {
       exec(
         `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`,
-        { cwd: __dirname, timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+        { cwd: unpackedDirname, timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
         (err) => {
           const duration = Date.now() - startTime;
           

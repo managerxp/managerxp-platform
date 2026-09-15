@@ -37,7 +37,8 @@ const LAUNCH_METHOD_BY_PLATFORM = {
    guessing which of a launcher's several ids we mean. */
 const ID_HINT = {
   Steam: 'Steam appid, e.g. 730', Epic: 'Epic catalog/namespace id',
-  EA: 'EA content id', Ubisoft: 'Ubisoft game id', 'Battle.net': 'Product code, e.g. pro',
+  EA: 'EA content id — no simple lookup like Steam; leave blank and set a Launch target below instead if you don’t have one',
+  Ubisoft: 'Ubisoft game id', 'Battle.net': 'Product code, e.g. pro',
   Riot: 'Not used — set a launch target instead', Rockstar: 'Not used — set a launch target instead',
   Custom: 'Not used — set a launch target instead'
 };
@@ -231,7 +232,7 @@ const PlatformPanel = ({ game, onClose, onChanged, setNotice }) => {
                      onChange={setField('launch_method')} placeholder={LAUNCH_METHOD_BY_PLATFORM[form.platform]} />
             </Field>
             <Field label="Launch target / executable" id="pf-target"
-                   hint="What runs when there is no store protocol to hand off to (Riot, Rockstar, Custom).">
+                   hint="Optional fallback for any platform — used whenever there's no App ID to hand off to a store protocol with (always, for Riot/Rockstar/Custom; or for Steam/EA/etc. when you'd rather point straight at the installed .exe than look up an App ID).">
               <Input id="pf-target" className="font-mono" value={form.launch_target}
                      onChange={setField('launch_target')} placeholder="C:\\Riot Games\\Riot Client\\RiotClientServices.exe" />
             </Field>

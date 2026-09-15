@@ -253,12 +253,13 @@ export const checkForUpdateMine = async (req, res) => {
     }
 
     const reported = String(req.query?.current_version || '0.0.0');
+    const updateAvailable = isNewer(latest.version, reported);
     res.json({
       success: true,
       data: {
         entitled: true,
         component,
-        update_available: isNewer(latest.version, reported),
+        update_available: updateAvailable,
         current_version: reported,
         latest_version: latest.version,
         channel: latest.channel,
@@ -266,7 +267,22 @@ export const checkForUpdateMine = async (req, res) => {
         is_mandatory: latest.is_mandatory,
         below_minimum: latest.min_supported_version
           ? versionSort(reported) < versionSort(latest.min_supported_version)
-          : false
+          : false,
+        /*
+         * The artifact itself, not just the yes/no this endpoint was
+         * originally built to answer (see the file-level comment above —
+         * "fetching the artifact is the next phase" never actually
+         * shipped). The console's self-update button, its per-station
+         * "Update now" push, and the automatic sweep in app/main.js all
+         * already read data.download.url unconditionally; without this
+         * they don't error loudly, they just find nothing here and quietly
+         * refuse — which is the entire reported bug. Omitted when there is
+         * nothing to fetch, so a caller checking `data.download` still
+         * gets a clean "no artifact" signal rather than a block of nulls.
+         */
+        download: updateAvailable
+          ? { url: latest.download_url, file_name: latest.file_name, sha512: latest.sha512 }
+          : null
       }
     });
   } catch (error) {

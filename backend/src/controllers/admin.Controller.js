@@ -497,6 +497,21 @@ export const setOrganizationStatus = async (req, res) => {
  * type means capping it wherever it is run. Only the type names are returned,
  * never which café runs what.
  */
+/*
+ * Offered even before any café has typed a category in — without this, a
+ * brand-new café's Add Station / Gaming Prices category dropdown starts
+ * completely empty, since the list below is otherwise built entirely from
+ * values already in use. Suggestions only: merged case-insensitively with
+ * whatever a café already has (a café's own existing spelling always wins,
+ * same principle as the "pc"/"PC" merge below), and "Other…" still
+ * free-types anything not on this list — nothing here restricts a category
+ * to these thirteen.
+ */
+const SUGGESTED_STATION_TYPES = [
+  'PC', 'PS4', 'PS5', 'Xbox', 'Switch', 'Pool', 'Snooker', 'VR',
+  'Racing Sim', 'Driving Sim', 'Foosball', 'Air Hockey', 'Other'
+];
+
 export const listStationTypes = async (_req, res) => {
   try {
     /* DISTINCT ON (LOWER(category)), not DISTINCT category: this list has no
@@ -519,7 +534,17 @@ export const listStationTypes = async (_req, res) => {
       ) t
       ORDER BY LOWER(category), category COLLATE "C"
     `);
-    res.json({ success: true, data: rows.map((r) => r.category).sort((a, b) => a.localeCompare(b)) });
+
+    // Same case-insensitive merge as above, one level up: a café's own
+    // spelling of a category wins over a suggestion covering the same name.
+    const byKey = {};
+    rows.forEach((r) => { byKey[r.category.toLowerCase()] = r.category; });
+    SUGGESTED_STATION_TYPES.forEach((name) => {
+      const key = name.toLowerCase();
+      if (!(key in byKey)) byKey[key] = name;
+    });
+
+    res.json({ success: true, data: Object.values(byKey).sort((a, b) => a.localeCompare(b)) });
   } catch (error) {
     console.error('Station type list failed:', error);
     res.status(500).json({ success: false, message: 'Could not load station types' });

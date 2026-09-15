@@ -9,6 +9,7 @@ import { initializeExpenses } from './schema.expenses.js';
 import { initializePricingRules } from './schema.pricingRules.js';
 import { initializeCatalogueTenancy } from './schema.catalogueTenancy.js';
 import { initializeGamingPricePlayers } from './schema.gamingPricePlayers.js';
+import { initializeSessionType } from './schema.sessionType.js';
 import { initializeAccountReset } from './schema.accountReset.js';
 import { initializeCafeScoping } from './schema.cafeScoping.js';
 import { initializeSettingsScoping } from './schema.settingsScoping.js';
@@ -2400,6 +2401,9 @@ export const initializeDatabase = async () => {
     /* Widens the unique index catalogue tenancy just created, so it must run
        right after it rather than independently. */
     await initializeGamingPricePlayers(client);
+
+    // Adds columns to sessions — the table it needs already exists by now.
+    await initializeSessionType(client);
 
     // References software_master and cafes, both settled by now.
     await initializeSoftwareCategories(client);

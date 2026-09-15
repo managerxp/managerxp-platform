@@ -1,6 +1,7 @@
 import pool from './database.js';
 import { activeRuleFor, applyRule, describeRule } from './pricingRules.js';
 import { categoryJoin, categoryExpr } from './softwareCategory.js';
+import { getSetting } from './settings.js';
 
 /*
  * The session pricing engine.
@@ -39,6 +40,28 @@ import { categoryJoin, categoryExpr } from './softwareCategory.js';
  */
 
 const round2 = (n) => Number(Number(n).toFixed(2));
+
+/**
+ * The hourly rate a kiosk occupancy session bills at, for a station's
+ * category.
+ *
+ * The Gaming Price Master prices a game by the block, never by the open
+ * hour, so it has nothing to offer occupancy billing. This is the separate,
+ * much smaller rate a café sets per category instead — a PS5 occupies
+ * differently than a bare PC — falling back to that café's own blanket
+ * default, then the platform's session.default_rate_per_hour, exactly the
+ * way every other per-café setting here already falls back.
+ */
+export const resolveOccupancyRate = async (cafeId, category) => {
+  const map = await getSetting('occupancy.rates_by_category', {}, cafeId);
+  const byCategory = category && map && map[category] != null ? Number(map[category]) : null;
+  if (byCategory !== null && Number.isFinite(byCategory)) return byCategory;
+
+  const fallback = map && map._default != null ? Number(map._default) : null;
+  if (fallback !== null && Number.isFinite(fallback)) return fallback;
+
+  return Number(await getSetting('session.default_rate_per_hour', 60, cafeId));
+};
 
 /**
  * Load a gaming price and turn it into the fields a session stores.
@@ -224,4 +247,4 @@ export const amountForSeconds = (session, seconds) => {
   return round2(base * (1 - discountPct / 100));
 };
 
-export default { resolveGamingPrice, amountForSeconds };
+export default { resolveGamingPrice, amountForSeconds, resolveOccupancyRate };

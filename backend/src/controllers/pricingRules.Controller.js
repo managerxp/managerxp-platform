@@ -299,6 +299,13 @@ export const previewRates = async (req, res) => {
       return res.status(400).json({ success: false, message: 'That is not a valid time' });
     }
 
+    /* Optional — a station asking "what can I sell" only wants its own
+       category (plus anything priced with no category at all, which is a
+       deliberate café-wide/universal price, not an oversight). Omitted
+       entirely, this behaves exactly as before: every category, for the
+       admin/staff screens that legitimately want the whole rate card. */
+    const category = req.query.category ? String(req.query.category).trim() : null;
+
     const rules = await loadRules(pool, cafeId);
 
     // This café's own rate card only — the windows are private, and so are the
@@ -314,8 +321,9 @@ export const previewRates = async (req, res) => {
          ${categoryJoin(1)}
         WHERE gp.status = 'ACTIVE' AND sm.is_active AND s.status = 'ACTIVE'
           AND gp.cafe_id IS NOT DISTINCT FROM $1
+          AND ($2::text IS NULL OR ${categoryExpr()} IS NULL OR ${categoryExpr()} = $2)
         ORDER BY sm.software_name, s.duration_minutes NULLS LAST`,
-      [cafeId]
+      [cafeId, category]
     );
 
     /* This panel lists the gaming rate card, so it asks only about gaming

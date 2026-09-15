@@ -373,6 +373,12 @@
   }
 
   function signOut() {
+    /* Ends occupancy billing for whatever session is running on this
+       station. Fire-and-forget: the console owns the session record and
+       bills from its own timestamps, so there's nothing to wait for here,
+       and no reason to block signing out on it either. Harmless to send
+       with no session running — the console just finds nothing to end. */
+    if (api.requestEndSession) api.requestEndSession();
     if (api.storeToken) api.storeToken(null);
     if (api.storeUserInfo) api.storeUserInfo(null);
     state.user = null;

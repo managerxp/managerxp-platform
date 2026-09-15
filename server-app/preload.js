@@ -78,6 +78,7 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("session:push-start-options", { pcName, games, prices }),
   // The customer picked a game and a price and tapped Start.
   onStationStartRequest: (cb) => ipcRenderer.on("station:start-request", (_, d) => cb(d)),
+  onStationEndRequest: (cb) => ipcRenderer.on("station:end-request", (_, d) => cb(d)),
   pushStartFailed: (pcName, message) => ipcRenderer.invoke("session:push-start-failed", { pcName, message }),
 
   // Telemetry — live readings live in the main process, history in the backend

@@ -233,6 +233,17 @@ function handleStationRequest(msg, ws) {
     if (win) win.webContents.send("station:extend-request", { pcName, blocks: msg.blocks || 1 });
     return true;
   }
+  /*
+   * The customer logged out at the kiosk. Carries nothing but which station
+   * this is — no played time, no amount — the renderer looks up whatever
+   * session is actually running there and ends it through the exact same
+   * billing path a staff-driven end uses.
+   */
+  if (msg.type === "END_SESSION_REQUEST") {
+    log(`[Self-end] ${pcName} requested to end its session`);
+    if (win) win.webContents.send("station:end-request", { pcName });
+    return true;
+  }
   if (msg.type === "SESSION_OVERTIME") {
     log(`[Overtime] ${pcName} is past its block`);
     if (win) win.webContents.send("station:overtime", { pcName, appName: msg.appName || null });
