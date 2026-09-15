@@ -4,6 +4,7 @@ import { createDraggable, svg, animate as animeAnimate } from 'animejs';
 import { Play, Pause, RotateCcw, Gauge, Flag } from 'lucide-react';
 import { createTelemetry, formatLap, formatSector, formatDelta } from '../lib/telemetry';
 import { prefersReducedMotion } from '../lib/motion';
+import { glassPanel } from '../lib/ui';
 
 /**
  * RaceXP live telemetry panel.
@@ -203,7 +204,7 @@ const TelemetryPanel = () => {
   const activeSector = reading.sector.id;
 
   return (
-    <div ref={rootRef} className="overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/80 backdrop-blur-xl shadow-[0_0_70px_-30px_rgba(220,38,38,0.65)]">
+    <div ref={rootRef} className={glassPanel}>
 
       {/* Context header */}
       <div className="border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3.5">

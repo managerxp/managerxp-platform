@@ -4,7 +4,7 @@ import { ArrowLeft, LogOut, Menu } from 'lucide-react';
 import { adminApi, adminAuth } from '../../lib/adminApi';
 import { Button, surface } from '../admin/ui';
 import ShellBackground from '../ShellBackground';
-import logo from '../../assets/whitelogo.png';
+import logo from '../../assets/whitelogo-sm.png';
 
 /*
  * The ManagerXP admin shell — sidebar, header, and the guard in front of both.
@@ -180,7 +180,7 @@ const ManagerXpShell = ({ children }) => {
                         ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
           >
             <Link to="/admin" className="flex items-center px-2 transition-opacity hover:opacity-80">
-              <img src={logo} alt="ManagerXP" className="h-7 w-auto" />
+              <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
             </Link>
             <p className="mt-2 px-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
               control_plane

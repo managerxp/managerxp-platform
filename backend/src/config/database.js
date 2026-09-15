@@ -8,6 +8,7 @@ import { initializeLocations } from './schema.locations.js';
 import { initializeExpenses } from './schema.expenses.js';
 import { initializePricingRules } from './schema.pricingRules.js';
 import { initializeCatalogueTenancy } from './schema.catalogueTenancy.js';
+import { initializeGamingPricePlayers } from './schema.gamingPricePlayers.js';
 import { initializeAccountReset } from './schema.accountReset.js';
 import { initializeCafeScoping } from './schema.cafeScoping.js';
 import { initializeSettingsScoping } from './schema.settingsScoping.js';
@@ -2395,6 +2396,10 @@ export const initializeDatabase = async () => {
     /* Last: it backfills using sessions and pcs, so every table it reads to
        decide ownership must already exist and be populated. */
     await initializeCatalogueTenancy(client);
+
+    /* Widens the unique index catalogue tenancy just created, so it must run
+       right after it rather than independently. */
+    await initializeGamingPricePlayers(client);
 
     // References software_master and cafes, both settled by now.
     await initializeSoftwareCategories(client);

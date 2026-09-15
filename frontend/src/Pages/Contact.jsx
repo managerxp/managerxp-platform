@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { MapPin, Mail, Phone, Send, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import emailjs from '@emailjs/browser';
+import { sendContactForm } from '../lib/contactEmail';
 import PageBackground from '../components/PageBackground';
 import SectionHeading from '../components/SectionHeading';
 import Reveal from '../components/Reveal';
@@ -50,19 +50,15 @@ const ContactPage = () => {
     setIsSubmitting(true);
     setStatus({ type: '', message: '' });
 
-    // REPLACE THESE WITH YOUR ACTUAL EMAILJS IDs
-    const serviceID = 'YOUR_SERVICE_ID';
-    const templateID = 'YOUR_TEMPLATE_ID';
-    const publicKey = 'YOUR_PUBLIC_KEY';
-
-    emailjs.sendForm(serviceID, templateID, formRef.current, publicKey)
-      .then((result) => {
-          console.log(result.text);
+    sendContactForm(formRef.current)
+      .then(() => {
           setStatus({ type: 'success', message: 'Message transmitted successfully!' });
           formRef.current.reset();
       }, (error) => {
-          console.log(error.text);
-          setStatus({ type: 'error', message: 'Transmission failed. Please try again.' });
+          setStatus({
+            type: error.status === 503 ? 'warn' : 'error',
+            message: error.message || 'Transmission failed. Please try again.'
+          });
       })
       .finally(() => {
         setIsSubmitting(false);
@@ -152,6 +148,8 @@ const ContactPage = () => {
                       className={`flex items-center gap-2 p-3 rounded-lg text-sm font-mono ${
                         status.type === 'success'
                           ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                          : status.type === 'warn'
+                          ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
                           : 'bg-red-500/10 text-red-400 border border-red-500/20'
                       }`}
                     >

@@ -86,3 +86,17 @@ export const deviceCheckLimiter = rateLimit({
   legacyHeaders: false,
   handler: refusal('Too many requests from here. Wait a few minutes and try again.')
 });
+
+/*
+ * The marketing site's Contact and Book a Demo forms — public, no login,
+ * and every submission sends an email, so (same reasoning as resetLimiter)
+ * the abuse is the sending itself. A genuine visitor submits once; ten in
+ * fifteen minutes is already generous for that.
+ */
+export const contactFormLimiter = rateLimit({
+  windowMs: minutes(15),
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: refusal('Too many messages from here. Wait a few minutes and try again.')
+});

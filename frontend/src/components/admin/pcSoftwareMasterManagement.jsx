@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import toast from 'react-hot-toast';
-import { 
-  FiPlus as Plus, 
-  FiEdit as Edit, 
-  FiTrash2 as Trash2, 
-  FiEye as Eye, 
-  FiX as X, 
-  FiUpload as Upload, 
-  FiVideo as Video, 
-  FiImage as ImageIcon,
-  FiSearch as Search,
-  FiChevronLeft as ChevronLeft,
-  FiChevronRight as ChevronRight,
-  FiDownload as Download,
-  FiRefreshCw as RefreshCw
-} from 'react-icons/fi';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Eye,
+  X,
+  Upload,
+  Video,
+  Image as ImageIcon,
+  Search,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  RefreshCw
+} from 'lucide-react';
 import { format } from 'date-fns';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL;

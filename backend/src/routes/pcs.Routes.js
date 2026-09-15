@@ -13,6 +13,7 @@ import {
   registerDiscoveredPC,
   reportClientVersion
 } from '../controllers/pcs.Controller.js';
+import { listStationTypes } from '../controllers/admin.Controller.js';
 import { requireAuth, requireStaff } from '../middleware/authGuards.js';
 import { deviceCheckLimiter } from '../middleware/rateLimit.js';
 
@@ -36,8 +37,17 @@ const staff = requireStaff('Café staff access required');
 pcsRouter.get('/', requireAuth, getAllPCs);
 pcsRouter.get('/active', requireAuth, getActivePCs);
 pcsRouter.get('/branch/:branchId', requireAuth, getPCsByBranch);
-pcsRouter.get('/:id', requireAuth, getPCById);
 pcsRouter.get('/cafe/:cafeId', requireAuth, getPCsByCafe);
+
+// Same platform-wide canonical list the super-admin plan editor uses
+// (backend/src/controllers/admin.Controller.js's listStationTypes), reused
+// verbatim here so the console's "Add Station"/"Add activity" dropdowns can
+// reach it too — those callers have a café staff token, not the admin
+// `packages.view` permission the /api/admin mount requires. Must stay above
+// `/:id` — a single path segment would otherwise be swallowed as an id.
+pcsRouter.get('/station-types', requireAuth, listStationTypes);
+
+pcsRouter.get('/:id', requireAuth, getPCById);
 
 // check-exists is called by a station reporting its own MAC/IP before it has
 // any credential to present, so it stays unauthenticated — rate-limited

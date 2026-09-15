@@ -142,9 +142,21 @@ const AppLayout = () => {
 
   return (
     <div className="flex flex-col min-h-screen bg-black">
+      {/* First focusable element on every page, so a keyboard user is never
+          forced through the nav (and, on marketing pages, past the whole
+          hero) just to reach the actual content. */}
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-black"
+      >
+        Skip to content
+      </a>
       <ScrollToTop />
       {!hideNavAndFooter && <Navbar />}
-      <main className={`flex-grow ${hideNavAndFooter ? '' : 'mt-16'}`}>
+      {/* The nav is now a floating inset pill (its own top padding + height),
+          taller than the old flush bar, so the clearance below it grows to
+          match rather than letting page content sit under its edge. */}
+      <main id="main-content" tabIndex={-1} className={`flex-grow ${hideNavAndFooter ? '' : 'mt-24'}`}>
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Home />} />

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
-import logo from '../../assets/whitelogo.png';
+import logo from '../../assets/whitelogo-sm.png';
 import PageBackground from '../PageBackground';
 
 /*
@@ -17,7 +17,7 @@ export const LegalPage = ({ title, hudLabel, lastUpdated, effectiveDate, childre
     <div className="relative z-10 mx-auto w-full max-w-3xl">
       <div className="mb-6 flex items-center justify-between gap-4">
         <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
-          <img src={logo} alt="ManagerXP" className="h-7 w-auto" />
+          <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
         </Link>
         <Link
           to="/"

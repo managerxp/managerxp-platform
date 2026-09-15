@@ -36,14 +36,24 @@
     return row.duration_minutes + " min";
   }
 
-  /** "Valorant · 1 Hour (60 min)" — what the operator is choosing. */
+  /* " · 3 Players", or "" for the default of 1 — a solo price never needed
+     to say so, and starting now would just be new noise on an old label.
+     Shared so a pool table reads the same player count on the till, the
+     session-start dialog and the receipt, instead of three call sites each
+     deciding when to mention it. */
+  function playersSuffix(row) {
+    var n = parseInt(row.player_count, 10) || 1;
+    return n > 1 ? " · " + n + " Players" : "";
+  }
+
+  /** "Pool · 1 Hour · 3 Players (60 min)" — what the operator is choosing. */
   function label(row) {
-    return row.software_name + " · " + row.session_name + " (" + durationText(row) + ")";
+    return row.software_name + " · " + row.session_name + playersSuffix(row) + " (" + durationText(row) + ")";
   }
 
   /** What a gaming bill line should be called when priced from the master. */
   function billDescription(row) {
-    return row.software_name + " — " + row.session_name;
+    return row.software_name + " — " + row.session_name + playersSuffix(row);
   }
 
   /* Only ACTIVE rows. An inactive price is one the café has withdrawn; putting
@@ -162,6 +172,7 @@
     listLive: listLive,
     money: money,
     durationText: durationText,
+    playersSuffix: playersSuffix,
     label: label,
     billDescription: billDescription,
     perMinute: perMinute,

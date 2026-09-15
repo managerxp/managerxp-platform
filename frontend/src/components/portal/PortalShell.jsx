@@ -5,7 +5,7 @@ import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Banner, Button, Select, surface } from './ui';
 import CreateBusiness from './CreateBusiness';
 import ShellBackground from '../ShellBackground';
-import logo from '../../assets/whitelogo.png';
+import logo from '../../assets/whitelogo-sm.png';
 
 /*
  * The portal shell: navigation, the org and branch switchers, and the trial
@@ -191,7 +191,7 @@ const PortalShell = ({ children }) => {
                         ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
           >
             <Link to="/dashboard" className="flex items-center px-2 transition-opacity hover:opacity-80">
-              <img src={logo} alt="ManagerXP" className="h-7 w-auto" />
+              <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
             </Link>
             <p className="mt-2 px-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
               cafexp_portal

@@ -58,6 +58,7 @@ const shape = (row) => ({
   // stored
   software_id: row.software_id,
   session_master_id: row.session_master_id,
+  player_count: row.player_count,
   price: Number(row.price),
   currency: row.currency,
   status: row.status,
@@ -120,6 +121,17 @@ const parsePrice = (raw) => {
   return { price: Number(price.toFixed(2)) };
 };
 
+/* Defaults to 1 — a game priced without ever mentioning player count is a
+   solo price, not an error. 8 is generous headroom past the highest real
+   case on the floor (a four-player pool table) without being unbounded. */
+const parsePlayerCount = (raw) => {
+  if (raw === undefined || raw === null || raw === '') return { playerCount: 1 };
+  const n = parseInt(raw, 10);
+  if (!Number.isInteger(n)) return { error: 'Player count must be a number' };
+  if (n < 1 || n > 8) return { error: 'Player count must be between 1 and 8' };
+  return { playerCount: n };
+};
+
 // POST /api/gaming-prices
 export const createPrice = async (req, res) => {
   const client = await pool.connect();
@@ -137,6 +149,9 @@ export const createPrice = async (req, res) => {
     const parsed = parsePrice(req.body?.price);
     if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
 
+    const parsedPlayers = parsePlayerCount(req.body?.player_count);
+    if (parsedPlayers.error) return res.status(400).json({ success: false, message: parsedPlayers.error });
+
     const cafeId = cafeOf(req);
     const refs = await checkReferences(client, softwareId, sessionId, cafeId);
     if (refs.error) return res.status(refs.status).json({ success: false, message: refs.error });
@@ -147,9 +162,9 @@ export const createPrice = async (req, res) => {
       : 'ACTIVE';
 
     const inserted = await client.query(
-      `INSERT INTO gaming_prices (cafe_id, software_id, session_master_id, price, currency, status)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [cafeId, softwareId, sessionId, parsed.price, currency, status]
+      `INSERT INTO gaming_prices (cafe_id, software_id, session_master_id, player_count, price, currency, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+      [cafeId, softwareId, sessionId, parsedPlayers.playerCount, parsed.price, currency, status]
     );
 
     const full = await client.query(`${selectPrice(2)} WHERE gp.id = $1`, [inserted.rows[0].id, cafeId]);
@@ -158,7 +173,7 @@ export const createPrice = async (req, res) => {
     if (error.code === '23505') {
       return res.status(409).json({
         success: false,
-        message: 'That game already has a price for this session. Edit the existing one instead.'
+        message: 'That game already has a price for this session and player count. Edit the existing one instead.'
       });
     }
     console.error('Error creating gaming price:', error);
@@ -229,11 +244,12 @@ export const listPrices = async (req, res) => {
   }
 };
 
-// GET /api/gaming-prices/lookup?software_id=1&session_master_id=2
+// GET /api/gaming-prices/lookup?software_id=1&session_master_id=2&player_count=1
 export const lookupPrice = async (req, res) => {
   try {
     const softwareId = parseInt(req.query.software_id ?? req.query.game_id, 10);
     const sessionId = parseInt(req.query.session_master_id, 10);
+    const playerCount = req.query.player_count === undefined ? 1 : parseInt(req.query.player_count, 10);
 
     if (!Number.isInteger(softwareId) || !Number.isInteger(sessionId)) {
       return res.status(400).json({
@@ -241,12 +257,15 @@ export const lookupPrice = async (req, res) => {
         message: 'software_id and session_master_id are both required'
       });
     }
+    if (!Number.isInteger(playerCount) || playerCount < 1) {
+      return res.status(400).json({ success: false, message: 'player_count must be a positive number' });
+    }
 
     const result = await pool.query(
-      `${selectPrice(3)}
-        WHERE gp.software_id = $1 AND gp.session_master_id = $2
-          AND gp.cafe_id IS NOT DISTINCT FROM $3`,
-      [softwareId, sessionId, cafeOf(req)]
+      `${selectPrice(4)}
+        WHERE gp.software_id = $1 AND gp.session_master_id = $2 AND gp.player_count = $3
+          AND gp.cafe_id IS NOT DISTINCT FROM $4`,
+      [softwareId, sessionId, playerCount, cafeOf(req)]
     );
 
     if (result.rows.length === 0) {
@@ -311,6 +330,11 @@ export const updatePrice = async (req, res) => {
       : parsePrice(req.body.price);
     if (parsed.error) return res.status(400).json({ success: false, message: parsed.error });
 
+    const parsedPlayers = req.body?.player_count === undefined
+      ? { playerCount: current.player_count }
+      : parsePlayerCount(req.body.player_count);
+    if (parsedPlayers.error) return res.status(400).json({ success: false, message: parsedPlayers.error });
+
     // Only re-check the masters when the pair actually moves.
     if (Number(softwareId) !== current.software_id || Number(sessionId) !== current.session_master_id) {
       const refs = await checkReferences(client, Number(softwareId), Number(sessionId), cafeId);
@@ -324,10 +348,10 @@ export const updatePrice = async (req, res) => {
 
     await client.query(
       `UPDATE gaming_prices
-       SET software_id = $1, session_master_id = $2, price = $3, currency = $4,
-           status = $5, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $6 AND cafe_id IS NOT DISTINCT FROM $7`,
-      [Number(softwareId), Number(sessionId), parsed.price, currency, status, id, cafeId]
+       SET software_id = $1, session_master_id = $2, player_count = $3, price = $4, currency = $5,
+           status = $6, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $7 AND cafe_id IS NOT DISTINCT FROM $8`,
+      [Number(softwareId), Number(sessionId), parsedPlayers.playerCount, parsed.price, currency, status, id, cafeId]
     );
 
     const full = await client.query(`${selectPrice(2)} WHERE gp.id = $1`, [id, cafeId]);
@@ -336,7 +360,7 @@ export const updatePrice = async (req, res) => {
     if (error.code === '23505') {
       return res.status(409).json({
         success: false,
-        message: 'That game already has a price for this session'
+        message: 'That game already has a price for this session and player count'
       });
     }
     console.error('Error updating gaming price:', error);

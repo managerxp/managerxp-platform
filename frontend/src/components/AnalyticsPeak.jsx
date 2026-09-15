@@ -4,6 +4,7 @@ import { createDraggable, createScope, createTimeline, onScroll, stagger, svg } 
 import { TrendingUp, Users, Monitor, IndianRupee } from 'lucide-react';
 import DemoBadge from './DemoBadge';
 import { SPRING, prefersReducedMotion } from '../lib/motion';
+import { glassPanel } from '../lib/ui';
 
 /**
  * Occupancy / revenue across the trading day, with a draggable read-out cursor.
@@ -126,7 +127,7 @@ const AnalyticsPeak = () => {
   const fmt = (v) => (metric === 'revenue' ? `₹${v.toLocaleString('en-IN')}` : `${v}${series.unit}`);
 
   return (
-    <div ref={rootRef} className="overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/70 backdrop-blur-xl shadow-[0_0_60px_-30px_rgba(220,38,38,0.5)]">
+    <div ref={rootRef} className={glassPanel}>
 
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3">
         <div className="flex gap-1.5" role="tablist" aria-label="Metric">

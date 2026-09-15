@@ -40,10 +40,12 @@ const Block = ({ eyebrow, title, highlight, lead, children, className = '' }) =>
   <section className={`scroll-mt-24 ${className}`}>
     <Reveal>
       <div className="mb-6 max-w-2xl">
-        <p className="mb-2 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.2em] text-red-500">
-          <span aria-hidden="true" className="h-px w-6 bg-gradient-to-r from-red-500 to-transparent" />
-          {eyebrow}
-        </p>
+        {eyebrow && (
+          <p className="mb-2 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.2em] text-red-500">
+            <span aria-hidden="true" className="h-px w-6 bg-gradient-to-r from-red-500 to-transparent" />
+            {eyebrow}
+          </p>
+        )}
         <h3 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white text-balance">
           {title}{' '}
           {highlight && (
@@ -172,7 +174,6 @@ const ProductsPage = () => {
               </Block>
 
               <Block
-                eyebrow="Billing"
                 title="Play time and the tab,"
                 highlight="on one bill."
                 lead="The session clock and anything ordered against it settle into a single total. Add an item and watch it land."
@@ -181,7 +182,6 @@ const ProductsPage = () => {
               </Block>
 
               <Block
-                eyebrow="People"
                 title="Your team and"
                 highlight="your regulars."
                 lead="Who is on shift and what they are handling, alongside the customers keeping the floor busy."
@@ -190,7 +190,6 @@ const ProductsPage = () => {
               </Block>
 
               <Block
-                eyebrow="F&B and stock"
                 title="What sells, and"
                 highlight="what is running out."
                 lead="Kitchen sales and the stock behind them move together, so a low shelf is visible before it empties."
@@ -198,24 +197,42 @@ const ProductsPage = () => {
                 <FnbInventory />
               </Block>
 
-              <Block
-                eyebrow="Analytics"
-                title="When your café is"
-                highlight="actually busy."
-                lead="Drag across the trading day to read occupancy, revenue and customer counts hour by hour."
-              >
-                <LazyMount minHeight="26rem">
-                  <Suspense
-                    fallback={
-                      <div className="flex min-h-[26rem] items-center justify-center">
-                        <span className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-800 border-t-red-500" />
-                      </div>
-                    }
-                  >
-                    <AnalyticsPeak />
-                  </Suspense>
-                </LazyMount>
-              </Block>
+              {/*
+               * The one block that breaks the "header above, mockup below"
+               * shape repeated by the other five — text runs alongside the
+               * chart instead of stacked on top of it, giving the site's
+               * most interactive visual (a real drag-to-scrub SVG trace) the
+               * width it earns instead of the same 2xl-max column as a
+               * static screenshot.
+               */}
+              <section className="scroll-mt-24">
+                <Reveal>
+                  <div className="grid grid-cols-1 items-center gap-8 lg:grid-cols-[minmax(0,320px)_1fr] lg:gap-12">
+                    <div>
+                      <h3 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white text-balance">
+                        When your café is{' '}
+                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-red-700">
+                          actually busy.
+                        </span>
+                      </h3>
+                      <p className="mt-3 text-sm leading-relaxed text-neutral-400 text-pretty">
+                        Drag across the trading day to read occupancy, revenue and customer counts hour by hour.
+                      </p>
+                    </div>
+                    <LazyMount minHeight="26rem">
+                      <Suspense
+                        fallback={
+                          <div className="flex min-h-[26rem] items-center justify-center">
+                            <span className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-800 border-t-red-500" />
+                          </div>
+                        }
+                      >
+                        <AnalyticsPeak />
+                      </Suspense>
+                    </LazyMount>
+                  </div>
+                </Reveal>
+              </section>
 
               <Block
                 eyebrow="CafeXP AI"
@@ -243,7 +260,6 @@ const ProductsPage = () => {
 
               {/* Demo */}
               <Block
-                eyebrow="See it running"
                 title="A walkthrough of"
                 highlight="a live shift."
                 lead="A recorded product tour is on the way. In the meantime, a live walkthrough with us covers the same ground against your own floor plan."
