@@ -771,6 +771,43 @@
         return btn;
       }
 
+      /*
+       * For a deactivated station that has ever run a session, "Delete
+       * permanently" above is refused — the trading history has to stay.
+       * That used to mean its IP and MAC were stuck on this dead row
+       * forever, with no way in the app to put that same hardware back
+       * into service elsewhere — only a direct database edit could free
+       * it. This clears just the network address; the row and its
+       * session history are untouched.
+       */
+      function makeReleaseNetworkButton() {
+        var btn = UI.el("button", {
+          class: "btn btn-outline btn-sm",
+          html: Icon("unlink", 14) + '<span class="btn-label">Release network address</span>',
+          "data-tip": "Clears the IP and MAC so this hardware can be registered elsewhere"
+        });
+        btn.addEventListener("click", function () {
+          UI.confirm({
+            title: "Release " + pc.name + "'s network address?",
+            message: "Clears its IP and MAC address. The station record and its session " +
+              "history stay exactly as they are — only the hardware link is removed, so " +
+              "that machine can be registered as a station here or anywhere else.",
+            confirmLabel: "Release",
+            variant: "danger"
+          }).then(function (ok) {
+            if (!ok) return;
+            Store.updatePC(pc.pc_id, { mac_address: null, ip_address: null })
+              .then(function () {
+                UI.toast.ok(pc.name + "'s network address released");
+                return Store.loadPCs();
+              })
+              .then(function () { renderAll(); })
+              .catch(function (e) { UI.toast.error("Could not release", e.message); });
+          });
+        });
+        return btn;
+      }
+
       // Deactivating used to be a one-way trip — there was no control to undo
       // it, so a station taken out of service could never be put back.
       if (pc.is_active === false) {
@@ -791,6 +828,8 @@
           });
         });
         adminBody.appendChild(restoreBtn);
+
+        if (pc.mac_address) adminBody.appendChild(makeReleaseNetworkButton());
 
         adminBody.appendChild(makeDeleteButton());
       } else {
