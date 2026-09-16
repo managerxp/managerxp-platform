@@ -25,6 +25,30 @@
 
   var STATUS_TEXT = { online: "Available", occupied: "Signed in", gaming: "In use", paused: "Paused", offline: "Offline", inactive: "Deactivated" };
 
+  /*
+   * What a station looks like at a glance, from its category — a café can
+   * name a type anything ("Other…" in Add station), so this matches on
+   * keywords rather than an exact, closed list. A station with no type at
+   * all (not yet given one in Arrange) gets a neutral device glyph rather
+   * than the games controller — it isn't necessarily a games station, just
+   * an unconfigured one. Never leaves a card with no icon at all.
+   */
+  var CATEGORY_ICON_RULES = [
+    [/pool|billiard|snooker/i, "pool"],
+    [/vr|quest|headset|oculus/i, "vr"],
+    [/rac(e|ing)|kart|sim/i, "racing"],
+    [/\bpc\b|computer|desktop|laptop/i, "monitor"],
+    [/ps\d|xbox|console|switch/i, "games"]
+  ];
+  function categoryIcon(category) {
+    var c = String(category || "");
+    if (!c.trim()) return "devices";
+    for (var i = 0; i < CATEGORY_ICON_RULES.length; i++) {
+      if (CATEGORY_ICON_RULES[i][0].test(c)) return CATEGORY_ICON_RULES[i][1];
+    }
+    return "games";
+  }
+
   /* ==========================================================================
      LAYOUT
      A café is rarely one undifferentiated room, so the wall can be arranged to
@@ -357,7 +381,10 @@
     card.innerHTML =
       '<div class="station-top">' +
         "<div style='min-width:0'>" +
-          '<div class="station-name">' + UI.esc(pc.name) + "</div>" +
+          '<div class="station-name-row">' +
+            '<span class="station-icon">' + Icon(categoryIcon(pc.category), 14) + "</span>" +
+            '<span class="station-name">' + UI.esc(pc.name) + "</span>" +
+          "</div>" +
           /* An address is the useful second line for a machine on the network.
              For a pool table it is noise — "no address" reads like a fault
              when it is simply what a pool table is. Show what it is, or where
@@ -408,6 +435,10 @@
         SessionUI.endSessionDialog(session);
       }));
     } else if (canStartSession(pc).ok) {
+      quick.appendChild(quickBtn("play", "Quick start — guest, default duration", function (e) {
+        e.stopPropagation();
+        SessionUI.quickStartDialog(pc.name);
+      }));
       quick.appendChild(quickBtn("sessions", "Start a session", function (e) {
         e.stopPropagation();
         SessionUI.startSessionDialog(pc.name);
@@ -1153,7 +1184,7 @@
       var section = UI.el("div", { class: "floor-zone", dataset: { status: key ? "accent" : "idle" } });
       section.innerHTML =
         '<div class="floor-zone-head">' +
-          '<span class="legend-swatch"></span>' +
+          (key ? '<span class="station-icon">' + Icon(categoryIcon(key), 15) + "</span>" : '<span class="legend-swatch"></span>') +
           '<span class="floor-zone-name">' + UI.esc(key || "Untyped") + "</span>" +
           '<span class="badge">' + pcs.length + "</span>" +
           (key
@@ -1253,8 +1284,12 @@
           pc.name, pc.pc_id, pc.category || "", pc.ip_address || "",
           pc.zone_id || "", pc.description || "",
           Store.pcStatus(pc),
+          /* billing_phase included so the grace→active transition (same
+             session_id, same status, same customer) still rebuilds the card
+             — otherwise a card first drawn while "Preparing" would keep
+             that label forever, since nothing else about it ever changes. */
           s ? s.session_id + ":" + s.status + ":" + (s.customer_name || "") +
-              ":" + (s.low_balance ? "low" : "") : "",
+              ":" + (s.low_balance ? "low" : "") + ":" + (s.billing_phase || "") : "",
           run ? run.appName + ":" + (run.paused ? "p" : "r") : "",
           cs && cs.failures ? cs.failures : ""
         ].join(",");

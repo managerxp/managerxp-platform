@@ -8,6 +8,15 @@
  * it (account_mode), and say which platform of a game is installed on
  * which of its PCs. There is no endpoint here that accepts an App ID,
  * because there must never be one.
+ *
+ * One narrow, deliberate exception: setPcGames may also write
+ * station_game_platforms.launch_target_override — a plain local exe path,
+ * scoped to one PC and one platform row the café already flagged installed.
+ * It is not a technical/platform config field; it can never set an App ID,
+ * a launch method, or anything else the catalog owns. It exists because
+ * install locations genuinely differ per station (the same title can be on
+ * C: on one PC and D: on another) in a way only the café — standing at that
+ * PC, or using the console's own "scan this station" feature — can ever see.
  */
 import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
@@ -27,7 +36,12 @@ const shapePlatform = (r) => ({
   launch_target: r.launch_target || null,
   process_name: r.process_name || null,
   launch_arguments: r.launch_arguments || null,
-  status: r.platform_status || r.status
+  status: r.platform_status || r.status,
+  // Station-local only — kept separate from launch_target (the catalog's
+  // own value) so a caller can tell "using the catalog default" apart from
+  // "overridden on this station" instead of one value silently masking
+  // the other.
+  launch_target_override: r.launch_target_override || null
 });
 
 /* One row per café selection, with every platform the game has (a café may
@@ -261,7 +275,8 @@ export const listPcGames = async (req, res) => {
     const platformRows = (await pool.query(`
       SELECT gp.id AS platform_id, gp.game_id, gp.platform, gp.platform_game_id, gp.status AS platform_status,
              gp.process_name, gp.launch_method, gp.launch_target, gp.launch_arguments,
-             (sgp.pc_id IS NOT NULL AND sgp.installed) AS installed
+             (sgp.pc_id IS NOT NULL AND sgp.installed) AS installed,
+             sgp.launch_target_override
         FROM game_platforms gp
         LEFT JOIN station_game_platforms sgp ON sgp.game_platform_id = gp.id AND sgp.pc_id = $1
        WHERE gp.status = 'ACTIVE'
@@ -282,7 +297,12 @@ export const listPcGames = async (req, res) => {
   }
 };
 
-/** PUT /api/games/pc/:pcId  { game_platform_ids: [...] } — the exact set installed here. */
+/**
+ * PUT /api/games/pc/:pcId  { game_platform_ids: [...], overrides?: { [platformId]: path|null } }
+ * game_platform_ids is the exact set installed here; overrides is this
+ * station's own local exe path for any of those platforms (see this file's
+ * header for why this one field is the narrow exception to "read-only").
+ */
 export const setPcGames = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -292,6 +312,8 @@ export const setPcGames = async (req, res) => {
       ? [...new Set(req.body.game_platform_ids.map((n) => parseInt(n, 10)).filter(Number.isInteger))]
       : null;
     if (!wanted) return res.status(400).json({ success: false, message: 'Send a game_platform_ids array' });
+
+    const overrides = (req.body && typeof req.body.overrides === 'object' && req.body.overrides) || {};
 
     const pc = (await client.query(
       'SELECT pc_id, name FROM pcs WHERE pc_id = $1 AND cafe_id IS NOT DISTINCT FROM $2', [pcId, cafeId])).rows[0];
@@ -312,10 +334,11 @@ export const setPcGames = async (req, res) => {
     await client.query('BEGIN');
     await client.query('DELETE FROM station_game_platforms WHERE pc_id = $1', [pcId]);
     for (const row of valid) {
+      const override = String(overrides[row.game_platform_id] || '').trim() || null;
       await client.query(
-        `INSERT INTO station_game_platforms (pc_id, cafe_game_id, game_platform_id, installed)
-         VALUES ($1,$2,$3,TRUE)`,
-        [pcId, row.cafe_game_id, row.game_platform_id]);
+        `INSERT INTO station_game_platforms (pc_id, cafe_game_id, game_platform_id, installed, launch_target_override)
+         VALUES ($1,$2,$3,TRUE,$4)`,
+        [pcId, row.cafe_game_id, row.game_platform_id, override]);
     }
     await client.query('COMMIT');
 

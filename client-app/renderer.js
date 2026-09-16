@@ -13,6 +13,7 @@
   var text = document.getElementById("connText");
   var logsEl = document.getElementById("logs");
   var clientIdValue = document.getElementById("clientIdValue");
+  var kioskWordEl = document.getElementById("kioskWord");
 
   var COPY = {
     CONNECTED: {
@@ -46,6 +47,36 @@
   if (window.api.getPcName) {
     window.api.getPcName(function (name) {
       if (name) clientIdValue.textContent = name;
+    });
+  }
+
+  /* Café's trading name over its registration name over the generic
+     default — same precedence as welcome.html and the console's own
+     billing.js. Both main-process values persist across a dropped
+     connection (they live in main.js, not this page), so a station that
+     connected at least once still shows its café's real name here even
+     while offline now, not just after the next successful connect. */
+  var cafeRegName = "", cafeBusinessName = "";
+  function paintBrandWord() {
+    var name = cafeBusinessName || cafeRegName;
+    if (name) kioskWordEl.textContent = name;
+  }
+  if (window.api.getCafeName) {
+    window.api.getCafeName(function (name) { cafeRegName = name || ""; paintBrandWord(); });
+  }
+  if (window.api.onCafeName) {
+    window.api.onCafeName(function (name) { cafeRegName = name || ""; paintBrandWord(); });
+  }
+  if (window.api.getCafeBranding) {
+    window.api.getCafeBranding(function (b) {
+      cafeBusinessName = (b && b.businessName) || "";
+      paintBrandWord();
+    });
+  }
+  if (window.api.onCafeBranding) {
+    window.api.onCafeBranding(function (b) {
+      cafeBusinessName = (b && b.businessName) || "";
+      paintBrandWord();
     });
   }
 

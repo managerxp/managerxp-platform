@@ -13,7 +13,7 @@
 
   <main class="stage">
     <section class="auth-card" id="authCard">
-      <img class="auth-logo" src="Images/cafexp-logo.png" alt="CafeXP — powered by ManagerXP"
+      <img class="auth-logo" id="authLogo" src="Images/cafexp-logo.png" alt="CafeXP — powered by ManagerXP"
            onerror="this.closest('.auth-card').classList.add('auth-no-logo'); this.remove();" />
       <div class="auth-mark">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
@@ -79,6 +79,7 @@
           <button type="button" id="toWelcome">Back</button>
         </div>
       </div>
+      <p class="powered-by">Powered by <strong>ManagerXP</strong></p>
     </section>
   </main>
 
@@ -124,17 +125,32 @@
       });
       if (window.api.onPcName) window.api.onPcName(function (name) { pcName = name || pcName; });
 
-      // Which café this station belongs to — see main.js's SET_NAME handler.
+      /* Which café this station belongs to — see main.js's SET_NAME handler.
+         Trading name (if the café set one) over its registration name over
+         the generic default, same precedence the console's own billing.js
+         already uses. Either can arrive after the other, so both paths
+         repaint through the same function rather than assuming order. */
+      var cafeRegName = "", cafeBusinessName = "";
+      function paintCafeName() {
+        var name = cafeBusinessName || cafeRegName;
+        if (name) document.getElementById("cafeName").textContent = name;
+      }
       if (window.api.getCafeName) {
-        window.api.getCafeName(function (name) {
-          if (name) document.getElementById("cafeName").textContent = name;
-        });
+        window.api.getCafeName(function (name) { cafeRegName = name || ""; paintCafeName(); });
       }
       if (window.api.onCafeName) {
-        window.api.onCafeName(function (name) {
-          if (name) document.getElementById("cafeName").textContent = name;
-        });
+        window.api.onCafeName(function (name) { cafeRegName = name || ""; paintCafeName(); });
       }
+
+      function applyCafeBranding(b) {
+        b = b || {};
+        cafeBusinessName = b.businessName || "";
+        paintCafeName();
+        var logoEl = document.getElementById("authLogo");
+        if (b.logo && logoEl) logoEl.src = b.logo;
+      }
+      if (window.api.getCafeBranding) window.api.getCafeBranding(applyCafeBranding);
+      if (window.api.onCafeBranding) window.api.onCafeBranding(applyCafeBranding);
 
       /* Defaults to this machine, corrected to the console's real address once
          this station has been told it — see main.js's SET_NAME handler. A

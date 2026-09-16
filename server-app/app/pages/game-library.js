@@ -365,18 +365,37 @@
       return;
     }
 
+    // Populated by "Scan station" — a shared <datalist> so every override
+    // input on the dialog offers the same live results, the same station
+    // scan games.js's own "Add software" dialog already uses.
+    var scanned = [];
+
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
-      '<div class="field"><label class="field-label" for="stPc">Station</label>' +
-        '<select class="select" id="stPc">' +
-          stations.map(function (p) { return '<option value="' + p.pc_id + '">' + UI.esc(p.name) + "</option>"; }).join("") +
-        "</select></div>" +
+      '<div class="row gap-3" style="align-items:flex-end">' +
+        '<div class="field grow"><label class="field-label" for="stPc">Station</label>' +
+          '<select class="select" id="stPc">' +
+            stations.map(function (p) { return '<option value="' + p.pc_id + '">' + UI.esc(p.name) + "</option>"; }).join("") +
+          "</select></div>" +
+        '<button type="button" class="btn btn-outline btn-sm" id="stScan">' + Icon("radar", 14) +
+          '<span class="btn-label">Scan station</span></button>' +
+      "</div>" +
       '<div class="row-between"><div class="faint" style="font-size:12px">Tick each version this station actually has installed.</div>' +
         '<div class="row gap-2"><button type="button" class="btn btn-ghost btn-sm" id="stNone">Clear</button></div></div>' +
-      '<div id="stList" class="col gap-1" style="max-height:46vh;overflow:auto"></div>';
+      '<div id="stList" class="col gap-1" style="max-height:46vh;overflow:auto"></div>' +
+      '<datalist id="stScanResults"></datalist>';
 
     var listHost = body.querySelector("#stList");
     var pcSel = body.querySelector("#stPc");
+    var scanBtn = body.querySelector("#stScan");
+    var datalist = body.querySelector("#stScanResults");
+
+    function syncScanButton() {
+      var pc = stations.filter(function (p) { return String(p.pc_id) === String(pcSel.value); })[0];
+      var connected = pc && Store.isConnected(pc.name);
+      scanBtn.disabled = !connected;
+      scanBtn.dataset.tip = connected ? "" : "The station must be connected to scan it";
+    }
 
     function paint(rows) {
       UI.clear(listHost);
@@ -390,6 +409,7 @@
         group.innerHTML = '<div style="font-size:13px;font-weight:700">' + UI.esc(g.name) +
           (g.enabled ? "" : ' <span class="badge">Off</span>') + "</div>";
         (g.platforms || []).forEach(function (p) {
+          var wrap = UI.el("div", { class: "col gap-1" });
           var row = UI.el("label", {
             class: "row gap-3",
             style: { alignItems: "center", padding: "4px 0 4px 12px", cursor: "pointer" }
@@ -398,22 +418,73 @@
             '<input type="checkbox" data-pid="' + p.id + '"' + (p.installed ? " checked" : "") + ">" +
             '<span class="grow faint" style="font-size:12px">' + UI.esc(p.platform) +
               (p.platform_game_id ? ' <span class="mono">#' + UI.esc(p.platform_game_id) + "</span>" : "") + "</span>";
-          group.appendChild(row);
+          wrap.appendChild(row);
+
+          /*
+           * A local path override for this one platform on this one station
+           * only — see games.Controller.js's header for why this is the one
+           * field a café can set here. Left blank, this platform launches
+           * exactly as the catalogue configures it everywhere else; a path
+           * here always wins, protocol included, since the point is "on this
+           * PC, just run this."
+           */
+          var overrideRow = UI.el("div", {
+            class: "row gap-2",
+            style: { padding: "0 0 4px 34px", display: p.installed ? "flex" : "none" }
+          });
+          overrideRow.innerHTML =
+            '<input class="input mono" data-override="' + p.id + '" list="stScanResults" ' +
+              'style="flex:1;font-size:12px;height:30px" ' +
+              'placeholder="Leave blank to use the catalogue default" ' +
+              'value="' + UI.esc(p.launch_target_override || "") + '">';
+          wrap.appendChild(overrideRow);
+
+          row.querySelector('input[type="checkbox"]').addEventListener("change", function (e) {
+            overrideRow.style.display = e.target.checked ? "flex" : "none";
+          });
+
+          group.appendChild(wrap);
         });
         listHost.appendChild(group);
       });
     }
 
     function loadPc() {
+      syncScanButton();
       UI.clear(listHost); listHost.appendChild(UI.skeletonRows(4));
       Store.getPcGames(pcSel.value)
         .then(function (body) { paint(body.data.games || []); })
         .catch(function (e) { UI.clear(listHost); listHost.appendChild(UI.errorState(e.message)); });
     }
-    pcSel.addEventListener("change", loadPc);
+    pcSel.addEventListener("change", function () { scanned = []; loadPc(); });
     body.querySelector("#stNone").addEventListener("click", function () {
       UI.$$("#stList input[type=checkbox]", body).forEach(function (c) { c.checked = false; });
+      UI.$$("#stList [data-override]", body).forEach(function (i) { i.closest(".row").style.display = "none"; });
     });
+
+    scanBtn.addEventListener("click", function () {
+      var pc = stations.filter(function (p) { return String(p.pc_id) === String(pcSel.value); })[0];
+      if (!pc) return;
+      var t = UI.toast({ title: "Scanning " + pc.name, message: "This can take 10–30 seconds the first time.", status: "info", duration: 0 });
+      UI.withBusy(scanBtn, function () {
+        return Store.scanPcSoftware(pc.name)
+          .then(function (result) {
+            t.dismiss();
+            if (!result || !result.success) {
+              UI.toast.error("Scan failed", (result && result.error) || "Unknown error");
+              return;
+            }
+            scanned = result.software || [];
+            datalist.innerHTML = scanned
+              .filter(function (s) { return s.path && s.path.trim(); })
+              .map(function (s) { return '<option value="' + UI.esc(s.path) + '">' + UI.esc(s.name || "") + "</option>"; })
+              .join("");
+            UI.toast.ok("Found " + scanned.length + " items", datalist.children.length + " with a usable path");
+          })
+          .catch(function (e) { t.dismiss(); UI.toast.error("Scan failed", e.message); });
+      });
+    });
+
     loadPc();
 
     return UI.modal({
@@ -427,7 +498,11 @@
           label: "Save availability", variant: "primary", icon: "check",
           onClick: function (ctx) {
             var ids = UI.$$("#stList input[type=checkbox]:checked", ctx.body).map(function (c) { return Number(c.dataset.pid); });
-            return Store.setPcGames(pcSel.value, ids)
+            var overrides = {};
+            UI.$$("#stList [data-override]", ctx.body).forEach(function (i) {
+              overrides[Number(i.dataset.override)] = i.value.trim() || null;
+            });
+            return Store.setPcGames(pcSel.value, ids, overrides)
               .then(function (r) { UI.toast.ok("Saved", r.message); load(); return true; })
               .catch(function (e) { UI.toast.error("Could not save", e.message); return false; });
           }

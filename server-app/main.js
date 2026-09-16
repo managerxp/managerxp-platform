@@ -578,6 +578,69 @@ function backendBaseUrl() {
   return BACKEND_LOCAL;
 }
 
+/*
+ * A café's own branding for the kiosk — its logo and trading name, if it has
+ * set either. Both are plain café-scoped settings (category "billing"), the
+ * same ones the Receipt Template page already reads and writes; this never
+ * writes them, only relays what is already there to the stations that ask.
+ *
+ * Fetched once and cached for this console's runtime, not on every SET_NAME:
+ * a logo is a rarely-changing, potentially ~400KB base64 value, and SET_NAME
+ * already only fires per station (re)connect, not on a timer — refetching it
+ * on every one of those would be real repeated cost for something that
+ * essentially never changes. A café that re-uploads a logo picks it up the
+ * next time this console restarts, the same way sessions.js's defaultRate
+ * (fetched once at load) already treats a similarly rare-changing value.
+ */
+let cafeBrandingCache = null;
+async function getCafeBranding() {
+  if (cafeBrandingCache) return cafeBrandingCache;
+  try {
+    const token = authContext.getToken();
+    const res = await fetch(`${backendBaseUrl()}/api/settings?category=billing`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const body = await res.json();
+    const byKey = {};
+    (body.data || []).forEach((r) => { byKey[r.setting_key] = r.setting_value; });
+    cafeBrandingCache = {
+      businessName: (byKey['billing.business_name'] || '').trim() || null,
+      logo: (byKey['billing.logo'] || '').trim() || null,
+      // The kiosk welcome screen's background — a short /uploads/... URL,
+      // not the file itself (see brandingUpload.js), so it costs nothing
+      // extra to carry alongside the logo/name in this same cached fetch.
+      wallpaperUrl: (byKey['billing.wallpaper_url'] || '').trim() || null,
+      wallpaperType: (byKey['billing.wallpaper_type'] || '').trim() || null
+    };
+  } catch (error) {
+    cafeBrandingCache = { businessName: null, logo: null, wallpaperUrl: null, wallpaperType: null };
+  }
+  return cafeBrandingCache;
+}
+
+/*
+ * Sent as a separate, one-off follow-up rather than folded into SET_NAME
+ * itself: SET_NAME's own send must stay synchronous with the rest of the
+ * "open" handler (setupClientHandlers, clientConnections.set) so nothing
+ * from the station can arrive before its listener is registered, and
+ * getCafeBranding() is async (a real fetch, the first time). A second
+ * SET_NAME sent later would also re-trigger the station's own REGISTER
+ * reply — this own message type carries only what it needs to, once,
+ * whenever the (cached, so usually instant) branding lookup resolves.
+ */
+function sendCafeBranding(ws) {
+  getCafeBranding().then((branding) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: "CAFE_BRANDING",
+      businessName: branding.businessName,
+      logo: branding.logo,
+      wallpaperUrl: branding.wallpaperUrl,
+      wallpaperType: branding.wallpaperType
+    }));
+  });
+}
+
 /* ==========================================================================
    UPDATE RELAY
 
@@ -2371,6 +2434,7 @@ async function heartbeat() {
               apiBase: backendBaseUrl(),
               cafeName: authContext.getCafeName()
             }));
+            sendCafeBranding(ws);
             setupClientHandlers();
             clientConnections.set(pcName, ws);
           });
@@ -2505,6 +2569,7 @@ function connectToSpecificPC(ip, port, pcName) {
       apiBase: backendBaseUrl(),
       cafeName: authContext.getCafeName()
     }));
+    sendCafeBranding(ws);
     setupClientHandlers();
     clientConnections.set(pcName, ws);
   });
@@ -2674,6 +2739,7 @@ async function connectToClients() {
         apiBase: backendBaseUrl(),
         cafeName: authContext.getCafeName()
       }));
+      sendCafeBranding(ws);
       log(`Sent PC name to client: ${simId}`);
       setupClientHandlers();
       clientConnections.set(simId, ws);

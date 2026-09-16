@@ -698,6 +698,16 @@
       method: "PUT", body: JSON.stringify({ value: String(value) })
     });
   }
+  /* The kiosk welcome screen's background — a real file upload (image or a
+     short video), same shape as uploadProductImage above: upload first, get
+     back where it landed, then save that short URL (plus its type) into
+     billing.wallpaper_url/billing.wallpaper_type like any other setting. */
+  function uploadCafeWallpaper(file) {
+    var body = new FormData();
+    body.append("wallpaper", file);
+    return request("/api/settings/wallpaper-upload", { method: "POST", body: body })
+      .then(function (r) { return r.data; });
+  }
   /* Pushes a just-saved staff unlock PIN to every station connected right
      now, rather than leaving it to whenever each one next reconnects. */
   function refreshUnlockPin() {
@@ -866,6 +876,27 @@
       names.forEach(function (name) {
         var s = state.sessions[name];
         if (s.status !== "active") return;
+
+        /* Same fix as client-app's session.js (see its comment on this exact
+           bug): the server holds elapsed_seconds at 0 (and remaining_seconds
+           at the full planned value) for the whole café load buffer —
+           billing_phase stays "grace" even though status is already
+           "active". Incrementing locally through that window regardless
+           counted the display up anyway, and the console's own ~15s
+           reconcile push then corrected it back to the still-zero server
+           figure — which is exactly what read as the timer resetting.
+           Held here the same way, from the same started_at/grace_seconds
+           pair, until the buffer has actually elapsed. */
+        if (s.started_at && s.grace_seconds &&
+            Date.now() - new Date(s.started_at).getTime() < s.grace_seconds * 1000) {
+          s.billing_phase = "grace";
+          s.grace_remaining_seconds = Math.max(0, s.grace_seconds -
+            Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000));
+          return;
+        }
+        s.billing_phase = "active";
+        s.grace_remaining_seconds = 0;
+
         s.elapsed_seconds += 1;
         if (s.remaining_seconds !== null) s.remaining_seconds = Math.max(0, s.remaining_seconds - 1);
         /* A FLAT (unlimited) and a BLOCK (fixed-length) session both cost a
@@ -1061,6 +1092,7 @@
               platform_game_id: p.platform_game_id,
               launch_method: p.launch_method,
               launch_target: p.launch_target,
+              launch_target_override: p.launch_target_override,
               process_name: p.process_name,
               launch_arguments: p.launch_arguments
             });
@@ -1557,8 +1589,11 @@
   function getPcGames(pcId) { return request("/api/games/pc/" + pcId); }
   /* Per PLATFORM now, not per game: a station installs Steam's F1 25 or EA's,
      and which one it has is exactly what the launcher needs to know. */
-  function setPcGames(pcId, gamePlatformIds) {
-    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ game_platform_ids: gamePlatformIds }) });
+  function setPcGames(pcId, gamePlatformIds, overrides) {
+    return request("/api/games/pc/" + pcId, {
+      method: "PUT",
+      body: JSON.stringify({ game_platform_ids: gamePlatformIds, overrides: overrides || {} })
+    });
   }
 
   function listGamingPrices(params) { return request("/api/gaming-prices" + qs(params)); }
@@ -2533,6 +2568,7 @@
     assignStations: assignStations,
     getSettings: getSettings,
     setSetting: setSetting,
+    uploadCafeWallpaper: uploadCafeWallpaper,
     refreshUnlockPin: refreshUnlockPin,
 
     // customers & wallet

@@ -1849,6 +1849,7 @@
               'value="' + UI.esc(user.username || "") + '">' +
             '<div class="field-hint">3–20 characters, starting with a letter — letters, numbers and ' +
               'underscore only. Sign in with this instead of your email, once set.</div>' +
+            '<div class="field-hint hidden" id="acctUsernameStatus"></div>' +
           "</div>" +
           '<div class="field">' +
             '<label class="field-label" for="acctPhone">Mobile</label>' +
@@ -1865,6 +1866,58 @@
             '<span class="btn-label">Save changes</span></button>' +
         "</div>";
 
+      /*
+       * Live "is this taken" feedback while typing — the actual save is
+       * still guarded server-side (PATCH /me enforces the same rule), this
+       * is just so a customer finds out before clicking Save rather than
+       * after.
+       */
+      var usernameInput = editCard.querySelector("#acctUsername");
+      var usernameStatus = editCard.querySelector("#acctUsernameStatus");
+      var usernameCheckTimer = null;
+      var usernameAvailable = true;   // last known result; never blocks Save on its own until a check says otherwise
+      var originalUsername = (user.username || "").trim().toLowerCase();
+
+      function paintUsernameStatus(text, ok) {
+        if (!text) { usernameStatus.classList.add("hidden"); return; }
+        usernameStatus.textContent = text;
+        usernameStatus.style.color = ok ? "var(--ok)" : "var(--danger)";
+        usernameStatus.classList.remove("hidden");
+      }
+
+      usernameInput.addEventListener("input", function () {
+        clearTimeout(usernameCheckTimer);
+        var value = usernameInput.value.trim();
+
+        // Blank, or unchanged from what this customer already has — nothing
+        // to ask about; keeping your own name is never "taken".
+        if (!value || value.toLowerCase() === originalUsername) {
+          usernameAvailable = true;
+          paintUsernameStatus("", true);
+          return;
+        }
+
+        paintUsernameStatus("Checking…", true);
+        usernameCheckTimer = setTimeout(function () {
+          Wallet.request("/api/customers/me/username-available?username=" + encodeURIComponent(value))
+            .then(function (body) {
+              // The field may have changed again while this was in flight —
+              // a stale response painting over what's on screen now would be
+              // actively misleading.
+              if (usernameInput.value.trim() !== value) return;
+              var data = body.data || {};
+              usernameAvailable = !!data.available;
+              paintUsernameStatus(usernameAvailable ? "Available" : (data.reason || "Already taken."), usernameAvailable);
+            })
+            .catch(function () {
+              // A failed check is not proof of anything — Save's own PATCH
+              // call is still the real guard, so this never blocks on its own.
+              usernameAvailable = true;
+              paintUsernameStatus("", true);
+            });
+        }, 400);
+      });
+
       editCard.querySelector("#acctSaveBtn").addEventListener("click", function (e) {
         var btn = e.currentTarget;
         var errorBox = editCard.querySelector("#acctSaveError");
@@ -1875,6 +1928,12 @@
           phone_number: editCard.querySelector("#acctPhone").value.trim(),
           address: editCard.querySelector("#acctAddress").value.trim()
         };
+        if (payload.username && !usernameAvailable) {
+          errorBox.textContent = "That username is already taken.";
+          errorBox.classList.remove("hidden");
+          Motion.shake(usernameInput);
+          return;
+        }
         if (payload.phone_number.length < 10) {
           errorBox.textContent = "Phone number must be at least 10 characters.";
           errorBox.classList.remove("hidden");

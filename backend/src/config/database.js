@@ -265,6 +265,13 @@ export const initializeDatabase = async () => {
     `);
     await client.query(`ALTER TABLE customers ALTER COLUMN email_verified SET DEFAULT FALSE`);
 
+    /* Optional, sign-in-with-this-instead-of-email handle. The per-café
+       unique index (same scoping as email, and for the same reason) lives in
+       schema.cafeScoping.js next to idx_customers_cafe_email — customers has
+       no cafe_id column yet at this point in startup, only later once that
+       file's migration runs. */
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS username VARCHAR(20)`);
+
     // wallet — one row per customer, holding the authoritative balance.
     // Money is NUMERIC, never floating point.
     await client.query(`
@@ -2319,6 +2326,14 @@ export const initializeDatabase = async () => {
         -- The printed template.
         ('billing.logo',         '',      'string',  'billing',
          'Café logo for the receipt head, stored as a data URI'),
+
+        -- The kiosk welcome screen's background — a real uploaded file
+        -- (see brandingUpload.js), so only its short /uploads/... URL and
+        -- kind live here, never the file itself.
+        ('billing.wallpaper_url', '', 'string', 'billing',
+         'Kiosk welcome-screen background — /uploads/... path to an uploaded image or video'),
+        ('billing.wallpaper_type','', 'string', 'billing',
+         '"image" or "video", matching whatever billing.wallpaper_url points at'),
         ('billing.receipt_width','80mm',  'string',  'billing',
          'Paper width: 58mm, 80mm or a4'),
         ('billing.receipt_show', 'logo,address,phone,tax_number,cashier,customer,footer', 'string', 'billing',

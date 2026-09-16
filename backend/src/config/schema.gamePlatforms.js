@@ -144,6 +144,16 @@ export const initializeGamePlatforms = async (client) => {
       PRIMARY KEY (pc_id, game_platform_id)
     )
   `);
+  /*
+   * A local exe path, for this one station, overriding how this platform
+   * launches only here — not a technical/platform config field (see the
+   * narrow exception noted in games.Controller.js's header). Install
+   * locations genuinely differ per PC (the same title can sit on C: on one
+   * station and D: on another), and only the café — never ManagerXP's own
+   * catalog — can see or fix that, since it never touches any station's
+   * filesystem directly.
+   */
+  await client.query(`ALTER TABLE station_game_platforms ADD COLUMN IF NOT EXISTS launch_target_override VARCHAR(500)`);
 
   /*
    * cafe_games gains the account policy. This is additive to the table the

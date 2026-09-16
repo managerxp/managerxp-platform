@@ -105,6 +105,12 @@ export const initializeCafeScoping = async (client) => {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_cafe_email
       ON customers (cafe_id, LOWER(email)) WHERE email IS NOT NULL
   `);
+  // Same scoping, for username — never global, since the same person can
+  // register independently at two unrelated cafés.
+  await client.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_customers_cafe_username
+      ON customers (cafe_id, LOWER(username)) WHERE username IS NOT NULL
+  `);
 
   /* Order numbers come from one sequence, so they are unique platform-wide
      already; the index is re-scoped anyway so a café importing historical

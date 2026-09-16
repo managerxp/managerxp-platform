@@ -25,6 +25,17 @@ for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __di
 
 let SIM_ID = "SIM-01"; // Will be updated by server
 let CAFE_NAME = ""; // This station's café — set by the console's SET_NAME, shown on the login screen
+// The café's own branding, if it has set any — see the CAFE_BRANDING handler
+// below. businessName is preferred over CAFE_NAME when set (the café's own
+// trading name vs. its registration name); logo is a data URI or null.
+let CAFE_BUSINESS_NAME = "";
+let CAFE_LOGO = "";
+// The welcome screen's background, if the café has set one — a relative
+// /uploads/... path (resolved against BACKEND_BASE by whichever page shows
+// it), not a data URI like CAFE_LOGO: this can be tens of MB, so it is
+// stored as a real file on the backend, never inlined here.
+let CAFE_WALLPAPER_URL = "";
+let CAFE_WALLPAPER_TYPE = "";
 const CLIENT_PORT = Number(process.env.CLIENT_PORT) || 9090; // Port this client listens on
 const SERVER_APP_PORT = Number(process.env.SERVER_APP_PORT) || 3334; // Server app HTTP port for discovery
 let LOCAL_IP = null; // Will be set on startup
@@ -703,6 +714,14 @@ const LAUNCHER_ADAPTERS = {
  * launch with, so the caller can say so rather than run "".
  */
 function buildGameLaunch(game) {
+  /* A café-set path for this one station wins over everything else — the
+     point is "on this PC, just run this," bypassing a broken/missing offer
+     id or a protocol hand-off that can't resolve a non-default install
+     location. Station-local only (station_game_platforms.launch_target_override
+     on the backend), never the catalog's own launch_target below it. */
+  const override = game.launch_target_override ? String(game.launch_target_override).trim() : '';
+  if (override) return { exe: override };
+
   const id = game.platform_game_id ? String(game.platform_game_id).trim() : '';
   const exe = game.launch_target ? String(game.launch_target).trim() : '';
   const adapter = LAUNCHER_ADAPTERS[game.platform];
@@ -786,7 +805,12 @@ function launchGame(game) {
    * buildGameLaunch's own "no launch configuration" message, so a missing
    * launcher is never confused with a missing App ID.
    */
-  if (game.platform === 'EA') {
+  // A station-set override runs directly and has no need for EA App at all
+  // (see buildGameLaunch) — the EA-installed check below exists to catch a
+  // missing launcher before the origin2:// hand-off, which an override
+  // never takes, so gating it on EA App being detected would block exactly
+  // the launches this override exists to unblock.
+  if (game.platform === 'EA' && !game.launch_target_override) {
     detectLaunchers().then((launchers) => {
       const info = launchers.EA;
       if (info && info.installed) { launchGameNow(game); return; }
@@ -1857,6 +1881,17 @@ function createWindow() {
   // before SET_NAME necessarily arrives.
   ipcMain.handle('get-cafe-name', async (event) => {
     return CAFE_NAME;
+  });
+
+  // Same reasoning again — CAFE_BRANDING arrives even later than SET_NAME
+  // (it is a follow-up), so a page mounted by then still needs to pull it.
+  ipcMain.handle('get-cafe-branding', async (event) => {
+    return {
+      businessName: CAFE_BUSINESS_NAME,
+      logo: CAFE_LOGO,
+      wallpaperUrl: CAFE_WALLPAPER_URL,
+      wallpaperType: CAFE_WALLPAPER_TYPE
+    };
   });
 
   // The portal loads before SET_NAME necessarily arrives, so it pulls the
@@ -3118,8 +3153,26 @@ function listen() {
         return; // Don't process this as a command message
       }
 
+      /* The café's own logo/trading name, if it has set either — sent as a
+         one-off follow-up to SET_NAME rather than folded into it (see
+         sendCafeBranding's own comment in server-app/main.js), so this
+         never re-triggers the REGISTER handshake above. */
+      if (msg.type === "CAFE_BRANDING") {
+        CAFE_BUSINESS_NAME = msg.businessName || "";
+        CAFE_LOGO = msg.logo || "";
+        CAFE_WALLPAPER_URL = msg.wallpaperUrl || "";
+        CAFE_WALLPAPER_TYPE = msg.wallpaperType || "";
+        sendToWindow(win, "cafe-branding", {
+          businessName: CAFE_BUSINESS_NAME,
+          logo: CAFE_LOGO,
+          wallpaperUrl: CAFE_WALLPAPER_URL,
+          wallpaperType: CAFE_WALLPAPER_TYPE
+        });
+        return;
+      }
+
       // Handle other messages
-      
+
       if (msg.type === "COMMAND") {
         log(`Command received: ${msg.command}`);
       }

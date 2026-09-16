@@ -9,7 +9,15 @@
   <link rel="stylesheet" href="ui/portal.css" />
 </head>
 <body>
-  <div class="backdrop"></div>
+  <div class="backdrop">
+    <!-- A café's own uploaded background, shown in place of the plain glow
+         above once one actually arrives (see applyCafeBranding below) — at
+         most one of these is ever visible; which one depends on
+         wallpaperType, not on which happens to have a src set. -->
+    <img class="kiosk-wallpaper" id="kioskWallpaperImg" alt="" />
+    <video class="kiosk-wallpaper" id="kioskWallpaperVideo" muted loop autoplay playsinline></video>
+    <div class="kiosk-wallpaper-scrim"></div>
+  </div>
 
   <main class="kiosk">
     <div class="kiosk-inner" id="kioskInner">
@@ -20,8 +28,10 @@
           <path d="M7 10v4M5 12h4M16 11h.01M18.5 13.5h.01"></path>
         </svg>
       </div>
+      <img class="kiosk-logo" id="kioskLogo" alt="" />
 
-      <div class="kiosk-word">Cafe<span>XP</span></div>
+      <div class="kiosk-word" id="kioskWord">Cafe<span>XP</span></div>
+      <p class="powered-by">Powered by <strong>ManagerXP</strong></p>
 
       <h1 class="kiosk-head">This station is ready</h1>
       <p class="kiosk-text">
@@ -61,6 +71,68 @@
       var statusBadge = document.getElementById("statusBadge");
       var statusDot = document.getElementById("statusDot");
       var clientNameEl = document.getElementById("clientName");
+      var kioskWordEl = document.getElementById("kioskWord");
+      var kioskLogoEl = document.getElementById("kioskLogo");
+      var kioskInner = document.getElementById("kioskInner");
+      var backdropEl = document.querySelector(".backdrop");
+      var wallpaperImgEl = document.getElementById("kioskWallpaperImg");
+      var wallpaperVideoEl = document.getElementById("kioskWallpaperVideo");
+
+      /* wallpaperUrl arrives as a relative /uploads/... path — the same
+         address rule as everything else this station fetches from the
+         backend (see main.js's SET_NAME handler). getBackendBase and
+         getCafeBranding are two independent pulls with no guaranteed order,
+         so the wallpaper src is built fresh from whatever API_BASE is
+         current each time either one resolves, rather than only once. */
+      var API_BASE = "http://localhost:5000";
+      if (window.api.getBackendBase) window.api.getBackendBase(function (b) { if (b) { API_BASE = b; paintWallpaper(); } });
+      if (window.api.onBackendBase) window.api.onBackendBase(function (b) { if (b) { API_BASE = b; paintWallpaper(); } });
+
+      /* Café's own trading name, if set, over its registration name, over
+         the generic default — same precedence billing.js already uses on
+         the console side. Either can arrive after the other (registration
+         name rides SET_NAME, trading name/logo follow separately), so both
+         paths repaint through the same function rather than assuming order. */
+      var cafeRegName = "", cafeBusinessName = "";
+      function paintBrandWord() {
+        var name = cafeBusinessName || cafeRegName;
+        if (name) kioskWordEl.textContent = name;
+      }
+      if (window.api.getCafeName) {
+        window.api.getCafeName(function (name) { cafeRegName = name || ""; paintBrandWord(); });
+      }
+      if (window.api.onCafeName) {
+        window.api.onCafeName(function (name) { cafeRegName = name || ""; paintBrandWord(); });
+      }
+
+      var cafeWallpaperUrl = "", cafeWallpaperType = "";
+      function paintWallpaper() {
+        if (!cafeWallpaperUrl) return;
+        var el = cafeWallpaperType === "video" ? wallpaperVideoEl : wallpaperImgEl;
+        var other = el === wallpaperVideoEl ? wallpaperImgEl : wallpaperVideoEl;
+        other.classList.remove("is-active");
+        other.removeAttribute("src");
+        el.src = API_BASE + cafeWallpaperUrl;
+        el.classList.add("is-active");
+        backdropEl.classList.add("has-wallpaper");
+      }
+
+      function applyCafeBranding(b) {
+        b = b || {};
+        cafeBusinessName = b.businessName || "";
+        paintBrandWord();
+        if (b.logo) {
+          kioskLogoEl.src = b.logo;
+          kioskInner.classList.add("kiosk-has-logo");
+        }
+        if (b.wallpaperUrl) {
+          cafeWallpaperUrl = b.wallpaperUrl;
+          cafeWallpaperType = b.wallpaperType || "";
+          paintWallpaper();
+        }
+      }
+      if (window.api.getCafeBranding) window.api.getCafeBranding(applyCafeBranding);
+      if (window.api.onCafeBranding) window.api.onCafeBranding(applyCafeBranding);
 
       function updateStatusUI(status) {
         var online = status === "CONNECTED";

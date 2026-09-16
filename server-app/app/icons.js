@@ -62,7 +62,11 @@
     external:   '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6M10 14 21 3"/>',
     copy:       '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
     menu:       '<path d="M3 6h18M3 12h18M3 18h18"/>',
-    sparkle:    '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>'
+    sparkle:    '<path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M5.6 18.4l2.8-2.8M15.6 8.4l2.8-2.8"/>',
+    // Station-type icons — floor.js maps pc.category to one of these.
+    pool:       '<circle cx="10" cy="14" r="6"/><circle cx="10" cy="14" r="1.5"/><path d="M14.5 9.5 21 3"/>',
+    vr:         '<rect x="2" y="7" width="20" height="10" rx="5"/><circle cx="8" cy="12" r="2"/><circle cx="16" cy="12" r="2"/><path d="M6 7V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v2"/>',
+    racing:     '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/><path d="M12 9V3M6.5 15.5 3 19M17.5 15.5 21 19"/>'
   };
 
   function icon(name, size, cls) {

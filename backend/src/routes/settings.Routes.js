@@ -4,9 +4,11 @@ import {
   getSettingByKey,
   updateSetting,
   updateSettings,
-  effectiveSettings
+  effectiveSettings,
+  uploadWallpaper
 } from '../controllers/settings.Controller.js';
 import { requireStaff, requirePermission } from '../middleware/authGuards.js';
+import { brandingUpload, handleBrandingUploadErrors } from '../middleware/brandingUpload.js';
 
 const settingsRouter = express.Router();
 
@@ -26,6 +28,7 @@ const canWrite = requirePermission('settings.manage');
 settingsRouter.get('/effective', requireStaff('Café staff access required'), effectiveSettings);
 
 // Literal path before "/:key", or it would be read as a key.
+settingsRouter.post('/wallpaper-upload', canWrite, brandingUpload, handleBrandingUploadErrors, uploadWallpaper);
 settingsRouter.get('/', canRead, listSettings);
 settingsRouter.put('/', canWrite, updateSettings);
 settingsRouter.get('/:key', canRead, getSettingByKey);

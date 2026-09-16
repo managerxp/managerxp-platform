@@ -6,6 +6,8 @@ import {
   getCustomers,
   getCustomerById,
   getMyProfile,
+  updateMyProfile,
+  checkUsernameAvailable,
   setCustomerTier,
   getCustomerCredit
 } from '../controllers/customer.Controller.js';
@@ -34,6 +36,10 @@ customerRouter.post('/resend-verification', resetLimiter, resendCustomerVerifica
    this café's package includes the staff-facing Customers module. Literal
    path before "/:id", or "me" would be read as a customer id. */
 customerRouter.get('/me', requireAuth, getMyProfile);
+customerRouter.patch('/me', requireAuth, updateMyProfile);
+// Before "/:id" for the same reason "/me" itself is — read as a literal
+// path, not a customer id.
+customerRouter.get('/me/username-available', requireAuth, checkUsernameAvailable);
 
 // Staff only: these return other people's contact details.
 customerRouter.post('/', requirePermission('customers.manage'), feature, createCustomer);
