@@ -116,6 +116,7 @@
      PER-GAME CAFÉ SETTINGS — account mode + rate
      ========================================================================== */
   function settingsDialog(game) {
+    var platforms = game.platforms || [];
     var body = UI.el("div", { class: "col gap-4" });
     body.innerHTML =
       '<div class="field"><label class="field-label">How players get into this game</label>' +
@@ -134,6 +135,34 @@
       modeHost.appendChild(row);
     });
 
+    /*
+     * A café-wide launch path/arguments default per platform, applied to
+     * every station that doesn't set its own (see "Games by station" for
+     * the per-station one). Useful the moment every PC has the same title
+     * installed in the same place — set it once here instead of repeating
+     * it on each station.
+     */
+    if (platforms.length) {
+      var launchSection = UI.el("div", { class: "field" });
+      launchSection.innerHTML =
+        '<label class="field-label">Launch override (applies to every station, unless a station sets its own)</label>' +
+        '<div class="col gap-3" id="lpList"></div>';
+      var lpList = launchSection.querySelector("#lpList");
+      platforms.forEach(function (p) {
+        var row = UI.el("div", { class: "col gap-1", style: { padding: "8px 10px", border: "1px solid var(--line)", borderRadius: "10px" } });
+        row.innerHTML =
+          '<div class="faint" style="font-size:12px;font-weight:700">' + UI.esc(p.platform) + "</div>" +
+          '<input class="input mono" data-lp-target="' + p.id + '" style="font-size:12px;height:30px" ' +
+            'placeholder="Executable/path — leave blank for ' + UI.esc(p.launch_target || "the catalogue default") + '" ' +
+            'value="' + UI.esc(p.cafe_launch_target_override || "") + '">' +
+          '<input class="input mono" data-lp-args="' + p.id + '" style="font-size:12px;height:30px" ' +
+            'placeholder="Launch arguments — leave blank for ' + UI.esc(p.launch_arguments || "none") + '" ' +
+            'value="' + UI.esc(p.cafe_launch_arguments_override || "") + '">';
+        lpList.appendChild(row);
+      });
+      body.appendChild(launchSection);
+    }
+
     return UI.modal({
       title: game.name,
       description: "How this game is offered at your café.",
@@ -145,7 +174,16 @@
           onClick: function (ctx) {
             var mode = (ctx.body.querySelector('input[name="accountMode"]:checked') || {}).value;
             var patch = { account_mode: mode };
-            return Store.updateCafeGame(game.cafe_game_id, patch)
+            var launchSaves = platforms.map(function (p) {
+              var targetEl = ctx.body.querySelector('[data-lp-target="' + p.id + '"]');
+              var argsEl = ctx.body.querySelector('[data-lp-args="' + p.id + '"]');
+              if (!targetEl) return Promise.resolve();
+              return Store.setGamePlatformOverride(p.id, {
+                launch_target_override: targetEl.value.trim() || null,
+                launch_arguments_override: argsEl.value.trim() || null
+              });
+            });
+            return Promise.all([Store.updateCafeGame(game.cafe_game_id, patch)].concat(launchSaves))
               .then(function () { UI.toast.ok("Saved", game.name); load(); return true; })
               .catch(function (e) { UI.toast.error("Could not save", e.message); return false; });
           }
@@ -424,23 +462,37 @@
            * A local path override for this one platform on this one station
            * only — see games.Controller.js's header for why this is the one
            * field a café can set here. Left blank, this platform launches
-           * exactly as the catalogue configures it everywhere else; a path
-           * here always wins, protocol included, since the point is "on this
-           * PC, just run this."
+           * using the café's own default (if it set one, see settingsDialog)
+           * or the catalogue's; a path here always wins, protocol included,
+           * since the point is "on this PC, just run this."
            */
+          var fallbackPath = p.cafe_launch_target_override || p.launch_target || "the catalogue default";
           var overrideRow = UI.el("div", {
             class: "row gap-2",
-            style: { padding: "0 0 4px 34px", display: p.installed ? "flex" : "none" }
+            style: { padding: "0 0 2px 34px", display: p.installed ? "flex" : "none" }
           });
           overrideRow.innerHTML =
             '<input class="input mono" data-override="' + p.id + '" list="stScanResults" ' +
               'style="flex:1;font-size:12px;height:30px" ' +
-              'placeholder="Leave blank to use the catalogue default" ' +
+              'placeholder="Leave blank to use ' + UI.esc(fallbackPath) + '" ' +
               'value="' + UI.esc(p.launch_target_override || "") + '">';
           wrap.appendChild(overrideRow);
 
+          var argOverrideRow = UI.el("div", {
+            class: "row gap-2",
+            style: { padding: "0 0 4px 34px", display: p.installed ? "flex" : "none" }
+          });
+          argOverrideRow.innerHTML =
+            '<input class="input mono" data-arg-override="' + p.id + '" ' +
+              'style="flex:1;font-size:12px;height:30px" ' +
+              'placeholder="Launch arguments — leave blank for ' +
+                UI.esc(p.cafe_launch_arguments_override || p.launch_arguments || "none") + '" ' +
+              'value="' + UI.esc(p.launch_arguments_override || "") + '">';
+          wrap.appendChild(argOverrideRow);
+
           row.querySelector('input[type="checkbox"]').addEventListener("change", function (e) {
             overrideRow.style.display = e.target.checked ? "flex" : "none";
+            argOverrideRow.style.display = e.target.checked ? "flex" : "none";
           });
 
           group.appendChild(wrap);
@@ -459,7 +511,7 @@
     pcSel.addEventListener("change", function () { scanned = []; loadPc(); });
     body.querySelector("#stNone").addEventListener("click", function () {
       UI.$$("#stList input[type=checkbox]", body).forEach(function (c) { c.checked = false; });
-      UI.$$("#stList [data-override]", body).forEach(function (i) { i.closest(".row").style.display = "none"; });
+      UI.$$("#stList [data-override], #stList [data-arg-override]", body).forEach(function (i) { i.closest(".row").style.display = "none"; });
     });
 
     scanBtn.addEventListener("click", function () {
@@ -502,7 +554,11 @@
             UI.$$("#stList [data-override]", ctx.body).forEach(function (i) {
               overrides[Number(i.dataset.override)] = i.value.trim() || null;
             });
-            return Store.setPcGames(pcSel.value, ids, overrides)
+            var argOverrides = {};
+            UI.$$("#stList [data-arg-override]", ctx.body).forEach(function (i) {
+              argOverrides[Number(i.dataset.argOverride)] = i.value.trim() || null;
+            });
+            return Store.setPcGames(pcSel.value, ids, overrides, argOverrides)
               .then(function (r) { UI.toast.ok("Saved", r.message); load(); return true; })
               .catch(function (e) { UI.toast.error("Could not save", e.message); return false; });
           }

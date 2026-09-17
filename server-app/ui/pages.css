@@ -675,6 +675,14 @@
   opacity: 0.75;
 }
 
+/* The Receipt Template page's "Paper width" setting, applied to the real
+   receipt — not just its own preview (see .rt-58mm etc. on .receipt-paper
+   below). Same token, same three widths, so a café's choice there actually
+   changes what prints. */
+.receipt.rt-58mm { max-width: 240px; }
+.receipt.rt-80mm { max-width: 300px; }
+.receipt.rt-a4 { max-width: 420px; font-size: 13px; padding: 26px 24px; }
+
 /* Printing: the receipt alone, on white, rather than the whole console. */
 @media print {
   body.printing-receipt * { visibility: hidden; }

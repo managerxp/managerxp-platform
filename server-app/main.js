@@ -149,7 +149,6 @@ function createWindow() {
     win.loadFile(path.join(__dirname, "index.html")).catch(err => {
       console.error('[Navigation] Error loading home page:', err);
     });
-    
     // Send user info to renderer when window loads
     win.webContents.once('did-finish-load', () => {
       console.log('[Navigation] Home window content loaded, showing window');

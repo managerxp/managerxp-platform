@@ -534,7 +534,12 @@
         /* Printed grey rather than black: the mark should be legible on the
            roll without drawing the eye away from the café's own footer. */
         ".rt-powered{text-align:center;margin-top:8px;font-size:9px;color:#888;letter-spacing:.04em}" +
-        "</style></head><body>" + node.innerHTML + "</body></html>"
+        /* The same "Paper width" setting the real receipt now honours (see
+           pages.css's .receipt.rt-58mm etc.) — node.innerHTML alone drops the
+           width class that lives on node itself, so it's re-applied on the
+           wrapper below instead of just copying the inner content. */
+        ".rt-58mm{width:240px}.rt-80mm{width:300px}.rt-a4{width:420px;font-size:13px}" +
+        "</style></head><body><div class=\"" + node.className + "\">" + node.innerHTML + "</div></body></html>"
       );
       w.document.close();
       w.focus();

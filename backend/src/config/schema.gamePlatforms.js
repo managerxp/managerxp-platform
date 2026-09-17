@@ -154,6 +154,31 @@ export const initializeGamePlatforms = async (client) => {
    * filesystem directly.
    */
   await client.query(`ALTER TABLE station_game_platforms ADD COLUMN IF NOT EXISTS launch_target_override VARCHAR(500)`);
+  /* Same station-local reasoning as launch_target_override, for a launcher
+     that needs extra command-line flags on this café's machines (e.g. a
+     windowed-mode or config-file flag) rather than a different exe. */
+  await client.query(`ALTER TABLE station_game_platforms ADD COLUMN IF NOT EXISTS launch_arguments_override TEXT`);
+
+  /*
+   * A café-WIDE default for the same two fields — set once from the Game
+   * Library instead of on every PC. A station's own override (above) still
+   * wins when both are set, for the one PC that genuinely differs from the
+   * rest; this is what every other PC falls back to instead of the
+   * catalogue's default. Scoped by (cafe_id, game_platform_id), the same
+   * granularity game_accounts already uses, since the override is real per
+   * platform (an EA path and a Steam path for the same game are unrelated
+   * facts) — never per game.
+   */
+  await client.query(`
+    CREATE TABLE IF NOT EXISTS cafe_game_platform_overrides (
+      cafe_id INTEGER NOT NULL REFERENCES cafes(cafe_id) ON DELETE CASCADE,
+      game_platform_id INTEGER NOT NULL REFERENCES game_platforms(id) ON DELETE CASCADE,
+      launch_target_override VARCHAR(500),
+      launch_arguments_override TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (cafe_id, game_platform_id)
+    )
+  `);
 
   /*
    * cafe_games gains the account policy. This is additive to the table the

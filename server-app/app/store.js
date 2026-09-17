@@ -1093,8 +1093,11 @@
               launch_method: p.launch_method,
               launch_target: p.launch_target,
               launch_target_override: p.launch_target_override,
+              cafe_launch_target_override: p.cafe_launch_target_override,
               process_name: p.process_name,
-              launch_arguments: p.launch_arguments
+              launch_arguments: p.launch_arguments,
+              launch_arguments_override: p.launch_arguments_override,
+              cafe_launch_arguments_override: p.cafe_launch_arguments_override
             });
           });
         });
@@ -1589,10 +1592,22 @@
   function getPcGames(pcId) { return request("/api/games/pc/" + pcId); }
   /* Per PLATFORM now, not per game: a station installs Steam's F1 25 or EA's,
      and which one it has is exactly what the launcher needs to know. */
-  function setPcGames(pcId, gamePlatformIds, overrides) {
+  function setPcGames(pcId, gamePlatformIds, overrides, argOverrides) {
     return request("/api/games/pc/" + pcId, {
       method: "PUT",
-      body: JSON.stringify({ game_platform_ids: gamePlatformIds, overrides: overrides || {} })
+      body: JSON.stringify({
+        game_platform_ids: gamePlatformIds,
+        overrides: overrides || {},
+        arg_overrides: argOverrides || {}
+      })
+    });
+  }
+  /* The café-wide launch path/args default a station falls back to when it
+     has no override of its own — set once from the Game Library instead of
+     on every PC. */
+  function setGamePlatformOverride(gamePlatformId, patch) {
+    return request("/api/games/platform-override/" + gamePlatformId, {
+      method: "PUT", body: JSON.stringify(patch)
     });
   }
 
@@ -2239,8 +2254,11 @@
                 name: g.name, category: g.category, icon_url: g.icon_url,
                 account_mode: g.account_mode, platform: p.platform,
                 platform_game_id: p.platform_game_id, launch_method: p.launch_method,
-                launch_target: p.launch_target, process_name: p.process_name,
-                launch_arguments: p.launch_arguments
+                launch_target: p.launch_target, launch_target_override: p.launch_target_override,
+                cafe_launch_target_override: p.cafe_launch_target_override,
+                process_name: p.process_name,
+                launch_arguments: p.launch_arguments, launch_arguments_override: p.launch_arguments_override,
+                cafe_launch_arguments_override: p.cafe_launch_arguments_override
               });
             });
           });
@@ -2488,6 +2506,7 @@
     removeVenueAccount: removeVenueAccount,
     getPcGames: getPcGames,
     setPcGames: setPcGames,
+    setGamePlatformOverride: setGamePlatformOverride,
     listGamingPrices: listGamingPrices,
     createGamingPrice: createGamingPrice,
     updateGamingPrice: updateGamingPrice,

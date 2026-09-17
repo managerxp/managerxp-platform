@@ -713,13 +713,30 @@ const LAUNCHER_ADAPTERS = {
  * running `launch_target` directly. Returns null when there is nothing to
  * launch with, so the caller can say so rather than run "".
  */
+/*
+ * Three tiers, most specific wins: this one station's own override, then
+ * the café-wide default every station falls back to, then the catalog's
+ * own value. A café-set path bypasses the protocol hand-off entirely —
+ * the point of either override is "on this PC, just run this," not
+ * "prefer this offer id" — so both live here, ahead of buildGameLaunch's
+ * own catalog/protocol resolution below.
+ */
+function effectiveLaunchTarget(game) {
+  const station = game.launch_target_override ? String(game.launch_target_override).trim() : '';
+  if (station) return station;
+  const cafe = game.cafe_launch_target_override ? String(game.cafe_launch_target_override).trim() : '';
+  return cafe;
+}
+function effectiveLaunchArguments(game) {
+  const station = game.launch_arguments_override ? String(game.launch_arguments_override).trim() : '';
+  if (station) return station;
+  const cafe = game.cafe_launch_arguments_override ? String(game.cafe_launch_arguments_override).trim() : '';
+  if (cafe) return cafe;
+  return game.launch_arguments || '';
+}
+
 function buildGameLaunch(game) {
-  /* A café-set path for this one station wins over everything else — the
-     point is "on this PC, just run this," bypassing a broken/missing offer
-     id or a protocol hand-off that can't resolve a non-default install
-     location. Station-local only (station_game_platforms.launch_target_override
-     on the backend), never the catalog's own launch_target below it. */
-  const override = game.launch_target_override ? String(game.launch_target_override).trim() : '';
+  const override = effectiveLaunchTarget(game);
   if (override) return { exe: override };
 
   const id = game.platform_game_id ? String(game.platform_game_id).trim() : '';
@@ -810,7 +827,7 @@ function launchGame(game) {
   // missing launcher before the origin2:// hand-off, which an override
   // never takes, so gating it on EA App being detected would block exactly
   // the launches this override exists to unblock.
-  if (game.platform === 'EA' && !game.launch_target_override) {
+  if (game.platform === 'EA' && !effectiveLaunchTarget(game)) {
     detectLaunchers().then((launchers) => {
       const info = launchers.EA;
       if (info && info.installed) { launchGameNow(game); return; }
@@ -916,7 +933,7 @@ function launchGameNow(game) {
     // shell string, so a path or an admin-typed argument containing a
     // space, quote or shell metacharacter can't be misread as a second
     // command. No shell is invoked at all.
-    const child = spawn(plan.exe, splitLaunchArguments(game.launch_arguments), { windowsHide: false });
+    const child = spawn(plan.exe, splitLaunchArguments(effectiveLaunchArguments(game)), { windowsHide: false });
     child.once('error', (err) => {
       log(`Launch failed for ${game.name}: ${err.message}`);
       const error = game.platform === 'EA' ? 'EA game could not be launched.' : 'The game could not be started.';
