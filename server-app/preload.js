@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld("api", {
   getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),
 
   // Session state push to a station
-  pushSessionState: (pcName, session) => ipcRenderer.invoke("session:push-state", { pcName, session }),
+  pushSessionState: (pcName, session, endedReason) => ipcRenderer.invoke("session:push-state", { pcName, session, endedReason }),
   // Grow a station's floating timer card after its session was extended.
   pushExtendTimer: (pcName, minutes) => ipcRenderer.invoke("session:push-extend-timer", { pcName, minutes }),
   // Tell one connected station a newer client build is available.
@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("api", {
   cacheRelease: (payload) => ipcRenderer.invoke("updates:cache-release", payload),
   // A player tapped Extend at the station; the console acts with its token.
   onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
+  // A station launched a game mid-session; the console records it with its token.
+  onStationGameLaunched: (cb) => ipcRenderer.on("station:game-launched", (_, d) => cb(d)),
   // A station's block ran out with the game still running.
   onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
   // A customer tapped "Call staff" on the Help menu at their station.
@@ -78,6 +80,7 @@ contextBridge.exposeInMainWorld("api", {
     ipcRenderer.invoke("session:push-start-options", { pcName, games, prices }),
   // The customer picked a game and a price and tapped Start.
   onStationStartRequest: (cb) => ipcRenderer.on("station:start-request", (_, d) => cb(d)),
+  onStationEndRequest: (cb) => ipcRenderer.on("station:end-request", (_, d) => cb(d)),
   pushStartFailed: (pcName, message) => ipcRenderer.invoke("session:push-start-failed", { pcName, message }),
 
   // Telemetry — live readings live in the main process, history in the backend

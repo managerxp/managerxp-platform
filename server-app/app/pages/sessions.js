@@ -10,7 +10,6 @@
   global.CXPages = global.CXPages || {};
 
   var DURATIONS = [30, 60, 120, 180];
-  var EXTEND_BY = [10, 15, 30, 60, 120];
   var defaultRate = 60;
 
   Store.sessionDefaults()
@@ -34,14 +33,25 @@
     return (h > 0 ? pad(h) + ":" : "") + pad(m) + ":" + pad(sec);
   }
 
+  /* Still inside the free load buffer — billing_phase (kept live by
+     store.js's own ticker, same fix as client-app's session.js) says so
+     even while status is already "active". Shown as its own countdown
+     rather than the frozen elapsed/remaining figures, which don't move
+     until the buffer actually ends. */
+  function inGraceBuffer(session) {
+    return session.billing_phase === "grace";
+  }
+
   /** Open-ended sessions have no remaining time — show elapsed instead. */
   function displayTime(session) {
+    if (inGraceBuffer(session)) return clock(session.grace_remaining_seconds);
     return session.remaining_seconds === null
       ? clock(session.elapsed_seconds)
       : clock(session.remaining_seconds);
   }
 
   function timeLabel(session) {
+    if (inGraceBuffer(session)) return "preparing";
     return session.remaining_seconds === null ? "elapsed" : "remaining";
   }
 
@@ -534,6 +544,165 @@
   }
 
   /* ==========================================================================
+     QUICK START
+     A guest walk-in at the default duration and whatever single price
+     already applies to this station's type — the common case, with every
+     field that only ever has one sane answer skipped. Anything that needs an
+     actual decision (a specific registered customer, a choice between
+     several prices, launching a game with the session) still goes through
+     startSessionDialog above instead of trying to shrink that dialog itself.
+     ========================================================================== */
+  function quickStartDialog(pcName, onStarted) {
+    var pc = Store.getPC(pcName);
+    var eligible = canStartSession(pc);
+    if (!eligible.ok) { UI.toast.warn("Can't start a session here", eligible.reason); return; }
+
+    global.CXRates.listLive().then(function (all) {
+      var rates = pc.category ? all.filter(function (r) { return r.category === pc.category; }) : all;
+
+      // Nothing priced for this station's type — that already needs a manual
+      // rate typed in, which is exactly the "needs a real decision" case
+      // Quick Start exists to skip. Send it to the dialog that handles it.
+      if (!rates.length) {
+        UI.toast.info("No price set for " + pcName, "Opening the full start-session form.");
+        startSessionDialog(pcName, onStarted);
+        return;
+      }
+
+      openQuickStart(pc, rates, onStarted);
+    }).catch(function (err) {
+      UI.toast.error("Could not load prices", err.message);
+    });
+  }
+
+  function openQuickStart(pc, rates, onStarted) {
+    var pcName = pc.name;
+    var body = UI.el("div", { class: "col gap-4" });
+    body.innerHTML =
+      '<div class="field"><label class="field-label" for="qsGuestName">Guest name</label>' +
+        '<input class="input" id="qsGuestName" placeholder="Walk-in" data-autofocus></div>' +
+
+      '<div class="field"><label class="field-label">Duration</label>' +
+        '<div class="row gap-2 wrap" id="qsDuration">' +
+          DURATIONS.map(function (m) {
+            return '<button type="button" class="chip" data-min="' + m + '">' +
+              (m >= 60 ? (m / 60) + "h" : m + " min") + "</button>";
+          }).join("") +
+        "</div></div>" +
+
+      // Only shown when this café has priced more than one option for this
+      // type — one option is not a choice, so it is used silently instead.
+      (rates.length > 1
+        ? '<div class="field"><label class="field-label field-req" for="qsPrice">Gaming price</label>' +
+            '<select class="select" id="qsPrice"><option value="">— Select price —</option>' +
+            rates.map(function (r) {
+              return '<option value="' + r.price_id + '">' +
+                UI.esc(r.software_name + " · " + r.session_name + global.CXRates.playersSuffix(r)) + " — " +
+                UI.esc(global.CXRates.money(r.price, r.currency)) + "</option>";
+            }).join("") +
+            "</select></div>"
+        : "") +
+
+      '<div class="notice" data-status="accent" id="qsPreview"></div>';
+
+    var dialog = UI.modal({
+      title: "Quick start " + pcName,
+      description: "Guest walk-in — the full form is still there for anything else.",
+      body: body,
+      actions: [
+        { label: "Cancel", variant: "ghost" },
+        {
+          label: "Start", variant: "primary", icon: "play",
+          onClick: function (ctx) {
+            var minutes = parseInt(minutesChip, 10) || 0;
+            if (!minutes) {
+              UI.toast.warn("Pick a duration");
+              return false;
+            }
+
+            var rate = rates.length === 1 ? rates[0] : null;
+            if (!rate) {
+              var priceSel = ctx.body.querySelector("#qsPrice");
+              if (!priceSel.value) {
+                Motion.shake(priceSel);
+                UI.toast.warn("Choose a gaming price");
+                return false;
+              }
+              rate = rates.filter(function (r) { return String(r.price_id) === priceSel.value; })[0];
+            }
+
+            var payload = {
+              pc_id: pc.pc_id,
+              planned_minutes: minutes,
+              gaming_price_id: rate.price_id,
+              guest_name: ctx.body.querySelector("#qsGuestName").value.trim() || "Walk-in",
+              guest_phone: null
+            };
+
+            return Store.startSession(payload)
+              .then(function (session) {
+                UI.toast.ok("Session started", session.customer_name + " on " + pcName);
+                if (onStarted) onStarted(session);
+                return true;
+              })
+              .catch(function (err) {
+                UI.toast.error("Could not start the session", err.message);
+                return false;
+              });
+          }
+        }
+      ]
+    });
+
+    var minutesChip = "";
+    var durationChips = UI.$$("#qsDuration .chip", body);
+    var priceSelect = body.querySelector("#qsPrice");
+    var preview = body.querySelector("#qsPreview");
+
+    function effectiveHourly(rateRow) {
+      if (!rateRow.duration_minutes) return null; // unlimited/flat
+      return Number(rateRow.price) / (rateRow.duration_minutes / 60);
+    }
+
+    function selectedRate() {
+      if (rates.length === 1) return rates[0];
+      return rates.filter(function (r) { return priceSelect && String(r.price_id) === priceSelect.value; })[0] || null;
+    }
+
+    function refresh() {
+      var rate = selectedRate();
+      var minutes = parseInt(minutesChip, 10) || 0;
+      if (!rate) {
+        preview.innerHTML = Icon("info", 16) + "<div>Choose a price.</div>";
+        return;
+      }
+      var hourly = effectiveHourly(rate);
+      if (hourly === null) {
+        preview.innerHTML = Icon("info", 16) + "<div>A flat <strong>" + coins(rate.price) + " XP</strong> however long it runs.</div>";
+        return;
+      }
+      if (!minutes) {
+        preview.innerHTML = Icon("info", 16) + "<div>Pick a duration.</div>";
+        return;
+      }
+      var cost = Number((hourly * (minutes / 60)).toFixed(2));
+      preview.innerHTML = Icon("info", 16) + "<div>" + minutes + " minutes costs <strong>" + coins(cost) + " XP</strong>, settled at the counter.</div>";
+    }
+
+    durationChips.forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        minutesChip = chip.dataset.min;
+        durationChips.forEach(function (c) { c.setAttribute("aria-pressed", String(c === chip)); });
+        refresh();
+      });
+    });
+    if (priceSelect) priceSelect.addEventListener("change", refresh);
+    durationChips[1].click(); // default to one hour, same as the full dialog
+
+    return dialog;
+  }
+
+  /* ==========================================================================
      END A SESSION
      ========================================================================== */
   function endSessionDialog(session, onEnded) {
@@ -672,52 +841,72 @@
      EXTEND / TRANSFER
      ========================================================================== */
   /*
-   * Always minutes, never "blocks" — a café owner thinks in "give them 15
-   * more minutes," not in billing units. A BLOCK-priced session still has a
-   * fixed price per whole block behind the scenes, but that's the backend's
-   * problem to round up and charge for correctly (see extendSession there);
-   * this dialog only ever asks for and shows minutes, for every session.
+   * A tier picker, not a free-typed minutes box — the café already has a
+   * rate card (Gaming Price Master); staff pick from it the same way the
+   * station's own +Extend does, rather than guessing a number. Works for
+   * either session shape: a BLOCK session grows its bill by the chosen
+   * tier's own duration/price, an open-ended (HOUR) session has the tier's
+   * price credited straight to the customer's wallet — extendSession on the
+   * backend is what decides which, from the session's own pricing_unit, not
+   * this dialog.
    */
   function extendDialog(session, onDone) {
-    var body = UI.el("div", { class: "col gap-4" });
-    body.innerHTML =
-      '<div class="field"><label class="field-label">Add time</label>' +
-        '<div class="row gap-2" id="extendRow">' +
-          EXTEND_BY.map(function (m) {
-            return '<button type="button" class="chip" data-min="' + m + '">+' +
-              (m >= 60 ? (m / 60) + "h" : m + " min") + "</button>";
-          }).join("") +
-        "</div></div>" +
-      '<div class="field"><label class="field-label field-req" for="extendMinutes">Minutes</label>' +
-        '<input class="input" id="extendMinutes" type="number" min="1" max="1440" value="30" data-autofocus></div>';
+    var body = UI.el("div", { class: "col gap-3" });
+    body.innerHTML = '<div class="row gap-3"><span class="spinner"></span><span>Loading prices…</span></div>';
 
     var dialog = UI.modal({
       title: "Extend session",
       description: session.customer_name + " on " + session.pc_name,
       body: body,
-      actions: [
-        { label: "Cancel", variant: "ghost" },
-        {
-          label: "Extend", variant: "primary", icon: "plus",
-          onClick: function (ctx) {
-            var minutes = parseInt(ctx.body.querySelector("#extendMinutes").value, 10);
-            if (!minutes || minutes < 1) { Motion.shake(ctx.node); return false; }
-            return Store.extendSession(session, minutes)
-              .then(function (r) {
-                UI.toast.ok(r.message, clock(r.session.remaining_seconds) + " left");
-                if (onDone) onDone(r.session);
-                return true;
-              })
-              .catch(function (err) { UI.toast.error("Could not extend", err.message); return false; });
-          }
-        }
-      ]
+      actions: [{ label: "Cancel", variant: "ghost" }]
     });
 
-    var input = body.querySelector("#extendMinutes");
-    UI.$$("#extendRow .chip", body).forEach(function (chip) {
-      chip.addEventListener("click", function () { input.value = chip.dataset.min; });
-    });
+    function priceLabel(p) {
+      var length = p.is_unlimited ? "Unlimited" : (
+        p.duration_minutes >= 60
+          ? (p.duration_minutes % 60 === 0 ? (p.duration_minutes / 60) + " Hr" : p.duration_minutes + " Min")
+          : p.duration_minutes + " Min"
+      );
+      return p.software_name + " · " + length;
+    }
+
+    Store.previewRates(undefined, session.category)
+      .then(function (prices) {
+        var options = (prices || []).filter(function (p) {
+          return session.pricing_unit === "BLOCK" ? !p.is_unlimited : true;
+        });
+        UI.clear(body);
+        if (!options.length) {
+          body.appendChild(UI.emptyState({
+            icon: "billing", title: "No extension prices configured",
+            text: "Add a price for this station's category from Gaming Prices first."
+          }));
+          return;
+        }
+        options.forEach(function (p) {
+          var row = UI.el("button", { class: "btn btn-outline btn-block row-between", type: "button" });
+          row.innerHTML =
+            '<span>' + UI.esc(priceLabel(p)) + '</span>' +
+            '<strong>' + UI.esc(coins(p.current_price)) + '</strong>';
+          row.addEventListener("click", function () {
+            UI.withBusy(row, function () {
+              return Store.extendSessionByTier(session, p.gaming_price_id)
+                .then(function (r) {
+                  UI.toast.ok(r.message, r.session.customer_name || session.customer_name);
+                  if (onDone) onDone(r.session);
+                  dialog.close();
+                })
+                .catch(function (err) { UI.toast.error("Could not extend", err.message); });
+            });
+          });
+          body.appendChild(row);
+        });
+      })
+      .catch(function (err) {
+        UI.clear(body);
+        body.appendChild(UI.errorState(err.message));
+      });
+
     return dialog;
   }
 
@@ -986,6 +1175,7 @@
   global.CXSessionUI = {
     canStartSession: canStartSession,
     startSessionDialog: startSessionDialog,
+    quickStartDialog: quickStartDialog,
     endSessionDialog: endSessionDialog,
     cancelSessionDialog: cancelSessionDialog,
     extendDialog: extendDialog,
@@ -993,6 +1183,7 @@
     clock: clock,
     coins: coins,
     displayTime: displayTime,
-    timeLabel: timeLabel
+    timeLabel: timeLabel,
+    inGraceBuffer: inGraceBuffer
   };
 })(window);

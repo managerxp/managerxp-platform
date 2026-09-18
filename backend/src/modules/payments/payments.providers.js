@@ -40,6 +40,7 @@ const razorpay = {
   },
   currencies: ['INR'],
   docs: 'https://dashboard.razorpay.com/app/website-app-settings/api-keys',
+  capabilities: { supportsQr: false, supportsWebhook: true, supportsRefund: false, supportsStatusCheck: false, supportsPaymentLinks: false },
 
   /** Live check that the credentials work, without moving any money. */
   async createOrder({ keyId, keySecret, amount, currency, receipt, notes }) {
@@ -122,6 +123,7 @@ const cashfree = {
   },
   currencies: ['INR'],
   docs: 'https://merchant.cashfree.com/merchants/developers',
+  capabilities: { supportsQr: false, supportsWebhook: true, supportsRefund: false, supportsStatusCheck: true, supportsPaymentLinks: false },
 
   async createOrder({ keyId, keySecret, amount, currency, receipt, mode, customer }) {
     const base = mode === 'live' ? 'https://api.cashfree.com' : 'https://sandbox.cashfree.com';
@@ -220,6 +222,7 @@ const payu = {
   },
   currencies: ['INR'],
   docs: 'https://onboarding.payu.in/app/account/dashboard',
+  capabilities: { supportsQr: false, supportsWebhook: true, supportsRefund: false, supportsStatusCheck: false, supportsPaymentLinks: false },
 
   /* PayU has no server-side order creation call: the "order" is a signed form
      the browser posts. So this builds and signs that form instead of calling
@@ -305,9 +308,57 @@ const payu = {
 };
 
 /* ==========================================================================
+   DIRECT UPI
+
+   Scaffold only — no PSP is wired in yet. This adapter exists so the rest of
+   the system (admin config form, gateway registry, the `provider` column,
+   the webhook route, the ₹2,000 cap in payments.Controller.js) already has a
+   real slot to plug into, without pretending a live integration exists.
+   `createOrder`/`verifyWebhook` refuse cleanly rather than fabricate a QR or
+   accept an unsigned webhook — the same "no trust without a real signature"
+   rule every other adapter here follows.
+
+   To make this live: pick one PSP with an official merchant API that offers
+   dynamic UPI QR + webhook + signature verification (e.g. a UPI QR product
+   from a payment gateway you hold real merchant credentials for), fill in
+   `createOrder` to call its order/QR endpoint and return `{ orderId, qr }`
+   (qr = an image URL or a upi:// intent string, sized to `amount`), and fill
+   in `verifyWebhook` using that PSP's own signature scheme — following the
+   exact shape razorpay/cashfree use above. Nothing else in the system needs
+   to change: creditTopup(), the webhook route and the admin UI all already
+   work off this same interface.
+   ========================================================================== */
+const directupi = {
+  id: 'directupi',
+  label: 'Direct UPI',
+  fields: {
+    key_id: { label: 'Merchant / Client ID', hint: 'From your chosen UPI PSP’s merchant dashboard', required: true },
+    key_secret: { label: 'API Key / Secret', hint: 'Paired with the Merchant ID', required: true, secret: true },
+    webhook_secret: { label: 'Webhook Secret', hint: 'Set when you create the webhook with the PSP', required: false, secret: true }
+  },
+  currencies: ['INR'],
+  docs: null, // set once a specific PSP is chosen
+  capabilities: { supportsQr: true, supportsWebhook: true, supportsRefund: false, supportsStatusCheck: true, supportsPaymentLinks: false },
+
+  async createOrder() {
+    throw new Error(
+      'Direct UPI has no live provider configured yet. A developer needs to implement ' +
+      'createOrder/verifyWebhook in payments.providers.js against a specific UPI PSP’s ' +
+      'official merchant API before this method can be enabled.'
+    );
+  },
+
+  verifyWebhook() {
+    return { ok: false, reason: 'Direct UPI webhook verification is not implemented yet' };
+  },
+
+  publicConfig: (row) => ({ key_id: row.key_id })
+};
+
+/* ==========================================================================
    REGISTRY
    ========================================================================== */
-const REGISTRY = { razorpay, cashfree, payu };
+const REGISTRY = { razorpay, cashfree, payu, directupi };
 
 export const getProvider = (id) => REGISTRY[String(id || '').toLowerCase()] || null;
 
@@ -317,7 +368,8 @@ export const listProviders = () =>
     label: p.label,
     fields: p.fields,
     currencies: p.currencies,
-    docs: p.docs
+    docs: p.docs,
+    capabilities: p.capabilities || {}
   }));
 
 export const PROVIDER_IDS = Object.keys(REGISTRY);

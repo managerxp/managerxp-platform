@@ -333,11 +333,18 @@
 .status-pill .num { color: var(--text); font-weight: 650; }
 
 .clock {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--s-2);
   font-family: var(--font-mono);
   font-size: var(--t-body);
   font-variant-numeric: tabular-nums;
   color: var(--text-2);
   letter-spacing: 0.02em;
+}
+.clock-date {
+  color: var(--text-3);
+  font-size: var(--t-sm);
 }
 
 /* Page canvas */
@@ -415,6 +422,19 @@
 }
 [data-size="compact"].floor-compact { grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); }
 [data-size="large"].floor-compact { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
+
+/* Fixed, modest width — not a flexible 1fr column like the dashboard's own
+   split, which let this run as wide as whatever room was left on a big
+   monitor. A glance panel should stay a glance panel regardless of screen
+   size. */
+.floor-split { grid-template-columns: minmax(0, 1fr) 300px; align-items: start; }
+@media (max-width: 1180px) { .floor-split { grid-template-columns: minmax(0, 1fr); } }
+
+/* The summary sidebar stays in view while the card grid beside it scrolls —
+   it's a glance panel, not something meant to scroll away with the wall. */
+.floor-summary { position: sticky; top: var(--s-5); align-self: start; padding: var(--s-4); }
+.floor-summary .stat { padding: var(--s-3) var(--s-3) var(--s-4); }
+.floor-summary .stat-value { font-size: var(--t-h1); }
 
 /* Zones — grouped by part of the room */
 .floor-zones { display: flex; flex-direction: column; gap: var(--s-6); }

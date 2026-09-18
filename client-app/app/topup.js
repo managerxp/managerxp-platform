@@ -59,7 +59,17 @@
   /* ==========================================================================
      DIALOG
      ========================================================================== */
-  function open() {
+  /**
+   * `extend`, when given, turns this dialog into paying for one Extend tier
+   * on a running session rather than a free-form top-up: the amount is fixed
+   * to the tier's own price (no picker, no bonus tiers — that pricing is the
+   * café's Gaming Price Master, not the generic top-up settings) and the
+   * purchase is tagged to the session so it shows as an extension, not a
+   * plain top-up, in reporting. Everything downstream of "how much and which
+   * method" — the actual payment/cash-request plumbing — is the exact same
+   * code a plain top-up already runs.
+   */
+  function open(extend) {
     listen();
 
     var body = UI.el("div", { class: "topup" });
@@ -67,14 +77,16 @@
       '<span class="spinner"></span><span>Checking what this café accepts…</span></div>';
 
     var modal = UI.modal({
-      title: "Add XP Coins",
-      description: "Top up your wallet and keep playing.",
+      title: extend ? "Extend session" : "Add XP Coins",
+      description: extend
+        ? (extend.label || "Pay to add this to your session.")
+        : "Top up your wallet and keep playing.",
       body: body,
       actions: [{ label: "Close", variant: "ghost" }]
     });
 
     global.CXWallet.topupOptions()
-      .then(function (opts) { options = opts; paint(body, modal); })
+      .then(function (opts) { options = opts; paint(body, modal, extend); })
       .catch(function (err) {
         UI.clear(body);
         body.appendChild(UI.emptyState({
@@ -130,7 +142,7 @@
     Motion.enter(panel, { y: 10 });
   }
 
-  function paint(body, modal) {
+  function paint(body, modal, extend) {
     UI.clear(body);
 
     // A request already waiting: show it instead of inviting a second one.
@@ -166,26 +178,36 @@
     /** What a top-up of this amount actually credits — the café's bonus tier
         if this exact amount has one, otherwise the flat rate. Mirrors
         resolveTopupCoins on the server; the server is what actually charges
-        this, so a mismatch here is only ever a display bug, never a billing one. */
+        this, so a mismatch here is only ever a display bug, never a billing one.
+        An Extend purchase is always 1:1 — it is already priced by the Gaming
+        Price Master, a second bonus on top was never part of that price. */
     function creditFor(value) {
+      if (extend) return value;
       if (Object.prototype.hasOwnProperty.call(bonusByAmount, value)) return bonusByAmount[value];
       return value * options.coin_rate;
     }
 
-    var amount = presetAmounts.length ? presetAmounts[0] : options.min_amount;
+    var amount = extend ? Number(extend.amount) : (presetAmounts.length ? presetAmounts[0] : options.min_amount);
     var provider = options.methods[0].provider;
 
-    /* ---- amount ---- */
+    /* ---- amount ----
+       Fixed and shown read-only for an Extend purchase — the tier's price
+       already is the amount, nothing to pick. The #tuAmount input still
+       exists either way (just hidden here) so paintReceipt/the pay handler
+       below, which both read it, need no branching of their own. */
     var amountBlock = UI.el("div", { class: "topup-block" });
-    amountBlock.innerHTML =
-      '<div class="topup-label">How much?</div>' +
-      '<div class="topup-presets" id="tuPresets"></div>' +
-      '<div class="topup-custom">' +
-        '<span class="topup-currency">₹</span>' +
-        '<input class="input topup-input" id="tuAmount" type="number" inputmode="decimal" ' +
-          'min="' + options.min_amount + '" max="' + options.max_amount + '" step="1">' +
-      "</div>" +
-      '<div class="field-hint">Between ₹' + options.min_amount + " and ₹" + options.max_amount + "</div>";
+    amountBlock.innerHTML = extend
+      ? '<div class="topup-label">Amount</div>' +
+        '<div class="topup-extend-amount">₹' + amount.toFixed(2) + "</div>" +
+        '<input class="hidden" id="tuAmount" type="number" value="' + amount + '">'
+      : '<div class="topup-label">How much?</div>' +
+        '<div class="topup-presets" id="tuPresets"></div>' +
+        '<div class="topup-custom">' +
+          '<span class="topup-currency">₹</span>' +
+          '<input class="input topup-input" id="tuAmount" type="number" inputmode="decimal" ' +
+            'min="' + options.min_amount + '" max="' + options.max_amount + '" step="1">' +
+        "</div>" +
+        '<div class="field-hint">Between ₹' + options.min_amount + " and ₹" + options.max_amount + "</div>";
     body.appendChild(amountBlock);
 
     var input = amountBlock.querySelector("#tuAmount");
@@ -197,7 +219,12 @@
 
     function paintReceipt() {
       var value = Number(input.value);
-      var valid = Number.isFinite(value) && value >= options.min_amount && value <= options.max_amount;
+      // An Extend tier's price is set by the café's own Gaming Price Master,
+      // independent of the generic top-up min/max — a small tier must not
+      // read as an "invalid amount" against limits that were never about it.
+      var valid = extend
+        ? Number.isFinite(value) && value > 0
+        : Number.isFinite(value) && value >= options.min_amount && value <= options.max_amount;
       var coins = valid ? creditFor(value) : 0;
       var bonus = valid && Object.prototype.hasOwnProperty.call(bonusByAmount, value);
       var plain = valid ? value * options.coin_rate : 0;
@@ -229,7 +256,7 @@
       return valid;
     }
 
-    presetAmounts.forEach(function (value) {
+    (extend ? [] : presetAmounts).forEach(function (value) {
       var hasBonus = Object.prototype.hasOwnProperty.call(bonusByAmount, value);
       var chip = UI.el("button", {
         class: "topup-preset" + (hasBonus ? " has-bonus" : ""), type: "button"
@@ -246,6 +273,7 @@
     });
 
     function paintPresets() {
+      if (!presetHost) return;
       presetHost.querySelectorAll(".topup-preset").forEach(function (chip, i) {
         var on = Number(presetAmounts[i]) === Number(input.value);
         chip.classList.toggle("is-active", on);
@@ -349,10 +377,12 @@
         label.textContent = payLabel();
       };
 
+      var extendPayload = extend ? { sessionId: extend.sessionId, gamingPriceId: extend.gamingPriceId } : null;
+
       /* ---- cash: a request, not a payment ---- */
       if (chosen.kind === "cash") {
         label.textContent = "Sending…";
-        global.CXWallet.requestCashTopup(amountValue)
+        global.CXWallet.requestCashTopup(amountValue, extendPayload)
           .then(function (request) {
             // Replace the form with the waiting state rather than closing:
             // the customer needs to know the request exists and is not lost.
@@ -370,7 +400,7 @@
 
       /* ---- gateway: hand off to the provider ---- */
       label.textContent = "Opening payment…";
-      global.CXWallet.startTopup(provider, amountValue)
+      global.CXWallet.startTopup(provider, amountValue, extendPayload)
         .then(function (data) {
           if (!api.openCheckout) {
             throw new Error("This station cannot open the payment window.");

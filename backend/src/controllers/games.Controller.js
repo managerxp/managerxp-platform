@@ -8,6 +8,18 @@
  * it (account_mode), and say which platform of a game is installed on
  * which of its PCs. There is no endpoint here that accepts an App ID,
  * because there must never be one.
+ *
+ * One narrow, deliberate exception: setPcGames may also write
+ * station_game_platforms.launch_target_override/launch_arguments_override —
+ * a plain local exe path and/or extra command-line flags, scoped to one PC
+ * and one platform row the café already flagged installed. setCafePlatformOverride
+ * writes the same two fields at café scope (cafe_game_platform_overrides),
+ * as the default every PC falls back to before the catalogue's own value.
+ * Neither can ever set an App ID, a launch method, or anything else the
+ * catalog owns. They exist because install locations genuinely differ per
+ * station (the same title can be on C: on one PC and D: on another) in a
+ * way only the café — standing at that PC, or using the console's own
+ * "scan this station" feature — can ever see.
  */
 import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
@@ -27,7 +39,16 @@ const shapePlatform = (r) => ({
   launch_target: r.launch_target || null,
   process_name: r.process_name || null,
   launch_arguments: r.launch_arguments || null,
-  status: r.platform_status || r.status
+  status: r.platform_status || r.status,
+  // Station-local only — kept separate from launch_target (the catalog's
+  // own value) so a caller can tell "using the catalog default" apart from
+  // "overridden on this station" instead of one value silently masking
+  // the other. cafe_launch_*_override is the café-wide default sitting
+  // between the two — present only when listPcGames/listGames joined it.
+  launch_target_override: r.launch_target_override || null,
+  launch_arguments_override: r.launch_arguments_override || null,
+  cafe_launch_target_override: r.cafe_launch_target_override || null,
+  cafe_launch_arguments_override: r.cafe_launch_arguments_override || null
 });
 
 /* One row per café selection, with every platform the game has (a café may
@@ -50,14 +71,19 @@ const shapeCafeGame = (r) => ({
 
 const ACCOUNT_MODES = ['CUSTOMER_ACCOUNT', 'VENUE_ACCOUNT', 'CUSTOMER_OR_VENUE'];
 
-const platformsByGame = async (gameIds) => {
+const platformsByGame = async (gameIds, cafeId) => {
   if (!gameIds.length) return new Map();
   const { rows } = await pool.query(`
-    SELECT id AS platform_id, game_id, platform, platform_game_id, status AS platform_status,
-           launch_method, launch_target, process_name, launch_arguments
-      FROM game_platforms WHERE game_id = ANY($1) AND status = 'ACTIVE'
-     ORDER BY platform
-  `, [gameIds]);
+    SELECT gp.id AS platform_id, gp.game_id, gp.platform, gp.platform_game_id, gp.status AS platform_status,
+           gp.launch_method, gp.launch_target, gp.process_name, gp.launch_arguments,
+           cgpo.launch_target_override AS cafe_launch_target_override,
+           cgpo.launch_arguments_override AS cafe_launch_arguments_override
+      FROM game_platforms gp
+      LEFT JOIN cafe_game_platform_overrides cgpo
+        ON cgpo.game_platform_id = gp.id AND cgpo.cafe_id IS NOT DISTINCT FROM $2
+     WHERE gp.game_id = ANY($1) AND gp.status = 'ACTIVE'
+     ORDER BY gp.platform
+  `, [gameIds, cafeId ?? null]);
   const map = new Map();
   for (const row of rows) {
     if (!map.has(row.game_id)) map.set(row.game_id, []);
@@ -121,7 +147,7 @@ export const listGames = async (req, res) => {
        ORDER BY g.name
     `, params);
 
-    const byGame = await platformsByGame(rows.map((r) => r.id));
+    const byGame = await platformsByGame(rows.map((r) => r.id), cafeId);
     res.json({ success: true, data: rows.map((r) => shapeCafeGame({ ...r, platforms: byGame.get(r.id) || [] })) });
   } catch (error) {
     console.error('Game list failed:', error);
@@ -153,7 +179,7 @@ export const addGame = async (req, res) => {
       action: 'game.add', category: 'games', entity: 'cafe_game', entity_id: cg.rows[0].cafe_game_id,
       summary: `Added ${game.name} to the café's game library`
     });
-    const byGame = await platformsByGame([gameId]);
+    const byGame = await platformsByGame([gameId], cafeId);
     res.status(201).json({
       success: true, message: `${game.name} added`,
       data: shapeCafeGame({ ...game, ...cg.rows[0], platforms: byGame.get(gameId) || [] })
@@ -199,7 +225,7 @@ export const updateCafeGame = async (req, res) => {
       action: 'game.update', category: 'games', entity: 'cafe_game', entity_id: id,
       summary: `Saved ${game?.name || 'a game'}'s café settings`
     });
-    const byGame = await platformsByGame([updated.game_id]);
+    const byGame = await platformsByGame([updated.game_id], cafeId);
     res.json({ success: true, message: 'Saved', data: shapeCafeGame({ ...game, ...updated, platforms: byGame.get(updated.game_id) || [] }) });
   } catch (error) {
     console.error('Game update failed:', error);
@@ -261,12 +287,16 @@ export const listPcGames = async (req, res) => {
     const platformRows = (await pool.query(`
       SELECT gp.id AS platform_id, gp.game_id, gp.platform, gp.platform_game_id, gp.status AS platform_status,
              gp.process_name, gp.launch_method, gp.launch_target, gp.launch_arguments,
-             (sgp.pc_id IS NOT NULL AND sgp.installed) AS installed
+             (sgp.pc_id IS NOT NULL AND sgp.installed) AS installed,
+             sgp.launch_target_override, sgp.launch_arguments_override,
+             cgpo.launch_target_override AS cafe_launch_target_override,
+             cgpo.launch_arguments_override AS cafe_launch_arguments_override
         FROM game_platforms gp
         LEFT JOIN station_game_platforms sgp ON sgp.game_platform_id = gp.id AND sgp.pc_id = $1
+        LEFT JOIN cafe_game_platform_overrides cgpo ON cgpo.game_platform_id = gp.id AND cgpo.cafe_id IS NOT DISTINCT FROM $2
        WHERE gp.status = 'ACTIVE'
        ORDER BY gp.platform
-    `, [pcId])).rows;
+    `, [pcId, cafeId])).rows;
 
     const platformsByGameId = new Map();
     for (const row of platformRows) {
@@ -282,7 +312,13 @@ export const listPcGames = async (req, res) => {
   }
 };
 
-/** PUT /api/games/pc/:pcId  { game_platform_ids: [...] } — the exact set installed here. */
+/**
+ * PUT /api/games/pc/:pcId  { game_platform_ids: [...], overrides?: { [platformId]: path|null },
+ *                            arg_overrides?: { [platformId]: args|null } }
+ * game_platform_ids is the exact set installed here; overrides/arg_overrides are this
+ * station's own local exe path and launch arguments for any of those platforms (see
+ * this file's header for why these two fields are the narrow exception to "read-only").
+ */
 export const setPcGames = async (req, res) => {
   const client = await pool.connect();
   try {
@@ -292,6 +328,9 @@ export const setPcGames = async (req, res) => {
       ? [...new Set(req.body.game_platform_ids.map((n) => parseInt(n, 10)).filter(Number.isInteger))]
       : null;
     if (!wanted) return res.status(400).json({ success: false, message: 'Send a game_platform_ids array' });
+
+    const overrides = (req.body && typeof req.body.overrides === 'object' && req.body.overrides) || {};
+    const argOverrides = (req.body && typeof req.body.arg_overrides === 'object' && req.body.arg_overrides) || {};
 
     const pc = (await client.query(
       'SELECT pc_id, name FROM pcs WHERE pc_id = $1 AND cafe_id IS NOT DISTINCT FROM $2', [pcId, cafeId])).rows[0];
@@ -312,10 +351,12 @@ export const setPcGames = async (req, res) => {
     await client.query('BEGIN');
     await client.query('DELETE FROM station_game_platforms WHERE pc_id = $1', [pcId]);
     for (const row of valid) {
+      const override = String(overrides[row.game_platform_id] || '').trim() || null;
+      const argOverride = String(argOverrides[row.game_platform_id] || '').trim() || null;
       await client.query(
-        `INSERT INTO station_game_platforms (pc_id, cafe_game_id, game_platform_id, installed)
-         VALUES ($1,$2,$3,TRUE)`,
-        [pcId, row.cafe_game_id, row.game_platform_id]);
+        `INSERT INTO station_game_platforms (pc_id, cafe_game_id, game_platform_id, installed, launch_target_override, launch_arguments_override)
+         VALUES ($1,$2,$3,TRUE,$4,$5)`,
+        [pcId, row.cafe_game_id, row.game_platform_id, override, argOverride]);
     }
     await client.query('COMMIT');
 
@@ -333,5 +374,46 @@ export const setPcGames = async (req, res) => {
     res.status(500).json({ success: false, message: "Could not save this station's games" });
   } finally {
     client.release();
+  }
+};
+
+/**
+ * PUT /api/games/platform-override/:gamePlatformId
+ * { launch_target_override?: path|null, launch_arguments_override?: args|null }
+ *
+ * The café-wide default a station falls back to when it has no override of
+ * its own (see this file's header). Only writable for a platform belonging
+ * to a game this café has actually added — same "not just any id" guard
+ * setPcGames already applies.
+ */
+export const setCafePlatformOverride = async (req, res) => {
+  try {
+    const cafeId = req.actor?.cafe_id ?? null;
+    const gamePlatformId = parseInt(req.params.gamePlatformId, 10);
+    if (!Number.isInteger(gamePlatformId)) {
+      return res.status(400).json({ success: false, message: 'Invalid platform' });
+    }
+
+    const owned = (await pool.query(`
+      SELECT 1 FROM game_platforms gp
+        JOIN cafe_games cg ON cg.game_id = gp.game_id AND cg.cafe_id IS NOT DISTINCT FROM $1
+       WHERE gp.id = $2
+    `, [cafeId, gamePlatformId])).rows[0];
+    if (!owned) return res.status(404).json({ success: false, message: 'Not found' });
+
+    const target = String(req.body?.launch_target_override || '').trim() || null;
+    const args = String(req.body?.launch_arguments_override || '').trim() || null;
+
+    await pool.query(`
+      INSERT INTO cafe_game_platform_overrides (cafe_id, game_platform_id, launch_target_override, launch_arguments_override)
+      VALUES ($1, $2, $3, $4)
+      ON CONFLICT (cafe_id, game_platform_id) DO UPDATE SET
+        launch_target_override = $3, launch_arguments_override = $4, updated_at = CURRENT_TIMESTAMP
+    `, [cafeId, gamePlatformId, target, args]);
+
+    res.json({ success: true, message: 'Saved' });
+  } catch (error) {
+    console.error('Café platform override save failed:', error);
+    res.status(500).json({ success: false, message: 'Could not save that override' });
   }
 };

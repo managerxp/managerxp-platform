@@ -33,6 +33,10 @@
       "!**/*.log",
       "!.env"
     ],
+    "asarUnpack": [
+      "scripts/**",
+      "get_apps.ps1"
+    ],
     "win": {
       "icon": "Images/icon.ico",
       "target": [

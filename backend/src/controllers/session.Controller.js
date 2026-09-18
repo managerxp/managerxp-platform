@@ -2,7 +2,7 @@ import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
 import { getSetting } from '../config/settings.js';
 import { createBillForSession, recalculate } from './billing.Controller.js';
-import { resolveGamingPrice, amountForSeconds } from '../config/sessionPricing.js';
+import { resolveGamingPrice, amountForSeconds, resolveOccupancyRate } from '../config/sessionPricing.js';
 import { activeMembershipDiscount } from '../config/membershipPricing.js';
 import { checkCredit, customerStanding, floorFor } from '../config/customerTier.js';
 
@@ -64,18 +64,36 @@ const graceSecondsFor = async (cafeId) => {
   return Math.max(0, Number(minutes) || 0) * 60;
 };
 
+/* Same rate-lock idea as rate_per_hour: grace_seconds is snapshotted onto a
+   session at start (see startSession), so an admin changing "Buffer time"
+   mid-session never moves the boundary a running session already started
+   under. NULL only on a row from before that column existed — those keep
+   reading the live setting, exactly as they always did. */
+const graceSecondsForRow = (row) =>
+  row.grace_seconds !== null && row.grace_seconds !== undefined
+    ? Promise.resolve(row.grace_seconds)
+    : graceSecondsFor(row.cafe_id);
+
 /** What's actually billed and shown ticking — elapsedSeconds() net of the
     start-of-session grace above. */
 const gracedSeconds = (row, at, graceSeconds) => Math.max(0, elapsedSeconds(row, at) - graceSeconds);
 
 const shape = async (row) => {
-  const graceSeconds = await graceSecondsFor(row.cafe_id);
+  const graceSeconds = await graceSecondsForRow(row);
   const elapsed = (row.status === 'ended' || row.status === 'cancelled')
     ? (row.billable_seconds || 0)
     : gracedSeconds(row, undefined, graceSeconds);
   const plannedSeconds = row.planned_minutes ? row.planned_minutes * 60 : null;
   const running = amountForSeconds(row, elapsed);
   const walletBalance = num(row.wallet_balance);
+  /* A regular customer with a credit limit is allowed to run this far
+     negative before they've genuinely run out — the same floor the till
+     already checks at settle time (checkCredit/floorFor). Exposed so a
+     caller deciding "has this customer actually run out" (see server-app's
+     balance-exhaustion auto-end) compares against the real floor, not a
+     hardcoded zero that would end a regular's session while they still had
+     credit left to spend. */
+  const walletFloor = floorFor(await customerStanding(null, row.customer_id));
 
   /* Open (active/paused) vs. still inside the free setup buffer — computed
      from the same timestamps as everything else here, not a stored column,
@@ -110,6 +128,7 @@ const shape = async (row) => {
     flat_amount: num(row.flat_amount),
     price_label: row.price_label || null,
     player_count: row.player_count || 1,
+    session_type: row.session_type || 'STAFF_MANUAL',
     /* One block's price and length. A BLOCK session can be extended by another
        of these — the station shows an Extend affordance when this is set, and
        adding one is a bill line, not a wallet debit (settled at end). */
@@ -179,6 +198,7 @@ const shape = async (row) => {
     started_by: row.started_by,
     ended_by: row.ended_by,
     wallet_balance: walletBalance,
+    wallet_floor: walletFloor,
     /* The wallet cannot cover what this session already owes. Only meaningful
        for a registered customer settling from a wallet — a guest pays at the
        counter, so "low balance" is not a state they can be in. The game is
@@ -216,8 +236,14 @@ export const startSession = async (req, res) => {
   try {
     const {
       pc_id, customer_id, guest_name, guest_phone,
-      planned_minutes, rate_per_hour, cafe_id, gaming_price_id
+      planned_minutes, rate_per_hour, cafe_id, gaming_price_id,
+      session_type
     } = req.body || {};
+
+    /* KIOSK_OCCUPANCY is the only caller-settable value — every existing
+       caller (the staff console's own dialog included) sends nothing here
+       and gets the STAFF_MANUAL it always meant. */
+    const sessionType = session_type === 'KIOSK_OCCUPANCY' ? 'KIOSK_OCCUPANCY' : 'STAFF_MANUAL';
 
     const pcId = parseInt(pc_id, 10);
     if (!Number.isInteger(pcId)) {
@@ -294,9 +320,16 @@ export const startSession = async (req, res) => {
         minutes = pricing.block_minutes;
       }
     } else {
-      const rate = rate_per_hour === undefined || rate_per_hour === null || rate_per_hour === ''
-        ? await defaultRatePerHour()
-        : Number(rate_per_hour);
+      let rate;
+      if (rate_per_hour !== undefined && rate_per_hour !== null && rate_per_hour !== '') {
+        rate = Number(rate_per_hour);
+      } else if (sessionType === 'KIOSK_OCCUPANCY') {
+        // No price was picked because none is meant to be — occupancy bills
+        // by the station's category, not a chosen game/duration.
+        rate = await resolveOccupancyRate(req.actor?.cafe_id ?? null, station.category);
+      } else {
+        rate = await defaultRatePerHour();
+      }
       if (!Number.isFinite(rate) || rate < 0) {
         return res.status(400).json({ success: false, message: 'Rate must be zero or more' });
       }
@@ -497,6 +530,11 @@ export const startSession = async (req, res) => {
       }
     }
 
+    // Snapshotted for the same reason the rate is: an admin changing "Buffer
+    // time" mid-session must not move the boundary this session already
+    // started under.
+    const graceSecondsAtStart = await graceSecondsFor(req.actor?.cafe_id ?? station.cafe_id ?? null);
+
     const inserted = await client.query(
       `INSERT INTO sessions
          (cafe_id, pc_id, customer_id, guest_name, guest_phone,
@@ -505,8 +543,9 @@ export const startSession = async (req, res) => {
           membership_discount_percent, membership_label,
           pricing_rule_id, pricing_rule_label, base_rate_per_hour, base_flat_amount,
           block_unit_amount, block_unit_minutes,
-          game_id, game_platform_id, game_account_id, player_count)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+          game_id, game_platform_id, game_account_id, player_count,
+          session_type, grace_seconds)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING session_id`,
       [
         cafe_id || station.cafe_id || null,
@@ -532,7 +571,8 @@ export const startSession = async (req, res) => {
         pricing.pricing_unit === 'BLOCK' ? pricing.flat_amount : null,
         pricing.pricing_unit === 'BLOCK' ? (pricing.block_minutes ?? minutes) : null,
         gameId, gamePlatformId, gameAccountId,
-        pricing.player_count ?? 1
+        pricing.player_count ?? 1,
+        sessionType, graceSecondsAtStart
       ]
     );
 
@@ -717,6 +757,60 @@ const mutate = async (req, res, handler, action) => {
   }
 };
 
+/*
+ * POST /api/sessions/:id/game
+ *
+ * Records which game a customer launched mid-session. The in-session
+ * launcher grid (client-app's Session.launchGame) runs entirely locally — it
+ * just opens the title on the station — so without this call the console's
+ * GAME column stays blank forever for any session that didn't already have
+ * one chosen at start, which is every KIOSK_OCCUPANCY login. Validated the
+ * same way startSession validates a game/platform choice, just without the
+ * venue-account reservation dance: this only records what is already
+ * running, it never starts or reserves anything.
+ */
+export const updateSessionGame = (req, res) => mutate(req, res, async (client, row, request) => {
+  if (row.status !== 'active' && row.status !== 'paused') {
+    return { error: 'That session has already ended', status: 409 };
+  }
+
+  const gameId = parseInt(request.body?.game_id, 10);
+  if (!Number.isInteger(gameId)) {
+    return { error: 'A game is required' };
+  }
+
+  const cafeGame = (await client.query(
+    `SELECT 1 FROM cafe_games WHERE game_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 AND enabled = TRUE`,
+    [gameId, row.cafe_id]
+  )).rows[0];
+  if (!cafeGame) {
+    return { error: 'This game is not available at this café' };
+  }
+
+  // An explicit platform is only trusted once confirmed installed on this
+  // exact station for this exact game — otherwise recorded as null rather
+  // than refusing the whole call, since the game itself is still real.
+  let gamePlatformId = null;
+  const requestedPlatformId = parseInt(request.body?.game_platform_id, 10);
+  if (Number.isInteger(requestedPlatformId)) {
+    const installed = await client.query(
+      `SELECT gp.id FROM station_game_platforms sgp
+         JOIN game_platforms gp ON gp.id = sgp.game_platform_id
+        WHERE sgp.pc_id = $1 AND sgp.installed = TRUE AND gp.id = $2 AND gp.game_id = $3 AND gp.status = 'ACTIVE'`,
+      [row.pc_id, requestedPlatformId, gameId]
+    );
+    if (installed.rows[0]) gamePlatformId = requestedPlatformId;
+  }
+
+  await client.query(
+    `UPDATE sessions SET game_id = $2, game_platform_id = $3, updated_at = CURRENT_TIMESTAMP
+     WHERE session_id = $1`,
+    [row.session_id, gameId, gamePlatformId]
+  );
+
+  return { message: 'Game recorded' };
+});
+
 // POST /api/sessions/:id/pause
 export const pauseSession = (req, res) => mutate(req, res, async (client, row) => {
   if (row.status !== 'active') {
@@ -775,6 +869,124 @@ export const extendSession = (req, res) => mutate(req, res, async (client, row, 
     return { error: 'That session has already ended', status: 409 };
   }
 
+  /* Idempotency: a double-click, a WS retry, or a re-sent request with the
+     same client-generated id replays the first call's result rather than
+     extending (or charging) a second time. Scoped to this session, not
+     global, so a reused id against a different session is still refused by
+     the unique constraint on insert below rather than silently matching. */
+  const requestId = request.body?.request_id ? String(request.body.request_id).slice(0, 64) : null;
+  if (requestId) {
+    const seen = await client.query(
+      'SELECT result FROM session_extend_requests WHERE request_id = $1 AND session_id = $2',
+      [requestId, row.session_id]
+    );
+    if (seen.rows[0]) return seen.rows[0].result;
+  }
+
+  /*
+   * Extend by ANY configured tier, not just the one this session started on
+   * — the actual ask: a 1-hour session should be able to top up with the
+   * 30-minute tier's price to reach 1.5 hours, not be locked into repeating
+   * 1-hour blocks. Resolved the exact same way startSession resolves a
+   * price, so a crafted gaming_price_id cannot smuggle in another café's
+   * rate or a station-category mismatch.
+   */
+  const gamingPriceId = request.body?.gaming_price_id;
+  if (gamingPriceId !== undefined && gamingPriceId !== null && gamingPriceId !== '') {
+    const pc = await client.query('SELECT category FROM pcs WHERE pc_id = $1', [row.pc_id]);
+    const resolved = await resolveGamingPrice(client, gamingPriceId, {
+      stationCategory: pc.rows[0]?.category || null,
+      cafeId: row.cafe_id
+    });
+    if (resolved.error) return { error: resolved.error };
+    const tier = resolved.snapshot;
+
+    let outcome;
+    if (row.pricing_unit === 'BLOCK') {
+      if (tier.pricing_unit !== 'BLOCK') {
+        return { error: 'Choose a timed price to extend by — an unlimited price has no duration to add' };
+      }
+      await client.query(
+        `UPDATE sessions
+            SET planned_minutes = planned_minutes + $1,
+                flat_amount = COALESCE(flat_amount, 0) + $2,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE session_id = $3`,
+        [tier.block_minutes, tier.flat_amount, row.session_id]
+      );
+      outcome = {
+        message: `Extended by ${tier.block_minutes} min — ${tier.flat_amount} on the bill`,
+        extension: {
+          gaming_price_id: tier.gaming_price_id, minutes: tier.block_minutes,
+          amount: tier.flat_amount, method: 'bill'
+        }
+      };
+    } else {
+      /*
+       * Open-ended (HOUR / occupancy) session: there is no planned_minutes
+       * ceiling to grow, so "extend" means buying more spending allowance —
+       * credit the wallet by the tier's price, the same locked-row
+       * transaction the wallet endpoints themselves use, so wallet_balance
+       * climbs back past running_amount and low_balance clears on its own.
+       * The session's own timeline (started_at, elapsed, billing) is not
+       * touched at all.
+       *
+       * Staff-only here: this is real money materialising with no payment
+       * step, which is fine when a member of staff is vouching cash/card was
+       * actually taken at the counter — the kiosk's own self-service Extend
+       * goes through the real top-up/payment flow instead (see
+       * createTopupOrder's session_id/gaming_price_id tagging), never this
+       * branch, so a customer can never mint themselves free balance.
+       */
+      if (!row.customer_id) {
+        return {
+          error: 'A guest session has no wallet to extend — settle at the counter instead',
+          status: 409
+        };
+      }
+      const wallet = await client.query(
+        'SELECT * FROM wallets WHERE customer_id = $1 FOR UPDATE', [row.customer_id]
+      );
+      if (!wallet.rows[0]) return { error: 'This customer has no wallet yet', status: 409 };
+      const nextBalance = Number((Number(wallet.rows[0].balance) + tier.flat_amount).toFixed(2));
+      await client.query(
+        'UPDATE wallets SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE wallet_id = $2',
+        [nextBalance, wallet.rows[0].wallet_id]
+      );
+      const ledger = await client.query(
+        `INSERT INTO wallet_transactions
+           (wallet_id, customer_id, direction, amount, balance_after, category, note, performed_by, session_id, gaming_price_id)
+         VALUES ($1,$2,'credit',$3,$4,'session_extend',$5,$6,$7,$8)
+         RETURNING transaction_id`,
+        [
+          wallet.rows[0].wallet_id, row.customer_id, tier.flat_amount, nextBalance,
+          `Extend — Session #${row.session_id} — ${tier.price_label || tier.session_name}`,
+          request.actor?.label || null, row.session_id, tier.gaming_price_id
+        ]
+      );
+      outcome = {
+        message: `${tier.flat_amount} added to the wallet — balance now ${nextBalance}`,
+        extension: {
+          gaming_price_id: tier.gaming_price_id, amount: tier.flat_amount, method: 'wallet_credit',
+          wallet_balance: nextBalance, transaction_id: ledger.rows[0].transaction_id
+        }
+      };
+    }
+
+    if (requestId) {
+      await client.query(
+        `INSERT INTO session_extend_requests (request_id, session_id, result) VALUES ($1,$2,$3)
+         ON CONFLICT (request_id) DO NOTHING`,
+        [requestId, row.session_id, JSON.stringify(outcome)]
+      );
+    }
+    return outcome;
+  }
+
+  /* Legacy path below — repeats the session's own starting block/rate.
+     Left exactly as it was; the station's existing single-tap "+1 block"
+     affordance and anything else not yet updated to send gaming_price_id
+     still works unchanged. */
   if (row.pricing_unit === 'BLOCK') {
     const unitMinutes = parseInt(row.block_unit_minutes, 10);
     const unitAmount = Number(row.block_unit_amount);
@@ -855,40 +1067,39 @@ export const transferSession = (req, res) => mutate(req, res, async (client, row
 /* ==========================================================================
    END  (settles against the wallet)
    ========================================================================== */
-// POST /api/sessions/:id/end  { charge?: boolean, reason?: string }
-export const endSession = async (req, res) => {
+/*
+ * The actual work of ending a session — one place that computes a bill, so
+ * the HTTP handler below and the heartbeat-timeout sweep (further down this
+ * file) can never disagree about how a session was charged. Opens and owns
+ * its own transaction. `req` is only used for recordAudit's actor
+ * attribution and may be null (the sweep has no request) — actorOf() in
+ * audit.js already treats a missing req as the system acting, not staff.
+ */
+const closeSession = async (id, { shouldCharge = true, reason = 'staff', actorLabel = null, req = null } = {}) => {
   const client = await pool.connect();
   try {
-    const id = parseInt(req.params.id, 10);
-    if (!Number.isInteger(id)) {
-      return res.status(400).json({ success: false, message: 'Invalid session id' });
-    }
-
-    const shouldCharge = req.body?.charge !== false;   // charging is the default
-    const reason = req.body?.reason ? String(req.body.reason).slice(0, 32) : 'staff';
-
     await client.query('BEGIN');
 
     const locked = await client.query('SELECT * FROM sessions WHERE session_id = $1 FOR UPDATE', [id]);
     if (locked.rows.length === 0) {
       await client.query('ROLLBACK');
-      return res.status(404).json({ success: false, message: 'Session not found' });
+      return { error: 'Session not found', status: 404 };
     }
 
     const row = locked.rows[0];
     if (row.status === 'ended') {
       await client.query('ROLLBACK');
-      return res.status(409).json({ success: false, message: 'That session has already ended' });
+      return { error: 'That session has already ended', status: 409 };
     }
     if (row.status === 'cancelled') {
       await client.query('ROLLBACK');
-      return res.status(409).json({ success: false, message: 'That session was cancelled' });
+      return { error: 'That session was cancelled', status: 409 };
     }
 
     /* Duration from the server's own timestamps and the amount from the
        session's own snapshot. Neither is taken from the request: what the
        browser believed the timer said has no bearing on what is charged. */
-    const billableSeconds = gracedSeconds(row, undefined, await graceSecondsFor(row.cafe_id));
+    const billableSeconds = gracedSeconds(row, undefined, await graceSecondsForRow(row));
     const rate = Number(row.rate_per_hour || 0);
     /* Still inside the grace period: whatever this was priced at, the
        customer never really started playing, so it costs nothing — not just
@@ -946,7 +1157,7 @@ export const endSession = async (req, res) => {
               next,
               next < 0 ? 'credit_used' : 'gaming',
               `Session #${row.session_id}`,
-              req.actor?.label || null
+              actorLabel
             ]
           );
           walletTransactionId = ledger.rows[0].transaction_id;
@@ -977,7 +1188,7 @@ export const endSession = async (req, res) => {
         amount: amount,
         billable_seconds: billableSeconds,
         membership_label: row.membership_label
-      }, req.actor?.label);
+      }, actorLabel);
 
       // If the wallet already covered it, record that against the bill so it
       // does not look outstanding.
@@ -988,7 +1199,7 @@ export const endSession = async (req, res) => {
            VALUES ($1,$2,'wallet',$3,$4,$5,$6)`,
           [
             billId, row.customer_id, amount,
-            `Session #${row.session_id}`, walletTransactionId, req.actor?.label || null
+            `Session #${row.session_id}`, walletTransactionId, actorLabel
           ]
         );
         /*
@@ -1024,7 +1235,7 @@ export const endSession = async (req, res) => {
            ended_by = $7,
            updated_at = CURRENT_TIMESTAMP
        WHERE session_id = $8`,
-      [billableSeconds, amount, exactAmount, paymentStatus, walletTransactionId, reason, req.actor?.label || null, id]
+      [billableSeconds, amount, exactAmount, paymentStatus, walletTransactionId, reason, actorLabel, id]
     );
 
     // A venue account this session was using goes back into the pool the
@@ -1063,20 +1274,41 @@ export const endSession = async (req, res) => {
       }
     });
 
-    res.status(200).json({
-      success: true,
-      message: paymentStatus === 'paid' ? 'Session ended and charged'
-        : paymentStatus === 'unpaid' ? 'Session ended — payment outstanding'
-        : 'Session ended',
-      data: await shape(fresh)
-    });
+    return { fresh, amount, paymentStatus, billableSeconds, walletTransactionId };
   } catch (error) {
     await client.query('ROLLBACK').catch(() => {});
     console.error('Error ending session:', error);
-    res.status(500).json({ success: false, message: 'Error ending session' });
+    return { error: 'Error ending session', status: 500 };
   } finally {
     client.release();
   }
+};
+
+// POST /api/sessions/:id/end  { charge?: boolean, reason?: string }
+export const endSession = async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!Number.isInteger(id)) {
+    return res.status(400).json({ success: false, message: 'Invalid session id' });
+  }
+
+  const result = await closeSession(id, {
+    shouldCharge: req.body?.charge !== false,   // charging is the default
+    reason: req.body?.reason ? String(req.body.reason).slice(0, 32) : 'staff',
+    actorLabel: req.actor?.label || null,
+    req
+  });
+
+  if (result.error) {
+    return res.status(result.status || 500).json({ success: false, message: result.error });
+  }
+
+  res.status(200).json({
+    success: true,
+    message: result.paymentStatus === 'paid' ? 'Session ended and charged'
+      : result.paymentStatus === 'unpaid' ? 'Session ended — payment outstanding'
+      : 'Session ended',
+    data: await shape(result.fresh)
+  });
 };
 
 /* ==========================================================================
@@ -1214,6 +1446,55 @@ export const heartbeatSession = async (req, res) => {
   } catch (error) {
     console.error('Error recording session heartbeat:', error);
     res.status(500).json({ success: false, message: 'Error recording heartbeat' });
+  }
+};
+
+/*
+ * A kiosk occupancy session left running with nobody watching it — the
+ * console that would end it crashed, lost its network, or was closed —
+ * would otherwise meter forever. Called on a timer from server.js, never
+ * from a route: there is no client request behind this, only server
+ * timestamps, which is exactly what closeSession already bills from.
+ *
+ * Scoped to KIOSK_OCCUPANCY only. A STAFF_MANUAL session behaves exactly as
+ * it always has here — staff end those themselves, same as before this
+ * existed.
+ */
+export const closeHeartbeatTimedOutSessions = async () => {
+  const candidates = await pool.query(
+    `SELECT session_id, cafe_id FROM sessions
+      WHERE status IN ('active','paused') AND session_type = 'KIOSK_OCCUPANCY'
+        AND COALESCE(last_heartbeat_at, started_at) < NOW() - INTERVAL '1 second' * $1`,
+    // A generous upper bound for the query itself — the real, per-café
+    // threshold is re-checked below, since session.heartbeat_timeout_seconds
+    // can differ by café and this one query can't express fifty different
+    // intervals at once. 86400s (24h) just keeps a pathological setting from
+    // making this table-scan the whole session history.
+    [86400]
+  );
+
+  for (const row of candidates.rows) {
+    const timeoutSeconds = await getSetting('session.heartbeat_timeout_seconds', 300, row.cafe_id);
+    const check = await pool.query(
+      `SELECT 1 FROM sessions
+        WHERE session_id = $1 AND status IN ('active','paused')
+          AND COALESCE(last_heartbeat_at, started_at) < NOW() - INTERVAL '1 second' * $2`,
+      [row.session_id, timeoutSeconds]
+    );
+    if (check.rows.length === 0) continue; // this café's own threshold hasn't actually passed yet
+
+    const result = await closeSession(row.session_id, {
+      shouldCharge: true,
+      reason: 'heartbeat_timeout',
+      actorLabel: 'system:heartbeat-timeout',
+      req: null
+    });
+    if (result.error) {
+      console.error(`[heartbeat-timeout] Could not close session ${row.session_id}: ${result.error}`);
+    } else {
+      console.log(`[heartbeat-timeout] Closed session ${row.session_id} — ` +
+        `${Math.round(result.billableSeconds / 60)} min, ${result.amount} charged`);
+    }
   }
 };
 

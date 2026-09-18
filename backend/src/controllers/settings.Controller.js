@@ -1,3 +1,4 @@
+import fs from 'fs/promises';
 import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
 import { invalidate, getAllSettings, setSetting } from '../config/settings.js';
@@ -267,6 +268,29 @@ export const updateSettings = async (req, res) => {
     res.status(500).json({ success: false, message: 'Error updating settings' });
   } finally {
     client.release();
+  }
+};
+
+/*
+ * POST /api/settings/wallpaper-upload
+ *
+ * The kiosk welcome screen's background — an image or a short video, stored
+ * as a real file (brandingUpload.js, multer → src/uploads) rather than a
+ * settings value, same reasoning as the catalog's own image uploads: a
+ * settings row holds the short returned URL, never the file itself. This
+ * only saves the file and reports where it landed — the caller still has to
+ * PUT billing.wallpaper_url/billing.wallpaper_type themselves, same as the
+ * catalog's own upload-then-save-the-URL flow.
+ */
+export const uploadWallpaper = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file was uploaded' });
+    const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
+    res.json({ success: true, data: { url: `/uploads/${req.file.filename}`, type } });
+  } catch (error) {
+    if (req.file) await fs.unlink(req.file.path).catch(() => {});
+    console.error('Wallpaper upload failed:', error);
+    res.status(500).json({ success: false, message: 'Could not save that file' });
   }
 };
 

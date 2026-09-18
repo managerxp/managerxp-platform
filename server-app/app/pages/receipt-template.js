@@ -247,6 +247,75 @@
     return wrap;
   }
 
+  /*
+   * The kiosk welcome screen's background — an image or a short video, up to
+   * 30 MB. Unlike the logo above, this is never stored as a data URI in a
+   * settings row (it would bloat every settings read for every page in the
+   * console, this app's own included, for something only the welcome screen
+   * needs) — Choose uploads the real file (Store.uploadCafeWallpaper) and
+   * only the short URL it comes back with is saved as a setting.
+   */
+  function wallpaperField() {
+    var wrap = UI.el("div", { class: "field" });
+    wrap.innerHTML =
+      '<label class="field-label" for="rtWallpaper">Kiosk wallpaper</label>' +
+      '<div class="rt-logo-row">' +
+        '<div class="rt-logo-box" id="rtWallpaperBox"></div>' +
+        '<div class="col gap-2">' +
+          '<input type="file" id="rtWallpaper" accept="image/*,video/*" class="hidden">' +
+          '<button class="btn btn-outline btn-sm" type="button" id="rtWallpaperPick">Choose image or video</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" id="rtWallpaperClear">Remove</button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="field-hint">Shown full-screen behind the welcome/sign-in screen on every station. Up to 30 MB.</div>';
+
+    function paintBox() {
+      var box = wrap.querySelector("#rtWallpaperBox");
+      var url = val("billing.wallpaper_url", "");
+      var type = val("billing.wallpaper_type", "");
+      if (!url) { box.innerHTML = '<span class="faint">No wallpaper</span>'; return; }
+      box.innerHTML = type === "video"
+        ? '<video src="' + UI.esc(url) + '" muted loop autoplay playsinline></video>'
+        : '<img src="' + UI.esc(url) + '" alt="Current wallpaper">';
+    }
+    paintBox();
+
+    var pickBtn = wrap.querySelector("#rtWallpaperPick");
+    var file = wrap.querySelector("#rtWallpaper");
+    pickBtn.addEventListener("click", function () { file.click(); });
+    wrap.querySelector("#rtWallpaperClear").addEventListener("click", function () {
+      set("billing.wallpaper_url", "");
+      set("billing.wallpaper_type", "");
+      paintBox();
+    });
+
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+
+      if (f.size > 30 * 1024 * 1024) {
+        UI.toast.warn("That file is too large", "Use an image or video under 30 MB.");
+        file.value = "";
+        return;
+      }
+
+      UI.withBusy(pickBtn, function () {
+        return Store.uploadCafeWallpaper(f)
+          .then(function (data) {
+            set("billing.wallpaper_url", data.url);
+            set("billing.wallpaper_type", data.type);
+            paintBox();
+          })
+          .catch(function (e) {
+            UI.toast.error("Could not upload that file", e.message);
+          })
+          .finally(function () { file.value = ""; });
+      });
+    });
+
+    return wrap;
+  }
+
   function toggle(key, label, hint) {
     var row = UI.el("label", { class: "check-row" });
     row.innerHTML =
@@ -342,6 +411,13 @@
     identity.appendChild(field("billing.phone", "Phone", { placeholder: "98765 00011" }));
     identity.appendChild(field("billing.email", "Email", { type: "email" }));
     editor.appendChild(identity);
+
+    var kiosk = UI.el("section", { class: "card card-pad col gap-4" });
+    kiosk.innerHTML = '<div class="card-head"><h3 class="card-title">Kiosk screen</h3></div>' +
+      '<div class="faint" style="font-size:12px">Not printed — shown on the station itself, ' +
+      "before a customer signs in.</div>";
+    kiosk.appendChild(wallpaperField());
+    editor.appendChild(kiosk);
 
     var tax = UI.el("section", { class: "card card-pad col gap-4" });
     tax.innerHTML = '<div class="card-head"><h3 class="card-title">Tax</h3></div>' +
@@ -458,7 +534,12 @@
         /* Printed grey rather than black: the mark should be legible on the
            roll without drawing the eye away from the café's own footer. */
         ".rt-powered{text-align:center;margin-top:8px;font-size:9px;color:#888;letter-spacing:.04em}" +
-        "</style></head><body>" + node.innerHTML + "</body></html>"
+        /* The same "Paper width" setting the real receipt now honours (see
+           pages.css's .receipt.rt-58mm etc.) — node.innerHTML alone drops the
+           width class that lives on node itself, so it's re-applied on the
+           wrapper below instead of just copying the inner content. */
+        ".rt-58mm{width:240px}.rt-80mm{width:300px}.rt-a4{width:420px;font-size:13px}" +
+        "</style></head><body><div class=\"" + node.className + "\">" + node.innerHTML + "</div></body></html>"
       );
       w.document.close();
       w.focus();

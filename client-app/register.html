@@ -13,6 +13,8 @@
 
   <main class="stage">
     <section class="auth-card" id="authCard" style="max-width:520px">
+      <img class="auth-logo" id="authLogo" src="Images/cafexp-logo.png" alt="CafeXP — powered by ManagerXP"
+           onerror="this.closest('.auth-card').classList.add('auth-no-logo'); this.remove();" />
       <div class="auth-mark">
         <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -21,7 +23,8 @@
         </svg>
       </div>
 
-      <h1 class="auth-title">Join CafeXP</h1>
+      <h1 class="auth-title">Join <span id="cafeName">CafeXP</span></h1>
+      <p class="powered-by">Powered by <strong>ManagerXP</strong></p>
       <p class="auth-sub">One account for your games, your session and your orders.</p>
 
       <form class="auth-form" id="registerForm" novalidate>
@@ -184,6 +187,30 @@
       var pcName = "";
       window.api.getPcName(function (name) { pcName = name || ""; });
       if (window.api.onPcName) window.api.onPcName(function (name) { pcName = name || pcName; });
+
+      /* Café's trading name over its registration name over the generic
+         default — same precedence as login.html and the console's own
+         billing.js. Either can arrive after the other. */
+      var cafeRegName = "", cafeBusinessName = "";
+      function paintCafeName() {
+        var name = cafeBusinessName || cafeRegName;
+        if (name) document.getElementById("cafeName").textContent = name;
+      }
+      if (window.api.getCafeName) {
+        window.api.getCafeName(function (name) { cafeRegName = name || ""; paintCafeName(); });
+      }
+      if (window.api.onCafeName) {
+        window.api.onCafeName(function (name) { cafeRegName = name || ""; paintCafeName(); });
+      }
+      function applyCafeBranding(b) {
+        b = b || {};
+        cafeBusinessName = b.businessName || "";
+        paintCafeName();
+        var logoEl = document.getElementById("authLogo");
+        if (b.logo && logoEl) logoEl.src = b.logo;
+      }
+      if (window.api.getCafeBranding) window.api.getCafeBranding(applyCafeBranding);
+      if (window.api.onCafeBranding) window.api.onCafeBranding(applyCafeBranding);
 
       document.getElementById("toWelcome").addEventListener("click", function () {
         window.api.navigateTo("welcome");

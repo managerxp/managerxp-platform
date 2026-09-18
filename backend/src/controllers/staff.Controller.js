@@ -25,7 +25,12 @@ const shapeStaff = (row) => ({
   role_name: row.role_name,
   status: row.status,
   last_login_at: row.last_login_at,
-  created_at: row.created_at
+  created_at: row.created_at,
+  // Only present on the list endpoint (see listStaff) — how many sessions
+  // this account has started, matched by the "staff:<email>" label every
+  // session is stamped with at start (see describe() in authGuards.js).
+  handled_today: row.handled_today === undefined ? undefined : Number(row.handled_today),
+  handling_now: row.handling_now === undefined ? undefined : Number(row.handling_now)
 });
 
 const SELECT_STAFF = `
@@ -178,7 +183,16 @@ export const listStaff = async (req, res) => {
     const where = filters.length ? `WHERE ${filters.join(' AND ')}` : '';
 
     const result = await pool.query(
-      `${SELECT_STAFF} ${where} ORDER BY s.staff_name ASC`, params
+      `SELECT s.*, r.role_name,
+              (SELECT COUNT(*) FROM sessions sx
+                 WHERE sx.started_by = 'staff:' || s.email
+                   AND sx.started_at::date = CURRENT_DATE) AS handled_today,
+              (SELECT COUNT(*) FROM sessions sx
+                 WHERE sx.started_by = 'staff:' || s.email
+                   AND sx.status IN ('active','paused')) AS handling_now
+       FROM staff s
+       JOIN roles r ON r.role_id = s.role_id
+       ${where} ORDER BY s.staff_name ASC`, params
     );
     res.status(200).json({ success: true, data: result.rows.map(shapeStaff) });
   } catch (error) {

@@ -27,6 +27,23 @@ function normalizeAddress(address) {
   return null;
 }
 
+// 3-20 chars, starts with a letter, letters/numbers/underscore only —
+// matches register.html's own isValidUsername exactly, so a value the
+// client already accepted is never refused here.
+const USERNAME_REGEX = /^[a-zA-Z][a-zA-Z0-9_]{2,19}$/;
+
+/** Whether `username` already belongs to a different customer at this café. */
+async function usernameTaken(cafeId, username, excludeCustomerId) {
+  const result = await pool.query(
+    `SELECT 1 FROM customers
+      WHERE cafe_id IS NOT DISTINCT FROM $1 AND LOWER(username) = LOWER($2)
+        AND customer_id IS DISTINCT FROM $3
+      LIMIT 1`,
+    [cafeId, username, excludeCustomerId || null]
+  );
+  return result.rows.length > 0;
+}
+
 // Register function
 export const register = async (req, res) => {
   try {
@@ -36,8 +53,10 @@ export const register = async (req, res) => {
       phone_number,
       password,
       address,
-      pc_name
+      pc_name,
+      username
     } = req.body;
+    const trimmedUsername = username ? String(username).trim() : '';
 
     const normalizedAddress = normalizeAddress(address);
 
@@ -103,6 +122,16 @@ export const register = async (req, res) => {
       });
     }
 
+    // Optional — left blank, added later from the profile page. If given, it
+    // has to already be well-formed and free, same rule the client itself
+    // already enforces before this request is ever sent.
+    if (trimmedUsername && !USERNAME_REGEX.test(trimmedUsername)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores.'
+      });
+    }
+
     /* Scoped to this café — the schema itself already agrees (see
        idx_customers_cafe_email, a per-café unique index; the old global
        `email UNIQUE` was dropped when it was added). The same person
@@ -119,18 +148,25 @@ export const register = async (req, res) => {
       });
     }
 
+    if (trimmedUsername && await usernameTaken(cafeId, trimmedUsername)) {
+      return res.status(409).json({
+        success: false,
+        message: 'That username is already taken.'
+      });
+    }
+
     // Hash the password
     const saltRounds = 10;
     const hashedPassword = await bcrypt.hash(password, saltRounds);
 
     // Insert new customer
     const insertQuery = `
-      INSERT INTO customers (customer_name, email, phone_number, password, address, cafe_id)
-      VALUES ($1, $2, $3, $4, $5, $6)
-      RETURNING customer_id, customer_name, email, phone_number, address, cafe_id, created_at, updated_at
+      INSERT INTO customers (customer_name, email, phone_number, password, address, cafe_id, username)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      RETURNING customer_id, customer_name, email, phone_number, address, cafe_id, username, created_at, updated_at
     `;
 
-    const values = [customer_name, email, phone_number, hashedPassword, normalizedAddress, cafeId];
+    const values = [customer_name, email, phone_number, hashedPassword, normalizedAddress, cafeId, trimmedUsername || null];
     const result = await pool.query(insertQuery, values);
 
     const newCustomer = result.rows[0];
@@ -311,7 +347,7 @@ export const login = async (req, res) => {
  */
 
 const CUSTOMER_FIELDS = `
-  c.customer_id, c.customer_name, c.email, c.phone_number,
+  c.customer_id, c.customer_name, c.email, c.username, c.phone_number,
   c.address, c.created_at, c.updated_at,
   c.customer_type, c.discount_percent, c.credit_limit, c.tier_note
 `;
@@ -328,13 +364,31 @@ const CUSTOMER_DETAIL_SELECT = `
   w.balance AS wallet_balance,
   w.currency AS wallet_currency,
   (SELECT COALESCE(SUM(s.billable_seconds), 0) FROM sessions s
-     WHERE s.customer_id = c.customer_id AND s.status = 'ended') AS total_play_seconds
+     WHERE s.customer_id = c.customer_id AND s.status = 'ended') AS total_play_seconds,
+  -- A calendar day with at least one session counts as one visit, so two
+  -- sessions on the same afternoon aren't counted as two separate visits.
+  (SELECT COUNT(DISTINCT s.started_at::date) FROM sessions s
+     WHERE s.customer_id = c.customer_id AND s.status <> 'cancelled') AS visit_count,
+  (SELECT MAX(s.started_at) FROM sessions s
+     WHERE s.customer_id = c.customer_id AND s.status <> 'cancelled') AS last_visit_at,
+  (SELECT COALESCE(SUM(b.total), 0) FROM bills b
+     WHERE b.customer_id = c.customer_id AND b.status = 'PAID') AS total_spend,
+  -- Most-played game by session count; only sessions sold off a Gaming Price
+  -- tier carry a game at all, so an all-manual-rate customer has none.
+  (SELECT sm.software_name FROM sessions s
+     JOIN gaming_prices gp ON gp.id = s.gaming_price_id
+     JOIN software_master sm ON sm.software_id = gp.software_id
+     WHERE s.customer_id = c.customer_id AND s.status <> 'cancelled'
+     GROUP BY sm.software_name
+     ORDER BY COUNT(*) DESC, MAX(s.started_at) DESC
+     LIMIT 1) AS favorite_game
 `;
 
 const shapeCustomer = (row) => ({
   customer_id: row.customer_id,
   customer_name: row.customer_name,
   email: row.email,
+  username: row.username || null,
   phone_number: row.phone_number,
   address: row.address,
   created_at: row.created_at,
@@ -366,7 +420,14 @@ const shapeCustomer = (row) => ({
   // a per-row subquery on every listing would be a query per customer.
   total_play_seconds: row.total_play_seconds === undefined || row.total_play_seconds === null
     ? undefined
-    : Number(row.total_play_seconds)
+    : Number(row.total_play_seconds),
+
+  // The four fields below are only present where CUSTOMER_DETAIL_SELECT ran
+  // (a single-customer lookup) — same reasoning as total_play_seconds.
+  visit_count: row.visit_count === undefined ? undefined : Number(row.visit_count),
+  last_visit_at: row.visit_count === undefined ? undefined : (row.last_visit_at || null),
+  total_spend: row.total_spend === undefined ? undefined : Number(row.total_spend) || 0,
+  favorite_game: row.visit_count === undefined ? undefined : (row.favorite_game || null)
 });
 
 /*
@@ -568,6 +629,117 @@ export const getMyProfile = async (req, res) => {
   }
 };
 
+/*
+ * PATCH /api/customers/me
+ *
+ * Name and email stay out of this on purpose — email is the verified
+ * identity behind password reset and email OTP, so changing it here would
+ * bypass that. Username, mobile and address are the fields client-app's own
+ * profile form actually offers, so they're the only ones this accepts.
+ */
+export const updateMyProfile = async (req, res) => {
+  try {
+    const id = req.actor?.customer_id;
+    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
+
+    const own = await pool.query('SELECT cafe_id, username FROM customers WHERE customer_id = $1', [id]);
+    if (own.rows.length === 0) return res.status(404).json({ success: false, message: 'Customer not found' });
+    const cafeId = own.rows[0].cafe_id;
+
+    const { username, phone_number, address } = req.body;
+    const updates = [];
+    const values = [];
+    let n = 1;
+
+    if (username !== undefined) {
+      const trimmed = String(username || '').trim();
+      // Blank clears it back to "not set" — the field's own placeholder
+      // already says as much. Unchanged from what this customer already has
+      // skips the format/uniqueness checks entirely: keeping your own name
+      // must never read as "taken".
+      if (trimmed && trimmed.toLowerCase() !== String(own.rows[0].username || '').toLowerCase()) {
+        if (!USERNAME_REGEX.test(trimmed)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores.'
+          });
+        }
+        if (await usernameTaken(cafeId, trimmed, id)) {
+          return res.status(409).json({ success: false, message: 'That username is already taken.' });
+        }
+      }
+      updates.push(`username = $${n++}`); values.push(trimmed || null);
+    }
+    if (phone_number !== undefined) {
+      const trimmed = String(phone_number || '').trim();
+      if (trimmed.length < 10) {
+        return res.status(400).json({ success: false, message: 'Phone number must be at least 10 characters.' });
+      }
+      updates.push(`phone_number = $${n++}`); values.push(trimmed);
+    }
+    if (address !== undefined) {
+      const normalized = normalizeAddress(address);
+      if (!normalized) {
+        return res.status(400).json({ success: false, message: 'Address is required.' });
+      }
+      updates.push(`address = $${n++}`); values.push(normalized);
+    }
+
+    if (!updates.length) {
+      return res.status(400).json({ success: false, message: 'Nothing to update.' });
+    }
+
+    updates.push(`updated_at = CURRENT_TIMESTAMP`);
+    values.push(id);
+    const result = await pool.query(
+      `UPDATE customers SET ${updates.join(', ')} WHERE customer_id = $${n} RETURNING ${CUSTOMER_FIELDS.replace(/c\./g, '')}`,
+      values
+    );
+
+    res.status(200).json({ success: true, data: shapeCustomer(result.rows[0]) });
+  } catch (error) {
+    console.error('Error updating own profile:', error);
+    res.status(500).json({ success: false, message: 'Error updating profile' });
+  }
+};
+
+/*
+ * GET /api/customers/me/username-available?username=X
+ *
+ * Live feedback while typing, in client-app's profile form — the same
+ * format/uniqueness rule PATCH /me enforces, checked without committing to
+ * anything, so a customer finds out before Save rather than after.
+ */
+export const checkUsernameAvailable = async (req, res) => {
+  try {
+    const id = req.actor?.customer_id;
+    if (!id) return res.status(403).json({ success: false, message: 'Customers only' });
+
+    const trimmed = String(req.query.username || '').trim();
+    if (!trimmed) {
+      return res.status(400).json({ success: false, message: 'Send a username to check.' });
+    }
+    if (!USERNAME_REGEX.test(trimmed)) {
+      return res.status(200).json({
+        success: true,
+        data: { available: false, reason: '3-20 characters, starting with a letter — letters, numbers and underscore only.' }
+      });
+    }
+
+    const own = await pool.query('SELECT cafe_id FROM customers WHERE customer_id = $1', [id]);
+    if (own.rows.length === 0) return res.status(404).json({ success: false, message: 'Customer not found' });
+
+    const taken = await usernameTaken(own.rows[0].cafe_id, trimmed, id);
+    res.status(200).json({
+      success: true,
+      data: taken ? { available: false, reason: 'Already taken.' } : { available: true }
+    });
+  } catch (error) {
+    console.error('Error checking username availability:', error);
+    res.status(500).json({ success: false, message: 'Error checking username' });
+  }
+};
+
 // GET /api/customers/:id
 export const getCustomerById = async (req, res) => {
   try {
@@ -594,6 +766,62 @@ export const getCustomerById = async (req, res) => {
   } catch (error) {
     console.error('Error fetching customer:', error);
     res.status(500).json({ success: false, message: 'Error fetching customer' });
+  }
+};
+
+/*
+ * GET /api/customers/:id/activity
+ *
+ * A recent-play feed for the customer detail panel — what they played, when,
+ * and what it cost. Cancelled sessions (started by mistake, released again)
+ * are left out; they were never really a visit.
+ */
+export const getCustomerActivity = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid customer id' });
+    }
+    const limit = Math.min(parseInt(req.query.limit, 10) || 15, 50);
+
+    const own = await pool.query(
+      'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [id, req.actor?.cafe_id ?? null]
+    );
+    if (own.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    const result = await pool.query(
+      `SELECT s.session_id, s.started_at, s.ended_at, s.status, s.billable_seconds,
+              s.amount_charged, s.price_label, p.name AS pc_name, sm.software_name
+       FROM sessions s
+       JOIN pcs p ON p.pc_id = s.pc_id
+       LEFT JOIN gaming_prices gp ON gp.id = s.gaming_price_id
+       LEFT JOIN software_master sm ON sm.software_id = gp.software_id
+       WHERE s.customer_id = $1 AND s.status <> 'cancelled'
+       ORDER BY s.started_at DESC
+       LIMIT $2`,
+      [id, limit]
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result.rows.map((row) => ({
+        session_id: row.session_id,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        status: row.status,
+        billable_seconds: row.billable_seconds === null ? null : Number(row.billable_seconds),
+        amount_charged: row.amount_charged === null ? null : Number(row.amount_charged),
+        game: row.software_name || null,
+        station_name: row.pc_name,
+        label: row.software_name || row.price_label || row.pc_name
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching customer activity:', error);
+    res.status(500).json({ success: false, message: 'Error fetching customer activity' });
   }
 };
 

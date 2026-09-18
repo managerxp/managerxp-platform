@@ -50,11 +50,12 @@ export const register = async (req, res) => {
      * order.
      */
     const cafeResult = await pool.query(
-      'SELECT cafe_id FROM cafes WHERE user_id = $1 ORDER BY cafe_id ASC LIMIT 1',
+      'SELECT cafe_id, name FROM cafes WHERE user_id = $1 ORDER BY cafe_id ASC LIMIT 1',
       [user.id]
     );
 
     user.cafe_id = cafeResult.rows.length > 0 ? cafeResult.rows[0].cafe_id : null;
+    user.cafe_name = cafeResult.rows.length > 0 ? cafeResult.rows[0].name : null;
 
     /*
      * The address is not trusted yet. A code goes out now and the account
@@ -172,11 +173,12 @@ export const login = async (req, res) => {
      * order.
      */
     const cafeResult = await pool.query(
-      'SELECT cafe_id FROM cafes WHERE user_id = $1 ORDER BY cafe_id ASC LIMIT 1',
+      'SELECT cafe_id, name FROM cafes WHERE user_id = $1 ORDER BY cafe_id ASC LIMIT 1',
       [user.id]
     );
 
     user.cafe_id = cafeResult.rows.length > 0 ? cafeResult.rows[0].cafe_id : null;
+    user.cafe_name = cafeResult.rows.length > 0 ? cafeResult.rows[0].name : null;
 
     /*
      * The café goes in the token, not only in the response body.
@@ -278,11 +280,12 @@ export const verifyToken = async (req, res) => {
      * order.
      */
     const cafeResult = await pool.query(
-      'SELECT cafe_id FROM cafes WHERE user_id = $1 ORDER BY cafe_id ASC LIMIT 1',
+      'SELECT cafe_id, name FROM cafes WHERE user_id = $1 ORDER BY cafe_id ASC LIMIT 1',
       [user.id]
     );
 
     user.cafe_id = cafeResult.rows.length > 0 ? cafeResult.rows[0].cafe_id : null;
+    user.cafe_name = cafeResult.rows.length > 0 ? cafeResult.rows[0].name : null;
 
     res.status(200).json({
       success: true,

@@ -18,6 +18,24 @@
   var scanned = [];           // live scan results from the client
   var masterList = [];
 
+  /*
+   * A Station tools toggle saves in the background, but "connected"/"running"
+   * fire for the whole fleet, not just the selected PC — some other station
+   * merely reconnecting could re-run renderDetail() while a toggle's request
+   * is still in flight, rebuilding the checkbox from the not-yet-updated
+   * `target.disabled_system_tools` and snapping it straight back to what it
+   * was before the click. Looked exactly like the toggle doing nothing.
+   * Deferred here instead of interrupted: the pending save's own .then already
+   * updates the source array and repaints, so a queued render right after it
+   * settles shows the correct end state either way.
+   */
+  var toolsSavePending = false;
+  var renderDetailQueued = false;
+  function safeRenderDetail() {
+    if (toolsSavePending) { renderDetailQueued = true; return; }
+    renderDetail();
+  }
+
   function pc() { return selectedPC ? Store.getPC(selectedPC) : null; }
 
   /* The client's own built-in Station tools — fixed, not scanned, not
@@ -156,16 +174,28 @@
             return box && !box.checked;
           });
         input.disabled = true;
+        toolsSavePending = true;
         Store.updatePC(target.pc_id, { disabled_system_tools: next })
           .then(function () {
             target.disabled_system_tools = next;
             UI.toast.ok(input.checked ? "Enabled" : "Disabled", t.label + " on " + target.name);
+            /* Saved to the database, but a station only ever learns its
+               disabledSystemTools at REGISTER time (see main.js's
+               pushStationConfig) — without this, an already-connected kiosk
+               keeps showing the old Help menu until it happens to reconnect.
+               Re-pushes STATION_CONFIG to every connected station; harmless
+               for the ones whose tools didn't just change. */
+            Store.refreshUnlockPin().catch(function () {});
           })
           .catch(function (e) {
             input.checked = !input.checked;   // the write failed — put the switch back
             UI.toast.error("Could not change it", e.message);
           })
-          .then(function () { input.disabled = false; });
+          .then(function () {
+            input.disabled = false;
+            toolsSavePending = false;
+            if (renderDetailQueued) { renderDetailQueued = false; renderDetail(); }
+          });
       });
 
       card.appendChild(row);
@@ -207,6 +237,17 @@
       "</div>";
     host.appendChild(head);
     renderStationTools(host, target);
+
+    /*
+     * Bound right after `head` goes in, not at the end of this function —
+     * the loading/error/empty branches below all `return` before reaching
+     * the end, which left these two header buttons visible but dead
+     * whenever the station had no software configured yet (the actual bug
+     * report: "Add software" at the top doing nothing on a fresh station).
+     */
+    host.querySelector("#btnAddSw").addEventListener("click", openAddForm);
+    var headScanBtn = host.querySelector("#btnScan");
+    if (headScanBtn && !headScanBtn.disabled) headScanBtn.addEventListener("click", scanStation);
 
     var body = UI.el("div", { class: "card-body col gap-3" });
     host.appendChild(body);
@@ -296,10 +337,6 @@
       rows.push(row);
     });
     Motion.stagger(rows, { step: 0.02, y: 8 });
-
-    host.querySelector("#btnAddSw").addEventListener("click", openAddForm);
-    var scanBtn = host.querySelector("#btnScan");
-    if (scanBtn && !scanBtn.disabled) scanBtn.addEventListener("click", scanStation);
   }
 
   /* ==========================================================================
@@ -519,8 +556,8 @@
       root.appendChild(page);
 
       offs.push(Store.on("pcs", function () { renderList(); }));
-      offs.push(Store.on("connected", function () { renderList(); renderDetail(); }));
-      offs.push(Store.on("running", renderDetail));
+      offs.push(Store.on("connected", function () { renderList(); safeRenderDetail(); }));
+      offs.push(Store.on("running", safeRenderDetail));
 
       renderList();
 

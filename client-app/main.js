@@ -24,6 +24,18 @@ for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __di
 }
 
 let SIM_ID = "SIM-01"; // Will be updated by server
+let CAFE_NAME = ""; // This station's café — set by the console's SET_NAME, shown on the login screen
+// The café's own branding, if it has set any — see the CAFE_BRANDING handler
+// below. businessName is preferred over CAFE_NAME when set (the café's own
+// trading name vs. its registration name); logo is a data URI or null.
+let CAFE_BUSINESS_NAME = "";
+let CAFE_LOGO = "";
+// The welcome screen's background, if the café has set one — a relative
+// /uploads/... path (resolved against BACKEND_BASE by whichever page shows
+// it), not a data URI like CAFE_LOGO: this can be tens of MB, so it is
+// stored as a real file on the backend, never inlined here.
+let CAFE_WALLPAPER_URL = "";
+let CAFE_WALLPAPER_TYPE = "";
 const CLIENT_PORT = Number(process.env.CLIENT_PORT) || 9090; // Port this client listens on
 const SERVER_APP_PORT = Number(process.env.SERVER_APP_PORT) || 3334; // Server app HTTP port for discovery
 let LOCAL_IP = null; // Will be set on startup
@@ -62,6 +74,33 @@ let kioskLocked = true;
  */
 let windowsKioskGuard = null;
 let windowsKioskGuardStarting = false;
+
+/*
+ * Focus helper — a second, persistent PowerShell process, separate from the
+ * keyboard-guard hook above. The guard's only job is announcing "ALTTAB" to
+ * stdout; it never manipulates windows itself. This helper is the thing that
+ * actually calls SetForegroundWindow, kept alive across the whole locked
+ * session so its one-time C# compile (Add-Type) isn't repeated on every
+ * single Alt+Tab press — see focusViaHelper()/startFocusHelper() below.
+ */
+let focusHelper = null;
+let focusHelperStarting = false;
+let focusHelperReady = false;
+let pendingFocusResolve = null;
+
+/* Which side Alt+Tab should send focus TO next, and which game (if any) is
+   the one it would send focus to — explicit state, not re-derived from a
+   live win.isFocused() read, so a transient background event (the timer
+   card briefly showing, an OS focus blip) can never silently reinterpret
+   which side the customer actually chose. See handleAltTabToggle(). */
+let activeFocusTarget = 'CAFEXP'; // 'CAFEXP' | 'GAME'
+let currentGameName = null;
+
+/* Set immediately before a deliberate win.minimize() call (system-panel
+   access, a console-driven "minimise client") so the minimize-restore guard
+   (see createWindow()'s win.on('minimize', ...)) can tell that apart from an
+   unexpected minimize and not fight it. */
+let intentionalMinimize = false;
 
 /* How many times in a row this has failed to actually confirm itself
    installed (HOOK_INSTALLED never arrived before the process exited or
@@ -360,14 +399,27 @@ function startWindowsKioskGuard() {
 
         windowsKioskGuard = child;
         let confirmedThisRun = false;
+        // A line's bytes can arrive split across two separate 'data' events;
+        // buffered per-spawn (not module-level) so a stale remainder from a
+        // dead child can never leak into the next restart.
+        let stdoutBuffer = "";
 
         child.stdout.on("data", data => {
-            data.toString().split(/\r?\n/).forEach((line) => {
+            stdoutBuffer += data.toString();
+            const lines = stdoutBuffer.split(/\r?\n/);
+            stdoutBuffer = lines.pop();
+            lines.forEach((line) => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
-                if (trimmed === "ALTTAB") { handleAltTabToggle(); return; }
+                if (trimmed === "ALTTAB") {
+                    console.log("[KIOSK] Alt+Tab detected");
+                    console.log("[KIOSK] ALTTAB received from keyboard guard");
+                    handleAltTabToggle();
+                    return;
+                }
                 if (trimmed === "HOOK_INSTALLED") {
                     confirmedThisRun = true;
+                    console.log("[KIOSK] Keyboard guard hook installed");
                     reportKioskGuardRecovered();
                     return;
                 }
@@ -492,49 +544,36 @@ function syncWindowsKeyboardBlocker() {
 
     if (kioskLocked) {
         startWindowsKioskGuard();
+        startFocusHelper();
     } else {
         stopWindowsKeyboardBlocker();
+        stopFocusHelper();
     }
 }
 
 /*
- * Alt+Tab, scoped to exactly two windows: CafeXP and whatever game is
- * currently running — nothing else. The native guard above swallows every
- * Alt+Tab so Windows' own switcher (which would list every open window,
- * not just those two) never appears; this is what actually does the
- * switching, in response to the "ALTTAB" line the guard prints.
- *
- * With no game running there is nothing to switch to, so it does nothing —
- * a customer at an idle, locked station has nowhere for this to send them.
+ * Escape a value for interpolation into a PowerShell single-quoted string —
+ * doubling an embedded ' is PowerShell's own escape for it. Applied to every
+ * derived exe name before it reaches a Get-Process -Name '...' filter.
  */
-function handleAltTabToggle() {
-    if (!kioskLocked || !alive(win)) return;
-
-    const appName = currentRunningApp();
-    if (!appName) return;
-
-    if (win.isFocused()) {
-        const info = runningProcesses.get(appName);
-        const exeName = deriveExeName(info && info.appPath, appName);
-        focusRunningExe(exeName);
-    } else {
-        win.show();
-        win.focus();
-    }
+function psSingleQuoteEscape(value) {
+    return String(value).replace(/'/g, "''");
 }
 
 /*
- * Foreground another process's main window from ours.
+ * Focus helper — a second, persistent PowerShell process, separate from the
+ * keyboard-guard hook. The guard's only job is announcing "ALTTAB" to
+ * stdout; it never touches a window itself, and stays that way. This is the
+ * process that actually calls SetForegroundWindow.
  *
- * Windows normally refuses SetForegroundWindow calls made on another
- * process's behalf (the "foreground lock" — otherwise any background app
- * could steal focus at will); AttachThreadInput is the standard, narrow way
- * around that, used only for the instant of the switch and detached again
- * right after.
+ * Kept alive for the whole locked session, compiling its C# (Add-Type) once
+ * at startup, rather than a fresh powershell.exe + full recompile on every
+ * single Alt+Tab press — real, avoidable latency on the app's single most
+ * frequent interaction. Commands arrive one line at a time over stdin,
+ * results come back one line at a time over stdout — the same shape as the
+ * guard's own single-token stdout protocol.
  */
-function focusRunningExe(exeName) {
-    if (!exeName) return;
-    const script = String.raw`
+const FOCUS_HELPER_SCRIPT = String.raw`
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
@@ -556,30 +595,264 @@ public static class CafeXPFocus {
     }
 }
 '@
-$p = Get-Process -Name '${exeName}' -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
-if ($p) { [CafeXPFocus]::Focus($p.MainWindowHandle) }
+Write-Output 'HELPER_READY'
+while ($true) {
+    $line = [Console]::In.ReadLine()
+    if ($null -eq $line) { break }
+    if ($line.StartsWith('FOCUS_EXE:')) {
+        $targetName = $line.Substring(10)
+        $p = Get-Process -Name $targetName -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
+        if ($p) {
+            [CafeXPFocus]::Focus($p.MainWindowHandle)
+            Write-Output ('FOCUSED ' + $p.MainWindowHandle)
+        } else {
+            Write-Output 'NOT_FOUND'
+        }
+    }
+}
 `;
-    const child = spawn("powershell.exe",
-        ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", script],
-        { windowsHide: true, stdio: ["ignore", "ignore", "pipe"] });
-    child.stderr.on("data", (data) => log(`Could not switch to ${exeName}: ${data.toString().trim()}`));
+
+function startFocusHelper() {
+    if (process.platform !== "win32") return;
+    if (focusHelper) return;
+    if (focusHelperStarting) return;
+    focusHelperStarting = true;
+
+    try {
+        const child = spawn(
+            "powershell.exe",
+            ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-WindowStyle", "Hidden", "-Command", FOCUS_HELPER_SCRIPT],
+            { windowsHide: true, stdio: ["pipe", "pipe", "pipe"] }
+        );
+
+        focusHelper = child;
+        focusHelperReady = false;
+        let stdoutBuffer = "";
+
+        child.stdout.on("data", data => {
+            stdoutBuffer += data.toString();
+            const lines = stdoutBuffer.split(/\r?\n/);
+            stdoutBuffer = lines.pop();
+            lines.forEach((line) => {
+                const trimmed = line.trim();
+                if (!trimmed) return;
+                if (trimmed === "HELPER_READY") {
+                    focusHelperReady = true;
+                    console.log("[KIOSK] Focus helper ready");
+                    return;
+                }
+                if (trimmed === "NOT_FOUND" || trimmed.startsWith("FOCUSED")) {
+                    if (pendingFocusResolve) {
+                        const resolve = pendingFocusResolve;
+                        pendingFocusResolve = null;
+                        const hwnd = trimmed.startsWith("FOCUSED") ? trimmed.slice(8).trim() : null;
+                        resolve({ result: trimmed.startsWith("FOCUSED") ? "FOCUSED" : "NOT_FOUND", hwnd });
+                    }
+                    return;
+                }
+                console.log("[Kiosk] Focus helper:", trimmed);
+            });
+        });
+
+        child.stderr.on("data", data => {
+            console.error("[Kiosk] Focus helper error:", data.toString().trim());
+        });
+
+        child.on("error", error => {
+            console.error("[Kiosk] Failed to start focus helper:", error);
+            focusHelper = null;
+            focusHelperStarting = false;
+            focusHelperReady = false;
+            if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
+        });
+
+        child.on("exit", (code, signal) => {
+            log(`[Kiosk] Focus helper exited (code=${code}, signal=${signal})`);
+            focusHelper = null;
+            focusHelperStarting = false;
+            focusHelperReady = false;
+            if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
+            if (kioskLocked) {
+                setTimeout(() => {
+                    if (kioskLocked && !focusHelper) startFocusHelper();
+                }, 500);
+            }
+        });
+
+        focusHelperStarting = false;
+    } catch (error) {
+        focusHelperStarting = false;
+        focusHelper = null;
+        console.error("[Kiosk] Failed to start focus helper:", error);
+    }
+}
+
+function stopFocusHelper() {
+    if (!focusHelper) return;
+    try {
+        focusHelper.kill();
+    } catch (error) {
+        console.warn("[Kiosk] Could not stop focus helper:", error);
+    }
+    focusHelper = null;
+    focusHelperStarting = false;
+    focusHelperReady = false;
+    if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
+}
+
+/*
+ * Ask the focus helper to foreground exeName's main window. Resolves
+ * { result: 'FOCUSED'|'NOT_FOUND', hwnd: <string|null> } — never rejects,
+ * and the caller never falls through to focusing anything else on a
+ * 'NOT_FOUND'. hwnd is the exact window handle the helper acted on, purely
+ * for diagnostic logging (Electron decided WHICH process to target by name
+ * before ever calling this; the helper resolves that name to a window
+ * deterministically, it never picks among alternatives or targets anything
+ * Electron didn't ask for). A helper that isn't running or hasn't finished
+ * its one-time compile yet resolves 'NOT_FOUND' immediately rather than
+ * queuing the request indefinitely.
+ */
+function focusViaHelper(exeName) {
+    return new Promise((resolve) => {
+        if (!exeName || !focusHelper || !focusHelperReady) { resolve({ result: "NOT_FOUND", hwnd: null }); return; }
+        // Alt+Tab presses are inherently one-at-a-time from a human; a
+        // request that somehow arrives while another is still pending
+        // pre-empts it rather than silently getting lost.
+        if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
+        pendingFocusResolve = resolve;
+        try {
+            focusHelper.stdin.write(`FOCUS_EXE:${psSingleQuoteEscape(exeName)}\n`);
+        } catch (error) {
+            pendingFocusResolve = null;
+            resolve({ result: "NOT_FOUND", hwnd: null });
+        }
+    });
+}
+
+/*
+ * Alt+Tab, scoped to exactly two windows: CafeXP and whatever game is
+ * currently running — nothing else. The native guard above swallows every
+ * Alt+Tab so Windows' own switcher (which would list every open window,
+ * not just those two) never appears; this decides which of the two to send
+ * focus to, in response to the "ALTTAB" line the guard prints.
+ *
+ * Driven by activeFocusTarget, not a live win.isFocused() read — the
+ * customer's last Alt+Tab is the source of truth for which side they meant
+ * to be on, and a transient background event (the timer card briefly
+ * showing, an OS focus blip) must not silently flip that.
+ *
+ * With no game running there is nothing to switch to, so it does nothing —
+ * a customer at an idle, locked station has nowhere for this to send them.
+ */
+function handleAltTabToggle() {
+    console.log("[KIOSK] handleAltTabToggle()");
+
+    if (!kioskLocked || !alive(win)) {
+        console.log("[KIOSK] Ignored — kiosk not locked or window unavailable");
+        return;
+    }
+    if (!currentGameName) {
+        console.log("[KIOSK] Ignored — no game currently tracked, nothing to switch to");
+        return;
+    }
+
+    console.log(`[KIOSK] Current focus: ${activeFocusTarget}`);
+
+    if (activeFocusTarget === 'GAME') {
+        console.log("[KIOSK] Target focus: CAFEXP");
+        switchFocusToCafeXP();
+    } else {
+        console.log("[KIOSK] Target focus: GAME");
+        const info = runningProcesses.get(currentGameName);
+        const exeName = deriveExeName(info && info.appPath, currentGameName);
+        switchFocusToGame(currentGameName, exeName);
+    }
+}
+
+/*
+ * Foreground the tracked game's main window. One bounded retry if the first
+ * attempt doesn't find it — never an unbounded loop, and never a fallback to
+ * focusing anything else. Only flips activeFocusTarget on confirmed success,
+ * so a failed switch leaves the customer exactly where they already were
+ * rather than in an unknown state.
+ */
+async function switchFocusToGame(appName, exeName) {
+    log(`[Kiosk] Switching to game ${appName} (exe=${exeName})`);
+    console.log("[KIOSK] Focus request sent");
+    let { result, hwnd } = await focusViaHelper(exeName);
+    if (result !== 'FOCUSED') {
+        await new Promise((r) => setTimeout(r, 400));
+        ({ result, hwnd } = await focusViaHelper(exeName));
+    }
+    console.log(`[KIOSK] Target HWND: ${hwnd || 'not found'}`);
+    if (result === 'FOCUSED') {
+        activeFocusTarget = 'GAME';
+        console.log("[KIOSK] Focus result: SUCCESS");
+        log('[Kiosk] Game foreground confirmed');
+    } else {
+        console.log("[KIOSK] Focus result: FAILURE");
+        log('[Kiosk] Failed to find active game window — staying on CafeXP');
+    }
+}
+
+/*
+ * Foreground CafeXP. Bounded retry (win.focus() can be a no-op if Windows'
+ * foreground lock is briefly held elsewhere) — never falls through to
+ * anything else on failure.
+ */
+function switchFocusToCafeXP() {
+    if (!alive(win)) return;
+    log('[Kiosk] Switching to CafeXP');
+    try {
+        const hwndBuf = win.getNativeWindowHandle();
+        console.log(`[KIOSK] Target HWND: 0x${hwndBuf.readUIntLE(0, hwndBuf.length >= 8 ? 8 : hwndBuf.length).toString(16)}`);
+    } catch (error) { /* diagnostic only — never block the actual switch on this */ }
+    console.log("[KIOSK] Focus request sent");
+    let attempts = 0;
+    const tryFocus = () => {
+        win.show();
+        win.focus();
+        attempts += 1;
+        if (win.isFocused()) {
+            activeFocusTarget = 'CAFEXP';
+            console.log("[KIOSK] Focus result: SUCCESS");
+            log('[Kiosk] CafeXP foreground confirmed');
+        } else if (attempts < 3) {
+            setTimeout(tryFocus, 150);
+        } else {
+            console.log("[KIOSK] Focus result: FAILURE");
+            log('[Kiosk] Failed to confirm CafeXP foreground');
+        }
+    };
+    tryFocus();
 }
 
 /*
  * A game just launched must come up in front of CafeXP on its own — Windows'
- * foreground lock (see focusRunningExe above) means a freshly spawned
- * background process cannot steal focus by itself, so without this the
- * kiosk window simply stayed in front and the customer had to already know
- * to Alt+Tab to find a game that, from their side, looked like it never
- * opened. A single attempt right after launch usually finds no window yet —
- * the process exists but hasn't created one — so this tries a few times over
- * the following seconds instead of once; each call is a no-op once the
- * window is found and focused, or once the game has already closed.
+ * foreground lock means a freshly spawned background process cannot steal
+ * focus by itself, so without this the kiosk window simply stayed in front
+ * and the customer had to already know to Alt+Tab to find a game that, from
+ * their side, looked like it never opened. A single attempt right after
+ * launch usually finds no window yet — the process exists but hasn't
+ * created one — so this tries a few times over the following seconds
+ * instead of once; each call is a no-op once the window is found and
+ * focused, or once the game has already closed. Sets activeFocusTarget on
+ * the first successful attempt, so the state is already correct even
+ * before the customer's first Alt+Tab press.
  */
 function focusLaunchedGame(exeName) {
     if (!exeName) return;
+    let focused = false;
     [500, 2000, 5000, 10000].forEach((delay) => {
-        setTimeout(() => focusRunningExe(exeName), delay);
+        setTimeout(() => {
+            if (focused) return;
+            focusViaHelper(exeName).then(({ result }) => {
+                if (result === 'FOCUSED') {
+                    focused = true;
+                    activeFocusTarget = 'GAME';
+                }
+            });
+        }, delay);
     });
 }
 
@@ -634,6 +907,25 @@ let wss; // WebSocket server instance (client listens)
 let serverConnection; // Connection from server
 let runningProcesses = new Map(); // appName -> { pid, appPath, timerCardWin }
 let cancelledLaunches = new Set(); // appName -> customer closed the loading screen before a PID existed yet
+
+/*
+ * Every add/remove of the customer-launched game routes through these two
+ * so currentGameName (the explicit "current game" Alt+Tab targets) and
+ * activeFocusTarget can never drift out of step with runningProcesses —
+ * one place to get right instead of repeating the bookkeeping at every call
+ * site. The legacy console-driven LAUNCH_APP path is intentionally left
+ * calling runningProcesses.set(...) directly — it's a separate, staff-only
+ * remote-launch flow that predates and doesn't participate in Alt+Tab.
+ */
+function trackGameProcess(appName, info) {
+    runningProcesses.set(appName, info);
+    currentGameName = appName;
+}
+function untrackGameProcess(appName) {
+    runningProcesses.delete(appName);
+    if (currentGameName === appName) currentGameName = null;
+    activeFocusTarget = 'CAFEXP';
+}
 let cachedApps = null; // Cache for installed apps
 let lastAppsCacheTime = 0;
 const APPS_CACHE_DURATION = 5000; // Cache for 5 seconds to avoid duplicate PowerShell calls
@@ -701,7 +993,32 @@ const LAUNCHER_ADAPTERS = {
  * running `launch_target` directly. Returns null when there is nothing to
  * launch with, so the caller can say so rather than run "".
  */
+/*
+ * Three tiers, most specific wins: this one station's own override, then
+ * the café-wide default every station falls back to, then the catalog's
+ * own value. A café-set path bypasses the protocol hand-off entirely —
+ * the point of either override is "on this PC, just run this," not
+ * "prefer this offer id" — so both live here, ahead of buildGameLaunch's
+ * own catalog/protocol resolution below.
+ */
+function effectiveLaunchTarget(game) {
+  const station = game.launch_target_override ? String(game.launch_target_override).trim() : '';
+  if (station) return station;
+  const cafe = game.cafe_launch_target_override ? String(game.cafe_launch_target_override).trim() : '';
+  return cafe;
+}
+function effectiveLaunchArguments(game) {
+  const station = game.launch_arguments_override ? String(game.launch_arguments_override).trim() : '';
+  if (station) return station;
+  const cafe = game.cafe_launch_arguments_override ? String(game.cafe_launch_arguments_override).trim() : '';
+  if (cafe) return cafe;
+  return game.launch_arguments || '';
+}
+
 function buildGameLaunch(game) {
+  const override = effectiveLaunchTarget(game);
+  if (override) return { exe: override };
+
   const id = game.platform_game_id ? String(game.platform_game_id).trim() : '';
   const exe = game.launch_target ? String(game.launch_target).trim() : '';
   const adapter = LAUNCHER_ADAPTERS[game.platform];
@@ -742,9 +1059,39 @@ function reportLaunchFailedIfSessionStart(game, isSessionStart, error) {
   serverConnection.send(JSON.stringify({ type: 'LAUNCH_FAILED', simId: SIM_ID, appName: game.name, error }));
 }
 
-function markSessionGameConfirmed() {
+function markSessionGameConfirmed(game) {
   const sessionId = currentSession && currentSession.session_id;
   if (sessionId) sessionGameConfirmed = sessionId;
+  /*
+   * Tell the console which title actually launched. The in-session launcher
+   * grid runs entirely on this side (it just opens the game) — without this
+   * report the console's GAME column stays blank forever for a session that
+   * didn't already have one chosen at start, i.e. every occupancy login.
+   * Only meaningful when the game came from the console's own list (it
+   * carries game_id) and there's a live session to attach it to; advisory
+   * only, so a missed send costs a display detail, never the launch itself.
+   */
+  if (sessionId && game && game.game_id && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+    serverConnection.send(JSON.stringify({
+      type: 'GAME_LAUNCHED',
+      simId: SIM_ID,
+      game_id: game.game_id,
+      game_platform_id: game.game_platform_id || null
+    }));
+  }
+}
+
+/* Splits an admin-typed launch-arguments string into an argv array for
+   spawn(), which takes a list rather than a shell string — respects
+   double-quoted segments so a quoted path survives:
+   '-config "C:\My Config.ini"' -> ['-config', 'C:\My Config.ini']. */
+function splitLaunchArguments(str) {
+  if (!str) return [];
+  const out = [];
+  const re = /"([^"]*)"|(\S+)/g;
+  let m;
+  while ((m = re.exec(str))) out.push(m[1] !== undefined ? m[1] : m[2]);
+  return out;
 }
 
 function launchGame(game) {
@@ -759,11 +1106,52 @@ function launchGame(game) {
   }
   // A fresh attempt at the same title supersedes any earlier cancel.
   cancelledLaunches.delete(game.name);
+
+  /*
+   * EA App has no CLI sign-in and no per-game "is this actually installed"
+   * signal to check — but whether EA App itself is on this station at all
+   * is checkable, the same way verifyPassiveLauncher already does it for a
+   * venue-account session. That check only ran when a venue credential was
+   * assigned; every other EA launch (a customer's own personal account, the
+   * common case) went straight to firing the origin2:// URL with no
+   * upfront check at all, so "not installed" and "wrong offer id" both
+   * surfaced as the same vague failure. Checked first, before
+   * buildGameLaunch's own "no launch configuration" message, so a missing
+   * launcher is never confused with a missing App ID.
+   */
+  // A station-set override runs directly and has no need for EA App at all
+  // (see buildGameLaunch) — the EA-installed check below exists to catch a
+  // missing launcher before the origin2:// hand-off, which an override
+  // never takes, so gating it on EA App being detected would block exactly
+  // the launches this override exists to unblock.
+  if (game.platform === 'EA' && !effectiveLaunchTarget(game)) {
+    detectLaunchers().then((launchers) => {
+      const info = launchers.EA;
+      if (info && info.installed) { launchGameNow(game); return; }
+      log(`No EA App detected on this station for ${game.name}`);
+      const error = 'EA App is not installed on this station.';
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+      reportLaunchFailedIfSessionStart(game, isFirstLaunchForSession(), error);
+    }).catch((e) => {
+      // Detection failing is not proof EA is absent — fall through to the
+      // normal checks rather than blocking a launch on our own error.
+      log(`EA App detection failed for ${game.name}: ${e.message}`);
+      launchGameNow(game);
+    });
+    return;
+  }
+
+  launchGameNow(game);
+}
+
+function launchGameNow(game) {
   const isSessionStart = isFirstLaunchForSession();
   const plan = buildGameLaunch(game);
   if (!plan) {
     log(`No launch config for ${game.name}`);
-    const error = 'This game has no launch configuration yet.';
+    const error = game.platform === 'EA'
+      ? 'EA game launch configuration is missing.'
+      : 'This game has no launch configuration yet.';
     sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
     reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     return;
@@ -776,14 +1164,14 @@ function launchGame(game) {
     // Protocol hand-off to the launcher. openExternal resolves once the OS
     // has accepted the URL, not when the game is up — which is all we need.
     const openGame = () => shell.openExternal(plan.url).then(() => {
-      markSessionGameConfirmed();
+      markSessionGameConfirmed(game);
       // Nothing to poll for a protocol hand-off (there is no PID to watch),
       // so this is the only launched signal it ever gets — without it the
       // "Getting your game ready…" overlay has nothing to close it.
       sendToWindow(win, 'app-launched', { appName: game.name });
       /* Tracked under the game's name exactly like the exe path below, just
          with no real pid — every consumer of runningProcesses (Alt+Tab's
-         currentRunningApp/focusRunningExe, pollRunningProcesses' own-exit
+         currentGameName/focusViaHelper, pollRunningProcesses' own-exit
          detection, closeApplication) already works off appPath/appName
          alone, never a real pid. Without this a protocol-launched title
          (Steam, Riot, EA…) was invisible to all three: Alt+Tab had nothing
@@ -792,7 +1180,7 @@ function launchGame(game) {
          from the display title. game.process_name is the library's own
          record of what the title actually runs as, the same field
          runSessionCleanup already trusts for this. */
-      runningProcesses.set(game.name, {
+      trackGameProcess(game.name, {
         pid: null,
         appPath: game.process_name || null,
         timerCardWin: null
@@ -837,14 +1225,17 @@ function launchGame(game) {
       openGame();
     }
   } else if (plan.exe) {
-    const cmd = game.launch_arguments ? `"${plan.exe}" ${game.launch_arguments}` : `"${plan.exe}"`;
-    const child = exec(cmd, (err) => {
-      if (err) {
-        log(`Launch failed for ${game.name}: ${err.message}`);
-        const error = 'The game could not be started.';
-        sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
-        reportLaunchFailedIfSessionStart(game, isSessionStart, error);
-      }
+    // spawn(exe, args), not exec("exe args") — the path and each argument
+    // reach the OS as their own array entries, never concatenated into a
+    // shell string, so a path or an admin-typed argument containing a
+    // space, quote or shell metacharacter can't be misread as a second
+    // command. No shell is invoked at all.
+    const child = spawn(plan.exe, splitLaunchArguments(effectiveLaunchArguments(game)), { windowsHide: false });
+    child.once('error', (err) => {
+      log(`Launch failed for ${game.name}: ${err.message}`);
+      const error = game.platform === 'EA' ? 'EA game could not be launched.' : 'The game could not be started.';
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+      reportLaunchFailedIfSessionStart(game, isSessionStart, error);
     });
     // Track the process under the game's name so the existing close path can
     // find it, and attach a timer card if the session is timed.
@@ -857,12 +1248,12 @@ function launchGame(game) {
         exec(`taskkill /F /PID ${child.pid} /T`, { windowsHide: true, timeout: 10000 });
         return;
       }
-      markSessionGameConfirmed();
+      markSessionGameConfirmed(game);
       sendToWindow(win, 'app-launched', { appName: game.name });
       const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
       const mins = sessionRemainingMinutes();
       if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins, sessionBufferRemainingSeconds());
-      runningProcesses.set(game.name, info);
+      trackGameProcess(game.name, info);
       focusLaunchedGame(deriveExeName(plan.exe, game.name));
     }
   }
@@ -920,6 +1311,7 @@ const LAUNCHER_PATHS = {
   ],
   EA: [
     path.join(PROGRAM_FILES, 'Electronic Arts', 'EA Desktop', 'EA Desktop', 'EADesktop.exe'),
+    path.join(PROGRAM_FILES, 'Electronic Arts', 'EA Desktop', 'EA Desktop', 'EALauncher.exe'),
     path.join(PROGRAM_FILES_X86, 'Origin', 'Origin.exe')
   ],
   Epic: [
@@ -1401,6 +1793,8 @@ async function runSessionCleanup(config, games) {
       if (info.timerCardWin && !info.timerCardWin.isDestroyed()) info.timerCardWin.close();
     });
     runningProcesses.clear();
+    currentGameName = null;
+    activeFocusTarget = 'CAFEXP';
     if (names.size) log(`  closed ${names.size} game process(es)`);
 
     /* The portal mirrors the timer card's countdown for its own nav-bar
@@ -1498,10 +1892,14 @@ function createWindow() {
      auto-approves this (see server-app's onStationExtendRequest) — nothing
      here decides whether it's allowed, that's the portal's job via
      session.can_extend before it ever offers the button. */
-  ipcMain.on('extend-request', (event, blocks) => {
+  ipcMain.on('extend-request', (event, payload) => {
+    const gamingPriceId = payload && payload.gamingPriceId;
     if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
-      serverConnection.send(JSON.stringify({ type: "EXTEND_REQUEST", simId: SIM_ID, pcName: SIM_ID, blocks: Number(blocks) || 1 }));
-      log(`Sent EXTEND_REQUEST to console (+${Number(blocks) || 1} block)`);
+      serverConnection.send(JSON.stringify({
+        type: "EXTEND_REQUEST", simId: SIM_ID, pcName: SIM_ID,
+        gaming_price_id: gamingPriceId, request_id: payload && payload.requestId
+      }));
+      log(`Sent EXTEND_REQUEST to console (price ${gamingPriceId})`);
     } else {
       log("Extend requested but console not connected");
     }
@@ -1511,13 +1909,17 @@ function createWindow() {
    * The café session's own low-time warning needs to reach the customer even
    * while a game has focus and CafeXP is sitting behind it — same
    * win.show()+focus() already used to bring CafeXP forward on an Alt+Tab
-   * (see handleAltTabToggle). Our own window, so none of focusRunningExe's
-   * foreground-lock workaround is needed here.
+   * (see switchFocusToCafeXP). Our own window, so none of the focus helper's
+   * foreground-lock workaround is needed here. Updates activeFocusTarget too
+   * — without it, a game-focused customer who gets pulled to this warning
+   * would have their very next Alt+Tab try to "switch to CafeXP" again
+   * (already there) instead of back to the game.
    */
   ipcMain.on('bring-to-front', () => {
     if (!alive(win)) return;
     win.show();
     win.focus();
+    activeFocusTarget = 'CAFEXP';
   });
 
   /* The customer opened the game picker while idle and wants to see what they
@@ -1530,6 +1932,47 @@ function createWindow() {
   });
 
   /*
+   * Auto-reseal once an approved Station Tool's window actually closes.
+   *
+   * The drop below (kiosk off, keyboard guard stopped, minimise) used to
+   * rely entirely on the customer clicking the CafeXP taskbar icon to come
+   * back — win.on('restore', reseal) only fires on that explicit action.
+   * A customer who simply never clicks back kept the raw desktop, Start
+   * menu, Explorer and (with the guard stopped) live Alt+Tab/Win-key for
+   * as long as they liked. This watches for the panel's process to
+   * disappear and calls win.restore() itself — the exact same call the
+   * open-failed fallback below already makes, so it goes through the real
+   * reseal()/keyboard-guard-restart path, not a second one.
+   *
+   * Same tasklist idiom pollRunningProcesses() already uses for game-exit
+   * detection — nothing new to learn here. A short grace period covers the
+   * process not existing yet (shell.openExternal/exec are async); a hard
+   * ceiling forces the restore regardless, so a station is never left
+   * unsealed indefinitely even if a future Settings/driver build ever
+   * changes the process name being watched for.
+   */
+  function watchForPanelClose(processNames, { graceMs = 3000, pollMs = 1500, ceilingMs = 10 * 60 * 1000 } = {}) {
+    if (!processNames || !processNames.length) return;
+    const start = Date.now();
+    const tick = () => {
+      if (!alive(win)) return;                        // app quitting — nothing to reseal
+      if (win.isFullScreen()) return;                  // already resealed (customer clicked back) — done
+      if (Date.now() - start >= ceilingMs) { win.restore(); return; }
+      if (Date.now() - start < graceMs) { setTimeout(tick, pollMs); return; }
+
+      Promise.all(processNames.map((name) => new Promise((resolve) => {
+        exec(`tasklist /FI "IMAGENAME eq ${name}" /NH`, (err, stdout) => {
+          resolve(!err && stdout && stdout.toLowerCase().includes(name.toLowerCase()));
+        });
+      }))).then((stillRunning) => {
+        if (stillRunning.some(Boolean)) setTimeout(tick, pollMs);
+        else if (alive(win) && !win.isFullScreen()) win.restore();
+      });
+    };
+    setTimeout(tick, pollMs);
+  }
+
+  /*
    * Station system tools — screen resolution, NVIDIA Control Panel, Device
    * Manager — from the Help menu, with no staff PIN. Available any time,
    * not just mid-session: there is no gate on who is allowed to reach these.
@@ -1539,8 +1982,10 @@ function createWindow() {
    * client" already makes (see runPowerAction's minimize-client): kiosk
    * mode and the low-level keyboard guard both drop, the window minimises,
    * and reseal() — fired when the customer restores it, e.g. by clicking
-   * the CafeXP taskbar icon — puts both back. kioskLocked itself is never
-   * touched, so nothing here can leave a station permanently unsealed.
+   * the CafeXP taskbar icon, or automatically once watchForPanelClose below
+   * notices the panel's process is gone — puts both back. kioskLocked
+   * itself is never touched, so nothing here can leave a station
+   * permanently unsealed.
    *
    * General desktop access is deliberately NOT offered here — see the
    * ALTTAB handling below instead, which lets a customer switch between
@@ -1550,6 +1995,7 @@ function createWindow() {
   const SYSTEM_PANELS = {
     display: {
       label: 'Screen resolution',
+      watchProcess: () => ['SystemSettings.exe'],
       open: () => { shell.openExternal('ms-settings:display'); return { success: true }; }
     },
     nvidia: {
@@ -1569,6 +2015,7 @@ function createWindow() {
           ? { success: true, path: found }
           : { success: false, message: 'NVIDIA Control Panel is not installed on this station.' };
       },
+      watchProcess: (found) => [path.basename(found)],
       open: (found) => {
         exec(`"${found}"`, (err) => { if (err) log(`NVIDIA Control Panel failed to launch: ${err.message}`); });
         return { success: true };
@@ -1576,6 +2023,7 @@ function createWindow() {
     },
     devicemgmt: {
       label: 'Device Manager',
+      watchProcess: () => ['mmc.exe'],
       open: () => {
         exec('mmc.exe devmgmt.msc', (err) => { if (err) log(`Device Manager failed to launch: ${err.message}`); });
         return { success: true };
@@ -1615,6 +2063,7 @@ function createWindow() {
     stopWindowsKeyboardBlocker();
     win.setKiosk(false);
     win.setFullScreen(false);
+    intentionalMinimize = true;
     win.minimize();
 
     const result = entry.open(pre.path);
@@ -1628,6 +2077,7 @@ function createWindow() {
     }
 
     log(`[Station tools] Opened ${entry.label} — kiosk dropped until the client window is restored.`);
+    watchForPanelClose(entry.watchProcess ? entry.watchProcess(pre.path) : []);
     return {
       success: true,
       message: entry.openMessage || `${entry.label} opening — click the CafeXP icon in the taskbar to come back.`
@@ -1685,6 +2135,26 @@ function createWindow() {
         occupancy_login_start: true
       }));
       log("Sent occupancy-start START_SESSION_REQUEST to console");
+    } else {
+      // Previously silent — a login landing in the gap while this station's
+      // socket to the console is still (re)connecting dropped the request on
+      // the floor with no trace anywhere. Not a customer-facing toast (same
+      // reasoning as above), but worth a trace: this is the other half of
+      // "sometimes the timer doesn't start."
+      console.warn('[occupancy] Auto-start skipped — not connected to the café server');
+    }
+  });
+
+  /*
+   * Logging out ends occupancy billing. Just the session id's owner (this
+   * station) — no played time, no amount. The console reads its own record
+   * of which session is running here and bills from its own timestamps;
+   * nothing this app believes about elapsed time is sent or trusted.
+   */
+  ipcMain.on('request-end-session', () => {
+    if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+      serverConnection.send(JSON.stringify({ type: "END_SESSION_REQUEST", simId: SIM_ID }));
+      log("Sent END_SESSION_REQUEST to console");
     }
   });
 
@@ -1739,6 +2209,23 @@ function createWindow() {
     return SIM_ID;
   });
 
+  // Same pull-on-load reasoning as get-pc-name — the login screen loads
+  // before SET_NAME necessarily arrives.
+  ipcMain.handle('get-cafe-name', async (event) => {
+    return CAFE_NAME;
+  });
+
+  // Same reasoning again — CAFE_BRANDING arrives even later than SET_NAME
+  // (it is a follow-up), so a page mounted by then still needs to pull it.
+  ipcMain.handle('get-cafe-branding', async (event) => {
+    return {
+      businessName: CAFE_BUSINESS_NAME,
+      logo: CAFE_LOGO,
+      wallpaperUrl: CAFE_WALLPAPER_URL,
+      wallpaperType: CAFE_WALLPAPER_TYPE
+    };
+  });
+
   // The portal loads before SET_NAME necessarily arrives, so it pulls the
   // current address rather than trusting a push it might have missed.
   ipcMain.handle('get-backend-base', async (event) => {
@@ -1790,13 +2277,15 @@ function createWindow() {
    * or even staff holds the machine's Windows credentials, so anything that
    * could leave the station stuck at a real OS lock screen is off the table.
    */
-  const VOLUME_SCRIPT = path.join(__dirname, 'scripts', 'volume.ps1');
+  const VOLUME_SCRIPT = path.join(__dirname, 'scripts', 'volume.ps1').replace('app.asar', 'app.asar.unpacked');
   function runVolumeScript(args) {
+    console.log('[DIAG volume] invoking:', VOLUME_SCRIPT, args);
     return new Promise((resolve) => {
       exec(
         `powershell -NoProfile -ExecutionPolicy Bypass -File "${VOLUME_SCRIPT}" ${args}`,
         { windowsHide: true, timeout: 5000 },
-        (err, stdout) => {
+        (err, stdout, stderr) => {
+          console.log('[DIAG volume] err:', err && err.message, 'stdout:', JSON.stringify(stdout), 'stderr:', JSON.stringify(stderr));
           if (err) return resolve({ success: false, error: err.message });
           try {
             const state = JSON.parse(stdout.trim());
@@ -1882,6 +2371,7 @@ function createWindow() {
     win.setKiosk(true);
     win.setFullScreen(true);
     win.focus();
+    activeFocusTarget = 'CAFEXP';
     publishKioskState();
     log('Kiosk re-sealed by the full-screen control.');
   }));
@@ -2003,6 +2493,10 @@ function createWindow() {
     }
   });
 
+  win.webContents.on('console-message', (e, level, message) => {
+    if (level >= 1) console.log('[DIAG renderer]', message);
+  });
+
   /*
    * Every keyboard route out of the kiosk, refused.
    *
@@ -2095,6 +2589,31 @@ function createWindow() {
   /* Same for a plain show, which is what a task-bar click raises when the
      window was hidden rather than minimised. */
   win.on('show', reseal);
+
+  /*
+   * An unexpected minimize while CafeXP is the side that's supposed to be
+   * visible is treated as an escape attempt and reversed. Two existing
+   * flows minimize CafeXP deliberately while staying kiosk-locked (opening
+   * a station tool like NVIDIA Control Panel, a console "minimise client")
+   * — both set intentionalMinimize right before calling win.minimize(), so
+   * this only ever fires for a minimize neither of them caused. Gated on
+   * activeFocusTarget === 'CAFEXP' too: CafeXP being non-foreground while a
+   * game is the active target is completely normal and must never trigger
+   * a restore — that would be exactly the aggressive focus-stealing this
+   * whole feature is built to avoid.
+   */
+  win.on('minimize', () => {
+    if (intentionalMinimize) { intentionalMinimize = false; return; }
+    if (kioskLocked && activeFocusTarget === 'CAFEXP') {
+      log('[Kiosk] Unexpected minimize while CafeXP should be active — restoring');
+      win.restore();
+    }
+  });
+
+  // The kiosk window must never become a general-purpose browser, same as
+  // checkoutWin already enforces on itself — no renderer code opens one
+  // today, but nothing else stops a future/injected page from trying.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
   /*
    * The window cannot be closed from the machine it runs on.
@@ -2411,6 +2930,11 @@ function createTimerCard(appName, timerMinutes, bufferSeconds) {
     skipTaskbar: true,
     resizable: false,
     movable: true,
+    /* A read-only countdown pill with no clickable UI at all — never needs
+       real keyboard/OS focus, and revealing it (a plain .show(), which
+       Electron focuses by default) must never be able to steal focus away
+       from a running game the way a focusable always-on-top window could. */
+    focusable: false,
     /* Most games show no on-screen session clock at all — this card should
        read the same way. It stays off-screen (still running, still ticking)
        until timercard.js asks to show it, which it does only once the
@@ -2453,7 +2977,13 @@ function getInstalledApps() {
       return;
     }
 
-    const scriptPath = path.join(__dirname, "get_apps.ps1");
+    // __dirname is inside app.asar in a packaged build — exec() spawns a real
+    // OS process (powershell), which can't read a file or use a cwd inside
+    // the asar archive, only the unpacked copy alongside it (see VOLUME_SCRIPT
+    // above for the same fix). A no-op in dev, where __dirname never contains
+    // "app.asar".
+    const unpackedDirname = __dirname.replace('app.asar', 'app.asar.unpacked');
+    const scriptPath = path.join(unpackedDirname, "get_apps.ps1");
     /* get_apps.ps1 itself writes here now — under LOCALAPPDATA, not relative
        to this script's own (Program-Files, read-only-to-a-standard-account)
        install folder. Read from the same place the script actually writes to. */
@@ -2466,7 +2996,7 @@ function getInstalledApps() {
     const executeScript = () => {
       exec(
         `powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "${scriptPath}"`,
-        { cwd: __dirname, timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
+        { cwd: unpackedDirname, timeout: 120000, maxBuffer: 10 * 1024 * 1024 },
         (err) => {
           const duration = Date.now() - startTime;
           
@@ -2621,6 +3151,7 @@ function toggleKioskLock(source) {
     win.setKiosk(true);
     win.setFullScreen(true);
     win.focus();
+    activeFocusTarget = 'CAFEXP';
     publishKioskState();
     log(`Kiosk re-locked from ${source}.`);
     return;
@@ -2732,7 +3263,10 @@ function promptStaffPin(expected) {
 
   pinWin.loadURL('data:text/html;charset=utf-8,' + encodeURIComponent(html));
 
-  pinWin.on('closed', () => { pinWin = null; if (alive(win)) win.focus(); });
+  pinWin.on('closed', () => {
+    pinWin = null;
+    if (alive(win)) { win.focus(); activeFocusTarget = 'CAFEXP'; }
+  });
 }
 
 /*
@@ -2816,6 +3350,7 @@ function runPowerAction(ws, action, delaySeconds) {
     stopWindowsKeyboardBlocker();
     win.setKiosk(false);
     win.setFullScreen(false);
+    intentionalMinimize = true;
     win.minimize();
     reply(true, "Client minimised — the desktop is reachable until the client is clicked again");
     return;
@@ -2829,6 +3364,7 @@ function runPowerAction(ws, action, delaySeconds) {
     win.setKiosk(true);
     win.setFullScreen(true);
     win.focus();
+    activeFocusTarget = 'CAFEXP';
     reply(true, "Client restored to kiosk mode");
     return;
   }
@@ -2929,6 +3465,14 @@ function listen() {
         // Send PC name to renderer
         sendToWindow(win, "pc-name", SIM_ID);
 
+        // Same idea as pc-name — always resent, always cheap, so the login
+        // screen shows this café's real name rather than a generic label.
+        if (msg.cafeName) {
+          CAFE_NAME = msg.cafeName;
+          log(`Café name set to: ${CAFE_NAME}`);
+          sendToWindow(win, "cafe-name", CAFE_NAME);
+        }
+
         /* The console's own address, so the renderer's wallet calls and the
            checkout window reach the backend wherever it actually is rather
            than this machine. Only acted on when it actually changes something,
@@ -2979,8 +3523,26 @@ function listen() {
         return; // Don't process this as a command message
       }
 
+      /* The café's own logo/trading name, if it has set either — sent as a
+         one-off follow-up to SET_NAME rather than folded into it (see
+         sendCafeBranding's own comment in server-app/main.js), so this
+         never re-triggers the REGISTER handshake above. */
+      if (msg.type === "CAFE_BRANDING") {
+        CAFE_BUSINESS_NAME = msg.businessName || "";
+        CAFE_LOGO = msg.logo || "";
+        CAFE_WALLPAPER_URL = msg.wallpaperUrl || "";
+        CAFE_WALLPAPER_TYPE = msg.wallpaperType || "";
+        sendToWindow(win, "cafe-branding", {
+          businessName: CAFE_BUSINESS_NAME,
+          logo: CAFE_LOGO,
+          wallpaperUrl: CAFE_WALLPAPER_URL,
+          wallpaperType: CAFE_WALLPAPER_TYPE
+        });
+        return;
+      }
+
       // Handle other messages
-      
+
       if (msg.type === "COMMAND") {
         log(`Command received: ${msg.command}`);
       }
@@ -3032,6 +3594,19 @@ function listen() {
           sendToWindow(win, "session-state", forRenderer);
         } else {
           sendToWindow(win, "session-state", currentSession);
+        }
+
+        /* Told apart from a customer's own logout (which needs no signal —
+           they're already leaving): the session ending for any other reason
+           — balance exhausted, staff ended it from the console — means this
+           station should sign the customer out of the kiosk app itself, not
+           just clear the session chips. A separate, one-shot event rather
+           than folding this into session-state above, so the far more
+           common "no session, no reason" case (idle station, a fresh push)
+           is untouched. */
+        if (!currentSession && msg.ended_reason) {
+          console.log('[DIAG] session-ended-reason ->', msg.ended_reason);
+          sendToWindow(win, "session-ended-reason", msg.ended_reason);
         }
 
         /* The self-started session just went live — launch the title the
@@ -3294,7 +3869,7 @@ function closeApplication(appName) {
     }
     
     // Remove from tracking first to avoid duplicate close attempts
-    runningProcesses.delete(appName);
+    untrackGameProcess(appName);
 
     // Let the portal show its session-ended screen. Notification only.
     sendToWindow(win, "app-closed", { appName: appName });
@@ -3333,7 +3908,7 @@ function closeByExecutableName(appPath, appName) {
         log(`Taskkill failed for ${exeName}, trying PowerShell...`);
         
         // Fallback to PowerShell
-        const psCommand = `powershell -Command "Get-Process -Name '${exeName}' -ErrorAction SilentlyContinue | Stop-Process -Force; if ($?) { Write-Output 'Success' } else { Write-Output 'Not found' }"`;
+        const psCommand = `powershell -Command "Get-Process -Name '${psSingleQuoteEscape(exeName)}' -ErrorAction SilentlyContinue | Stop-Process -Force; if ($?) { Write-Output 'Success' } else { Write-Output 'Not found' }"`;
         
         exec(psCommand, (psErr, psStdout, psStderr) => {
           if (psStdout && psStdout.includes('Success')) {
@@ -3374,7 +3949,7 @@ function pollRunningProcesses() {
       const current = runningProcesses.get(appName);
       if (!current) return;   // already handled by an explicit close in the meantime
       if (current.timerCardWin && !current.timerCardWin.isDestroyed()) current.timerCardWin.close();
-      runningProcesses.delete(appName);
+      untrackGameProcess(appName);
       sendToWindow(win, "app-closed", { appName });
     });
   });

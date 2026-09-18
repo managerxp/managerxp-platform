@@ -224,6 +224,19 @@
     if (api.onSessionState) api.onSessionState(adoptSession);
     if (api.getSessionState) api.getSessionState(adoptSession);
 
+    /* The session ended for a reason other than this customer choosing to
+       log out (balance exhausted, or staff ended it from the console) —
+       the station is done with this account too, not just this session.
+       No requestEndSession here: the session that triggered this has
+       already ended, asking again would just be a harmless no-op, but a
+       pointless one. */
+    if (api.onSessionEndedReason) {
+      api.onSessionEndedReason(function (reason) {
+        console.log('[DIAG] onSessionEndedReason ->', reason, 'forcing logout:', reason && reason !== "customer_logout");
+        if (reason && reason !== "customer_logout") clearAccountAndReturnToSignIn();
+      });
+    }
+
     /* ---------- game menu, pushed by the console ---------- */
     function adoptGames(list) {
       state.games = Array.isArray(list) ? list : [];
@@ -372,12 +385,26 @@
     return String(displayName()).trim().split(/\s+/)[0];
   }
 
-  function signOut() {
+  /* Shared tail of every path off this account — clears what the station
+     holds locally and drops back to the sign-in form. Never asks the
+     console to end anything itself; callers that need that (signOut, just
+     below) do it explicitly first. */
+  function clearAccountAndReturnToSignIn() {
     if (api.storeToken) api.storeToken(null);
     if (api.storeUserInfo) api.storeUserInfo(null);
     state.user = null;
     state.token = null;
     if (api.navigateTo) api.navigateTo("login");
+  }
+
+  function signOut() {
+    /* Ends occupancy billing for whatever session is running on this
+       station. Fire-and-forget: the console owns the session record and
+       bills from its own timestamps, so there's nothing to wait for here,
+       and no reason to block signing out on it either. Harmless to send
+       with no session running — the console just finds nothing to end. */
+    if (api.requestEndSession) api.requestEndSession();
+    clearAccountAndReturnToSignIn();
   }
 
   /** mm:ss, or h:mm:ss once the session passes an hour. */
@@ -419,12 +446,6 @@
           game: game, gaming_price_id: gamingPriceId, use_venue_account: !!useVenueAccount
         });
       }
-    },
-    /* Fired once right after login — see preload's requestOccupancySessionStart
-       and server-app/app/store.js's occupancy_login_start branch for what
-       actually decides whether this station bills that way. */
-    requestOccupancyStart: function () {
-      if (api.requestOccupancySessionStart) api.requestOccupancySessionStart();
     },
     sessionClockSeconds: sessionClockSeconds,
     progress: progress,

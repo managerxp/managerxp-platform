@@ -174,6 +174,16 @@
       });
     }
 
+    // The +Extend chip — visible whenever this station's session can
+    // actually take one: a BLOCK session (can_extend, staff-set) or a
+    // signed-in customer's own open-ended session (a guest has no wallet
+    // to pay an extension into, so pays at the counter instead).
+    var extendBtn = document.getElementById("extendBtn");
+    var canOfferExtend = !!cafeSession && (
+      cafeSession.can_extend || (cafeSession.pricing_unit === "HOUR" && cafeSession.customer_id)
+    );
+    extendBtn.classList.toggle("hidden", !canOfferExtend);
+
     var orb = document.getElementById("avatarOrb");
     var name = document.getElementById("avatarName");
     orb.textContent = UI.initials(Session.displayName());
@@ -695,6 +705,89 @@
       UI.toast({ title: "5 minutes left", message: "Time to wrap up — save your progress.", status: "error", duration: 9000 });
     });
     /*
+     * The Extend tier picker — shared by the low-time prompt's Extend button,
+     * the persistent +Extend chip, and (eventually) anywhere else a customer
+     * can be offered more time. Always shows this station's own configured
+     * tiers (never hardcoded), fetched the exact same way the self-service
+     * "choose how long" picker already does. Nothing here computes a price —
+     * a tier is only ever a label and an id; the server resolves and charges
+     * whichever one is picked.
+     *
+     * A BLOCK session grows its existing bill (server-app relays gamingPriceId
+     * to POST /sessions/:id/extend); an open-ended (HOUR) session instead pays
+     * for it through the real top-up flow, tagged to this session, since that
+     * is real money materialising with no staff standing there to vouch for it.
+     */
+    function priceLabel(p) {
+      var length = p.is_unlimited ? "Unlimited" : (
+        p.duration_minutes >= 60
+          ? (p.duration_minutes % 60 === 0 ? (p.duration_minutes / 60) + " Hr" : p.duration_minutes + " Min")
+          : p.duration_minutes + " Min"
+      );
+      return length + " — " + global.CXWallet.money(p.price);
+    }
+    function newRequestId() {
+      return (global.crypto && global.crypto.randomUUID)
+        ? global.crypto.randomUUID()
+        : "ext-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    }
+    function openExtendPicker(session) {
+      if (!session) return;
+      var isHour = session.pricing_unit === "HOUR";
+
+      var body = UI.el("div", { class: "col gap-2" });
+      body.innerHTML = '<div class="row gap-3"><span class="spinner"></span><span>Loading options…</span></div>';
+
+      var modal = UI.modal({
+        title: "Extend session",
+        description: isHour
+          ? "Pick how much to add — paid now, added straight to your balance."
+          : "Pick a tier to add to your session — added to your bill.",
+        body: body,
+        actions: [{ label: "Cancel", variant: "ghost" }],
+        onClose: function () { off(); }
+      });
+
+      function paint(prices) {
+        var options = (prices || []).filter(function (p) { return isHour || !p.is_unlimited; });
+        UI.clear(body);
+        if (!options.length) {
+          body.appendChild(UI.emptyState({
+            icon: "alert",
+            title: "No extension options configured",
+            text: "Ask a member of staff to set up pricing for this station."
+          }));
+          return;
+        }
+        options.forEach(function (p) {
+          var row = UI.el("button", { class: "btn btn-outline btn-block row-between", type: "button" });
+          row.innerHTML =
+            '<span>' + UI.esc(p.session_name) + '</span>' +
+            '<strong>' + UI.esc(global.CXWallet.money(p.price)) + '</strong>';
+          row.addEventListener("click", function () {
+            modal.close();
+            if (isHour) {
+              if (global.CXTopup) {
+                global.CXTopup.open({
+                  sessionId: session.session_id, gamingPriceId: p.price_id,
+                  amount: p.price, label: priceLabel(p)
+                });
+              }
+            } else if (global.api && global.api.extendRequest) {
+              global.api.extendRequest({ gamingPriceId: p.price_id, requestId: newRequestId() });
+              UI.toast.ok("Extending", priceLabel(p) + " added to your session.");
+            }
+          });
+          body.appendChild(row);
+        });
+      }
+
+      if (Session.state.startPrices && Session.state.startPrices.length) paint(Session.state.startPrices);
+      var off = Session.on("start-options", function (data) { paint(data.prices); });
+      Session.requestStartOptions();
+    }
+
+    /*
      * The paid session itself is running low — distinct from "critical"
      * above, which is the per-game launch timer. Offers a self-serve Extend
      * only when the session can actually take one (a fixed-price block);
@@ -714,14 +807,13 @@
       if (global.api && global.api.bringToFront) global.api.bringToFront();
 
       var canExtend = !!(session && session.can_extend);
-      // A wallet check only means anything for a signed-in customer's own
-      // wallet — a guest has none, pays at the counter, and staff already
-      // extend those without a balance check (see the backend's own extend
-      // endpoint), so this gate does not apply to them.
-      var blockCost = Number(session && session.block_unit_amount) || 0;
-      var balance = Number(session && session.wallet_balance);
-      var canAfford = !session.customer_id || (Number.isFinite(balance) && balance >= blockCost);
 
+      /* No up-front affordability gate: extending a BLOCK session is always
+         postpaid (added to the bill, settled at the end — a short wallet
+         never blocks it, see the backend's own extend endpoint), and the
+         picker now shows every configured tier's own price, so the customer
+         can just pick one that fits rather than being told no before they
+         even see the options. */
       var actions;
       var description;
       var body;
@@ -730,19 +822,9 @@
         description = "Ask a staff member if you'd like more time.";
         body = "This session's length was set by staff and can't be extended from here.";
         actions = [{ label: "OK", variant: "primary" }];
-      } else if (!canAfford) {
-        description = "Your balance won't cover another block right now.";
-        body = "Recharge your wallet to add another block, then come back and extend.";
-        actions = [
-          { label: "Not now", variant: "ghost" },
-          {
-            label: "Recharge", variant: "primary", icon: "billing",
-            onClick: function () { if (global.CXTopup) global.CXTopup.open(); }
-          }
-        ];
       } else {
-        description = "Add another block now, or recharge and keep going.";
-        body = "Extending adds a block to your session — it's added to your bill, not charged now.";
+        description = "Add more time now, or recharge and keep going.";
+        body = "Extending adds to your session — it's added to your bill, not charged now.";
         actions = [
           { label: "Not now", variant: "ghost" },
           {
@@ -751,10 +833,7 @@
           },
           {
             label: "Extend", variant: "primary", icon: "plus",
-            onClick: function () {
-              if (global.api && global.api.extendRequest) global.api.extendRequest(1);
-              UI.toast.ok("Block added", "Your session time will update in a moment.");
-            }
+            onClick: function () { openExtendPicker(session); }
           }
         ];
       }
@@ -830,6 +909,7 @@
     });
 
     document.getElementById("walletChip").addEventListener("click", function () { go("wallet"); });
+    document.getElementById("extendBtn").addEventListener("click", function () { openExtendPicker(Session.state.session); });
 
     // Keep the chip in step with the wallet, and reload once the token lands.
     global.CXWallet.on(paintChips);

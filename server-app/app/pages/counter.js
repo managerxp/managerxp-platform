@@ -455,7 +455,11 @@
       })
       .then(function () {
         UI.toast.ok("Bill " + bill.bill_number + " settled", money(bill.total) + " XP");
-        receiptDialog(bill);
+        // Captured before the reset below runs — loadBillingIdentity()'s
+        // .then fires on a later tick even when already cached, by which
+        // point the module-level `bill` var would otherwise already be null.
+        var settledBill = bill;
+        loadBillingIdentity().then(function () { receiptDialog(settledBill); });
         draft = newDraft();
         codeState = null;
         bill = null;
@@ -538,69 +542,27 @@
   /* ==========================================================================
      RECEIPT
      ========================================================================== */
-  /*
-   * Whether the ManagerXP mark prints on this café's receipts.
-   *
-   * Read once when the till opens and held for the life of the page — it
-   * changes about as often as the café's address, and a settled sale should
-   * not wait on a settings round trip before showing the receipt. Absent or
-   * unreadable means it prints: the mark is the default, and a failed lookup
-   * must not silently remove it.
-   */
-  var poweredByPref = null;
+  /* The cafe's own trading identity/branding for the receipt head, and the
+     ManagerXP mark toggle -- the exact same fields billing.js loads, cached
+     the same way (once per page mount; a settled sale should not wait on a
+     settings round trip before showing the receipt). */
+  var billingIdentity = null;
 
-  function poweredByOn() { return poweredByPref !== "false"; }
-
-  function loadPoweredByPref() {
+  function loadBillingIdentity() {
+    if (billingIdentity) return Promise.resolve(billingIdentity);
     return Store.getSettings("billing")
       .then(function (rows) {
-        (rows || []).forEach(function (r) {
-          if (r.setting_key === "billing.receipt_powered_by") poweredByPref = String(r.setting_value);
-        });
+        var map = {};
+        (rows || []).forEach(function (r) { map[r.setting_key] = r.setting_value; });
+        billingIdentity = map;
+        return map;
       })
-      .catch(function () { /* leave it on */ });
+      .catch(function () { return (billingIdentity = {}); });
   }
 
   function receiptDialog(settled) {
     var body = UI.el("div", { class: "col gap-3" });
-    body.innerHTML =
-      '<div class="receipt" id="ctReceipt">' +
-        '<div class="receipt-head">' +
-          '<div class="receipt-brand">CafeXP</div>' +
-          '<div class="receipt-num">' + UI.esc(settled.bill_number) + "</div>" +
-          '<div class="receipt-meta">' + new Date(settled.created_at).toLocaleString() + "</div>" +
-          '<div class="receipt-meta">' +
-            UI.esc(settled.customer_name || settled.guest_name || "Guest") + "</div>" +
-        "</div>" +
-        '<div class="receipt-lines">' +
-          settled.items.map(function (i) {
-            return '<div class="receipt-line"><span>' + UI.esc(i.description) +
-              (i.quantity > 1 ? " ×" + i.quantity : "") + "</span><span>" + money(i.amount) + "</span></div>";
-          }).join("") +
-        "</div>" +
-        '<div class="receipt-lines">' +
-          '<div class="receipt-line"><span>Subtotal</span><span>' + money(settled.subtotal) + "</span></div>" +
-          (settled.discount > 0
-            ? '<div class="receipt-line"><span>' + UI.esc(settled.discount_reason || "Discount") +
-              "</span><span>−" + money(settled.discount) + "</span></div>"
-            : "") +
-          (settled.tax > 0
-            ? '<div class="receipt-line"><span>Tax</span><span>' + money(settled.tax) + "</span></div>"
-            : "") +
-        "</div>" +
-        '<div class="receipt-total"><span>Total</span><span>' + money(settled.total) + " XP</span></div>" +
-        '<div class="receipt-lines">' +
-          settled.payments.map(function (p) {
-            return '<div class="receipt-line"><span>' + UI.esc(p.method) +
-              (p.reference ? " · " + UI.esc(p.reference) : "") + "</span><span>" + money(p.amount) + "</span></div>";
-          }).join("") +
-        "</div>" +
-        '<div class="receipt-foot">Thank you — see you next time</div>' +
-        // Same rule as the Billing page's receipt: printed unless the café
-        // has explicitly removed it.
-        (poweredByOn()
-          ? '<div class="receipt-powered">Powered by ManagerXP</div>' : "") +
-      "</div>";
+    body.innerHTML = CXReceipt.buildHtml(settled, billingIdentity || {});
 
     return UI.modal({
       title: "Settled",
@@ -1381,7 +1343,7 @@
       }
 
       // Fetched now so it is already known by the time a sale is settled.
-      loadPoweredByPref();
+      loadBillingIdentity();
 
       var page = UI.el("div", { class: "page ct-page" });
       page.innerHTML =

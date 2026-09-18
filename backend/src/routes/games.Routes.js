@@ -1,7 +1,7 @@
 import express from 'express';
 import {
   browseCatalog, listGames, addGame, updateCafeGame, removeGame,
-  listPcGames, setPcGames
+  listPcGames, setPcGames, setCafePlatformOverride
 } from '../controllers/games.Controller.js';
 import {
   listAccounts, createAccount, updateAccount, deleteAccount, revealCredential
@@ -28,6 +28,8 @@ const feature = requireCafeFeature('SESSION_MANAGEMENT');
 gamesRouter.get('/catalog', staff, feature, browseCatalog);
 gamesRouter.get('/pc/:pcId', staff, feature, listPcGames);
 gamesRouter.put('/pc/:pcId', staff, feature, setPcGames);
+// The café-wide launch-path/args default every station falls back to.
+gamesRouter.put('/platform-override/:gamePlatformId', staff, feature, setCafePlatformOverride);
 
 // A platform's venue account pool. Scoped by game_platform_id, not by the
 // café's cafe_games row, since accounts are café-owned data independent of

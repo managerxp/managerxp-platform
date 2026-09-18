@@ -56,6 +56,30 @@
   bottom: -300px; right: -160px;
   background: radial-gradient(circle, rgba(0, 120, 255, 0.16), transparent 68%);
 }
+/* A café's own uploaded background (welcome.html only) — the decorative
+   glow above is this page's default and stays hidden while a real
+   wallpaper is showing, rather than blending under an arbitrary photo. */
+.backdrop.has-wallpaper::before,
+.backdrop.has-wallpaper::after { display: none; }
+.kiosk-wallpaper {
+  display: none;
+  position: absolute;
+  inset: 0;
+  width: 100%; height: 100%;
+  object-fit: cover;
+}
+.backdrop.has-wallpaper .kiosk-wallpaper.is-active { display: block; }
+/* Uniform dark scrim, not .vignette's left-to-right one (built for a
+   side-panel hero, not a centered full-viewport page) — the welcome card
+   sits centered over whatever the café uploaded, so it needs even
+   darkening behind it rather than a one-sided gradient. */
+.kiosk-wallpaper-scrim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  background: rgba(5, 5, 9, 0.6);
+}
+.backdrop.has-wallpaper .kiosk-wallpaper-scrim { display: block; }
 
 /* Vignette that keeps text readable over full-bleed artwork */
 .vignette {
@@ -696,15 +720,23 @@
 .stage {
   position: relative;
   z-index: 1;
-  min-height: 100vh;
+  height: 100vh;
   display: grid;
   place-items: center;
   padding: var(--s-8);
+  /* A tall card (register, especially once the error banner appears) could
+     exceed the kiosk window's height with no way to reach the submit button
+     below it — body deliberately hides overflow app-wide ("panes scroll, not
+     the page"), so this pane needs its own scroll the same way .portal-scroll
+     already does for the main dashboard. Short content still centers via
+     place-items above; only tall content scrolls. */
+  overflow-y: auto;
 }
 
 .auth-card {
   width: 100%;
   max-width: 440px;
+  margin: auto 0;
   padding: var(--s-10) var(--s-8) var(--s-8);
   background: var(--glass);
   backdrop-filter: blur(24px);
@@ -722,6 +754,32 @@
   color: #fff;
   box-shadow: 0 12px 36px rgba(255, 23, 68, 0.36);
 }
+/* The real CafeXP wordmark, when the asset is present — same
+   present-vs-fallback pattern as the console's own .brand-logo (see
+   server-app/ui/layout.css): the badge glyph steps aside rather than
+   showing both at once, and steps back in if the image ever fails to load. */
+.auth-logo {
+  height: 48px;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+  display: block;
+  margin: 0 auto var(--s-5);
+}
+.auth-card:not(.auth-no-logo) .auth-mark { display: none; }
+.auth-card.auth-no-logo .auth-logo { display: none; }
+
+/* "Powered by ManagerXP" — always shown, on every auth/kiosk screen,
+   whether or not a café has branded itself with its own logo/name above it. */
+.powered-by {
+  margin-top: var(--s-5);
+  text-align: center;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.powered-by strong { color: var(--text-2); font-weight: 650; }
+
 .auth-title {
   text-align: center;
   font-size: var(--t-h1);
@@ -808,6 +866,19 @@
   line-height: 1;
 }
 .kiosk-word span { color: var(--accent); }
+/* A café's own logo, revealed in place of the generic icon badge only once
+   one actually arrives (see welcome.html's onCafeBranding) — hidden by
+   default rather than the present-vs-fallback swap .auth-logo uses,
+   because .kiosk-mark's plain SVG icon is already this page's normal
+   default state, not something only shown when an asset fails to load. */
+.kiosk-logo {
+  display: none;
+  width: 84px; height: 84px;
+  object-fit: contain;
+  margin: 0 auto var(--s-8);
+}
+.kiosk-inner.kiosk-has-logo .kiosk-mark { display: none; }
+.kiosk-inner.kiosk-has-logo .kiosk-logo { display: block; }
 .kiosk-head {
   margin-top: var(--s-8);
   font-size: var(--t-display);

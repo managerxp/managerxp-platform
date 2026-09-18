@@ -25,6 +25,17 @@
     expenses: "Expenses"
   };
 
+  /* There's no clock-in/shift concept in this system — only a login
+     timestamp. "On shift" is approximated as "signed in within the last 12
+     hours", the same window their token stays valid for. */
+  function presenceFor(person) {
+    if (person.status !== "ACTIVE") return { status: "offline", label: "Deactivated" };
+    if (Number(person.handling_now) > 0) return { status: "in-session", label: "Handling now" };
+    var last = person.last_login_at ? new Date(person.last_login_at).getTime() : 0;
+    var onlineNow = last && (Date.now() - last) < 12 * 60 * 60 * 1000;
+    return onlineNow ? { status: "online", label: "Available" } : { status: "idle", label: "Away" };
+  }
+
   function load() {
     loading = true;
     loadError = null;
@@ -432,12 +443,13 @@
     var table = UI.el("table", { class: "tbl" });
     table.innerHTML =
       "<thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Last signed in</th>" +
-      "<th>Status</th><th></th></tr></thead>";
+      "<th>Handled today</th><th>Status</th><th></th></tr></thead>";
     var tbody = UI.el("tbody");
 
     staff.forEach(function (person) {
       var active = person.status === "ACTIVE";
-      var tr = UI.el("tr", { dataset: { status: active ? "online" : "idle" } });
+      var presence = presenceFor(person);
+      var tr = UI.el("tr", { dataset: { status: presence.status } });
       tr.innerHTML =
         '<td><div class="row gap-3">' +
           '<span class="avatar" style="width:28px;height:28px;font-size:11px">' +
@@ -448,7 +460,10 @@
         "<td>" + (person.last_login_at
           ? UI.esc(UI.relTime(person.last_login_at))
           : '<span class="faint">Never</span>') + "</td>" +
-        '<td><span class="badge">' + (active ? "Active" : "Deactivated") + "</span></td>" +
+        '<td>' + (person.handled_today || 0) +
+          (person.handling_now ? ' <span class="faint">(' + person.handling_now + ' now)</span>' : "") + "</td>" +
+        '<td><span class="badge" data-status="' + presence.status + '">' +
+          '<span class="dot"></span>' + UI.esc(presence.label) + "</span></td>" +
         '<td class="td-actions"></td>';
 
       var actions = tr.querySelector(".td-actions");

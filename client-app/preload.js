@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("api", {
   getStatus: (cb) => ipcRenderer.invoke("get-status").then(cb),
   onPcName: (cb) => ipcRenderer.on("pc-name", (_, name) => cb(name)),
   getPcName: (cb) => ipcRenderer.invoke("get-pc-name").then(cb),
+  onCafeName: (cb) => ipcRenderer.on("cafe-name", (_, name) => cb(name)),
+  getCafeName: (cb) => ipcRenderer.invoke("get-cafe-name").then(cb),
+  onCafeBranding: (cb) => ipcRenderer.on("cafe-branding", (_, branding) => cb(branding)),
+  getCafeBranding: (cb) => ipcRenderer.invoke("get-cafe-branding").then(cb),
   getAppVersion: (cb) => ipcRenderer.invoke("get-app-version").then(cb),
 
   // Volume — real level + mute state, from the actual Windows device.
@@ -30,6 +34,10 @@ contextBridge.exposeInMainWorld("api", {
   onAppLaunchFailed: (cb) => ipcRenderer.on("app-launch-failed", (_, data) => cb(data)),
   onAppClosed: (cb) => ipcRenderer.on("app-closed", (_, data) => cb(data)),
   onSessionState: (cb) => ipcRenderer.on("session-state", (_, data) => cb(data)),
+  // Fired once, alongside session-state going to null, only when the session
+  // ended for a reason other than the customer's own logout — see main.js's
+  // SESSION_STATE handler.
+  onSessionEndedReason: (cb) => ipcRenderer.on("session-ended-reason", (_, reason) => cb(reason)),
   // The games this station may offer the customer, pushed by the console.
   onGamesList: (cb) => ipcRenderer.on("games-list", (_, data) => cb(data)),
   getGames: (cb) => ipcRenderer.invoke("get-games").then(cb),
@@ -71,7 +79,7 @@ contextBridge.exposeInMainWorld("api", {
   callStaff: () => ipcRenderer.send("call-staff"),
   // The customer tapped "Extend" on the low-time prompt — adds a block to
   // their own session, same as a staff-driven extend from the console.
-  extendRequest: (blocks) => ipcRenderer.send("extend-request", blocks),
+  extendRequest: (payload) => ipcRenderer.send("extend-request", payload),
   // Station tools from the Help menu — screen resolution, NVIDIA Control
   // Panel, Device Manager. panel is "display" | "nvidia" | "devicemgmt".
   openSystemPanel: (panel) => ipcRenderer.invoke("system:open-panel", panel),
@@ -87,6 +95,9 @@ contextBridge.exposeInMainWorld("api", {
   // The customer picked a game and a price and tapped Start.
   requestStartSession: (payload) => ipcRenderer.send("request-start-session", payload),
   requestOccupancySessionStart: () => ipcRenderer.send("request-occupancy-session-start"),
+  // Logging out ends occupancy billing — the server computes the actual
+  // charge from its own timestamps; nothing played/timed is sent up here.
+  requestEndSession: () => ipcRenderer.send("request-end-session"),
   bringToFront: () => ipcRenderer.send("bring-to-front"),
   onStartSessionFailed: (cb) => ipcRenderer.on("start-session-failed", (_, data) => cb(data)),
   navigateTo: (page) => ipcRenderer.send("navigate", page),

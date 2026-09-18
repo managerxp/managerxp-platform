@@ -145,11 +145,14 @@ function createWindow() {
     // Remove the application menu
     Menu.setApplicationMenu(null);
 
+    win.webContents.on('console-message', (e, level, message) => {
+      if (level >= 2) console.log('[DIAG renderer]', message);
+    });
+
     // Load the home page
     win.loadFile(path.join(__dirname, "index.html")).catch(err => {
       console.error('[Navigation] Error loading home page:', err);
     });
-    
     // Send user info to renderer when window loads
     win.webContents.once('did-finish-load', () => {
       console.log('[Navigation] Home window content loaded, showing window');
@@ -229,8 +232,38 @@ function handleStationRequest(msg, ws) {
   if (!pcName) return false;
 
   if (msg.type === "EXTEND_REQUEST") {
-    log(`[Extend] ${pcName} requested +${msg.blocks || 1} block`);
-    if (win) win.webContents.send("station:extend-request", { pcName, blocks: msg.blocks || 1 });
+    log(`[Extend] ${pcName} requested price #${msg.gaming_price_id}`);
+    if (win) {
+      win.webContents.send("station:extend-request", {
+        pcName, gamingPriceId: msg.gaming_price_id, requestId: msg.request_id
+      });
+    }
+    return true;
+  }
+  /*
+   * A station launched a game mid-session (the in-session launcher grid) —
+   * this only reports which title, it never starts or ends anything. Without
+   * it the console's GAME column stays blank for every occupancy session
+   * that didn't already have one chosen at start.
+   */
+  if (msg.type === "GAME_LAUNCHED") {
+    log(`[Game] ${pcName} launched game #${msg.game_id}`);
+    if (win) {
+      win.webContents.send("station:game-launched", {
+        pcName, gameId: msg.game_id, gamePlatformId: msg.game_platform_id
+      });
+    }
+    return true;
+  }
+  /*
+   * The customer logged out at the kiosk. Carries nothing but which station
+   * this is — no played time, no amount — the renderer looks up whatever
+   * session is actually running there and ends it through the exact same
+   * billing path a staff-driven end uses.
+   */
+  if (msg.type === "END_SESSION_REQUEST") {
+    log(`[Self-end] ${pcName} requested to end its session`);
+    if (win) win.webContents.send("station:end-request", { pcName });
     return true;
   }
   if (msg.type === "SESSION_OVERTIME") {
@@ -503,14 +536,9 @@ function getMacAddress() {
 }
 
 /*
- * The backend this console talks to — ManagerXP's own, not this machine.
+ * The backend this console talks to.
  *
- * BACKEND_LOCAL used to be a bare "http://localhost:<port>", true only in
- * the single-machine dev setup where the backend happens to run alongside
- * the console — every real café is a different machine from ManagerXP's
- * backend entirely.
- *
- * Two ways to set it, either alone is enough:
+ * Two ways to point it at a real, hosted backend, either alone is enough:
  *   BACKEND_URL in a .env beside the exe — what an already-installed
  *     console is repointed with, no rebuild;
  *   release.yml's "Bake in the production backend URL" step, which
@@ -519,14 +547,19 @@ function getMacAddress() {
  * The .env wins when both are present, which is what makes one café able
  * to point at a staging backend without a build of its own.
  *
- * A station is a different machine again, so "localhost" would mean
- * something different to it: itself, not the backend. It has to be told
- * this same address instead, and the console is the one that knows it —
- * SET_NAME already introduces a station to the console; that address rides
- * along on the same message (see backendBaseUrl() below) rather than
- * inventing a second round trip.
+ * Neither set — a dev checkout, or a café running its own backend on this
+ * same machine — used to fall back to a bare "http://localhost:<port>".
+ * That is correct for this console's own calls (below), but a station is a
+ * different machine: told "localhost" over SET_NAME, it means itself, not
+ * this one, and every login/register call it makes fails with "Can't reach
+ * the café server" even though the backend is right there on the café LAN.
+ * Falling back to this machine's real LAN IP instead fixes that — and
+ * unlike hand-writing that IP into a .env, it is read fresh from the network
+ * adapter every time the console starts, so it never goes stale when DHCP
+ * hands out a new one (a hardcoded .env value would need editing by hand
+ * every time that happens).
  */
-const BACKEND_LOCAL = process.env.BACKEND_URL || "http://localhost:5000";
+const BACKEND_LOCAL = process.env.BACKEND_URL || `http://${getServerLocalIP()}:${process.env.BACKEND_PORT || 5000}`;
 /* The website — a different address from the backend API, same distinction
    as the backend's own PUBLIC_BASE_URL vs API_PUBLIC_URL. "Open web app" /
    "Open signup" below send an operator's browser here, not to the API, so
@@ -538,9 +571,18 @@ const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
 function getServerLocalIP() {
   try {
     const interfaces = os.networkInterfaces();
+    /* A disconnected or DHCP-less adapter (an unplugged Ethernet port is the
+       common case) self-assigns a 169.254.0.0/16 address rather than having
+       none at all — Windows can and does enumerate that ahead of a perfectly
+       good Wi-Fi connection, so "first non-internal IPv4" alone picks an
+       address nothing else on the LAN can actually reach this machine at.
+       Skipped here rather than trusted as a last resort: a station told to
+       use one fails exactly the way "localhost" did, just less obviously. */
     for (const name of Object.keys(interfaces)) {
       for (const addr of interfaces[name] || []) {
-        if (addr.family === 'IPv4' && !addr.internal) return addr.address;
+        if (addr.family === 'IPv4' && !addr.internal && !addr.address.startsWith('169.254.')) {
+          return addr.address;
+        }
       }
     }
   } catch (error) {
@@ -556,6 +598,69 @@ function getServerLocalIP() {
    console's own IP with nothing listening on the backend's port. */
 function backendBaseUrl() {
   return BACKEND_LOCAL;
+}
+
+/*
+ * A café's own branding for the kiosk — its logo and trading name, if it has
+ * set either. Both are plain café-scoped settings (category "billing"), the
+ * same ones the Receipt Template page already reads and writes; this never
+ * writes them, only relays what is already there to the stations that ask.
+ *
+ * Fetched once and cached for this console's runtime, not on every SET_NAME:
+ * a logo is a rarely-changing, potentially ~400KB base64 value, and SET_NAME
+ * already only fires per station (re)connect, not on a timer — refetching it
+ * on every one of those would be real repeated cost for something that
+ * essentially never changes. A café that re-uploads a logo picks it up the
+ * next time this console restarts, the same way sessions.js's defaultRate
+ * (fetched once at load) already treats a similarly rare-changing value.
+ */
+let cafeBrandingCache = null;
+async function getCafeBranding() {
+  if (cafeBrandingCache) return cafeBrandingCache;
+  try {
+    const token = authContext.getToken();
+    const res = await fetch(`${backendBaseUrl()}/api/settings?category=billing`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const body = await res.json();
+    const byKey = {};
+    (body.data || []).forEach((r) => { byKey[r.setting_key] = r.setting_value; });
+    cafeBrandingCache = {
+      businessName: (byKey['billing.business_name'] || '').trim() || null,
+      logo: (byKey['billing.logo'] || '').trim() || null,
+      // The kiosk welcome screen's background — a short /uploads/... URL,
+      // not the file itself (see brandingUpload.js), so it costs nothing
+      // extra to carry alongside the logo/name in this same cached fetch.
+      wallpaperUrl: (byKey['billing.wallpaper_url'] || '').trim() || null,
+      wallpaperType: (byKey['billing.wallpaper_type'] || '').trim() || null
+    };
+  } catch (error) {
+    cafeBrandingCache = { businessName: null, logo: null, wallpaperUrl: null, wallpaperType: null };
+  }
+  return cafeBrandingCache;
+}
+
+/*
+ * Sent as a separate, one-off follow-up rather than folded into SET_NAME
+ * itself: SET_NAME's own send must stay synchronous with the rest of the
+ * "open" handler (setupClientHandlers, clientConnections.set) so nothing
+ * from the station can arrive before its listener is registered, and
+ * getCafeBranding() is async (a real fetch, the first time). A second
+ * SET_NAME sent later would also re-trigger the station's own REGISTER
+ * reply — this own message type carries only what it needs to, once,
+ * whenever the (cached, so usually instant) branding lookup resolves.
+ */
+function sendCafeBranding(ws) {
+  getCafeBranding().then((branding) => {
+    if (ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({
+      type: "CAFE_BRANDING",
+      businessName: branding.businessName,
+      logo: branding.logo,
+      wallpaperUrl: branding.wallpaperUrl,
+      wallpaperType: branding.wallpaperType
+    }));
+  });
 }
 
 /* ==========================================================================
@@ -1275,7 +1380,7 @@ function registerIPCHandlers() {
    * customer's name and countdown. Display only — the backend remains the
    * source of truth and the station never talks back about sessions.
    */
-  ipcMain.handle("session:push-state", async (_, { pcName, session }) => {
+  ipcMain.handle("session:push-state", async (_, { pcName, session, endedReason }) => {
     /* A station with no address has no portal to show anything on — the
        session is tracked entirely on the counter's screen. Not an error and
        not worth logging every tick: there was never a display to push to. */
@@ -1289,7 +1394,7 @@ function registerIPCHandlers() {
       console.log(`[Session] Push skipped, ${pcName} not connected`);
       return { success: false, error: "Station is not connected" };
     }
-    client.ws.send(JSON.stringify({ type: "SESSION_STATE", session: session || null }));
+    client.ws.send(JSON.stringify({ type: "SESSION_STATE", session: session || null, ended_reason: endedReason || null }));
     const summary = session ? `${session.status} for ${session.customer_name}` : "cleared";
     log(`Sent session state to ${pcName}: ${summary}`);
     console.log(`[Session] Pushed to ${pcName}: ${summary}`);
@@ -2348,8 +2453,10 @@ async function heartbeat() {
             ws.send(JSON.stringify({
               type: "SET_NAME",
               name: pcName,
-              apiBase: backendBaseUrl()
+              apiBase: backendBaseUrl(),
+              cafeName: authContext.getCafeName()
             }));
+            sendCafeBranding(ws);
             setupClientHandlers();
             clientConnections.set(pcName, ws);
           });
@@ -2481,8 +2588,10 @@ function connectToSpecificPC(ip, port, pcName) {
     ws.send(JSON.stringify({
       type: "SET_NAME",
       name: pcName,
-      apiBase: backendBaseUrl()
+      apiBase: backendBaseUrl(),
+      cafeName: authContext.getCafeName()
     }));
+    sendCafeBranding(ws);
     setupClientHandlers();
     clientConnections.set(pcName, ws);
   });
@@ -2649,8 +2758,10 @@ async function connectToClients() {
       ws.send(JSON.stringify({
         type: "SET_NAME",
         name: simId,
-        apiBase: backendBaseUrl()
+        apiBase: backendBaseUrl(),
+        cafeName: authContext.getCafeName()
       }));
+      sendCafeBranding(ws);
       log(`Sent PC name to client: ${simId}`);
       setupClientHandlers();
       clientConnections.set(simId, ws);

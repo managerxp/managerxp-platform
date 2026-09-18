@@ -12,8 +12,18 @@
   /* ---------- Clock ---------- */
   function startClock() {
     var elClock = document.getElementById("clock");
+    var elDate = document.getElementById("clockDate");
+    var lastDateStr = "";
     function tick() {
-      elClock.textContent = new Date().toLocaleTimeString([], { hour12: false });
+      var now = new Date();
+      elClock.textContent = now.toLocaleTimeString([], { hour12: false });
+      // The date only actually changes once a day — skip the reformat/repaint
+      // on the other 86399 ticks.
+      var dateStr = now.toDateString();
+      if (dateStr !== lastDateStr) {
+        lastDateStr = dateStr;
+        elDate.textContent = now.toLocaleDateString([], { day: "2-digit", month: "short" });
+      }
     }
     tick();
     setInterval(tick, 1000);

@@ -5,6 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import './src/config/env.js';
 import { initializeDatabase } from './src/config/database.js';
+import { closeHeartbeatTimedOutSessions } from './src/controllers/session.Controller.js';
 import authRoutes from './src/routes/auth.Routes.js';
 import subscriptionPlanRouter from './src/routes/subscriptionPlan.Routes.js';
 import cafeRouter from './src/routes/cafe.Routes.js';
@@ -186,6 +187,15 @@ const startServer = async () => {
         console.warn(`⚠️  API_PUBLIC_URL is "${apiUrl}" — plain http:// in production. Download links built from it won't force-download from an https:// page. Did you mean https://?`);
       }
     });
+
+    /* A kiosk occupancy session whose console crashed or lost its network has
+       nobody left to end it. Checked every minute; each session's own café
+       decides how long is too long (session.heartbeat_timeout_seconds). */
+    setInterval(() => {
+      closeHeartbeatTimedOutSessions().catch((error) => {
+        console.error('[heartbeat-timeout] Sweep failed:', error.message);
+      });
+    }, 60000);
   } catch (error) {
     console.error('❌ Failed to start server:', error.message);
     process.exit(1);

@@ -51,6 +51,17 @@
   justify-content: space-between;
   gap: var(--s-2);
 }
+.station-name-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.station-icon {
+  display: inline-flex;
+  flex: none;
+  color: var(--text-3);
+}
 .station-name {
   font-size: 15px;
   font-weight: 680;
@@ -58,6 +69,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 .station-meta {
   margin-top: 2px;
@@ -662,6 +674,14 @@
   color: var(--text-3);
   opacity: 0.75;
 }
+
+/* The Receipt Template page's "Paper width" setting, applied to the real
+   receipt — not just its own preview (see .rt-58mm etc. on .receipt-paper
+   below). Same token, same three widths, so a café's choice there actually
+   changes what prints. */
+.receipt.rt-58mm { max-width: 240px; }
+.receipt.rt-80mm { max-width: 300px; }
+.receipt.rt-a4 { max-width: 420px; font-size: 13px; padding: 26px 24px; }
 
 /* Printing: the receipt alone, on white, rather than the whole console. */
 @media print {
@@ -1393,7 +1413,8 @@
   background: var(--bg-sunken, var(--bg-raised));
   overflow: hidden;
 }
-.rt-logo-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.rt-logo-box img,
+.rt-logo-box video { max-width: 100%; max-height: 100%; object-fit: contain; }
 
 .rt-blocks { display: flex; flex-wrap: wrap; gap: var(--s-2); }
 

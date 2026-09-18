@@ -22,10 +22,21 @@ import {
 import { getProvider, listProviders, PROVIDER_IDS } from '../modules/payments/payments.providers.js';
 import { renderCheckout, renderMessage } from '../modules/payments/payments.checkout.js';
 import { getSettings } from '../config/settings.js';
+import { resolveGamingPrice } from '../config/sessionPricing.js';
 
 /* ==========================================================================
    HELPERS
    ========================================================================== */
+
+/*
+ * Direct UPI's business-mandated ceiling. Enforced here, server-side, on
+ * every path that can create a directupi order — never trusting a frontend
+ * check — and deliberately not a per-café setting: this is a fixed platform
+ * rule for this payment method, not something a café operator should be able
+ * to raise. A payment at or above this amount is refused outright rather
+ * than silently split into several smaller ones.
+ */
+const DIRECT_UPI_MAX_AMOUNT = 2000;
 
 /*
  * Settings that govern self-service top-ups, with safe fallbacks.
@@ -307,14 +318,22 @@ const creditTopup = async (client, { order, paymentId, confirmedAmount }) => {
     [next, walletRow.wallet_id]
   );
 
+  /* An Extend purchase from the kiosk (see createTopupOrder/requestCashTopup's
+     session_id/gaming_price_id) rides this exact credit path — the payment
+     mechanics are identical to any other top-up, only the ledger category and
+     note tell it apart from one, for staff/reporting. */
+  const isExtend = current.session_id !== null && current.session_id !== undefined;
   const ledger = await client.query(
     `INSERT INTO wallet_transactions
-       (wallet_id, customer_id, direction, amount, balance_after, category, method, note, performed_by)
-     VALUES ($1, $2, 'credit', $3, $4, 'topup', $5, $6, $7)
+       (wallet_id, customer_id, direction, amount, balance_after, category, method, note, performed_by, session_id, gaming_price_id)
+     VALUES ($1, $2, 'credit', $3, $4, $5, $6, $7, $8, $9, $10)
      RETURNING *`,
-    [walletRow.wallet_id, current.customer_id, coins, next, current.provider,
-     `Online top-up · ${current.provider} · ${current.currency} ${Number(current.amount).toFixed(2)}`,
-     `gateway:${current.provider}`]
+    [walletRow.wallet_id, current.customer_id, coins, next,
+     isExtend ? 'session_extend' : 'topup', current.provider,
+     isExtend
+       ? `Extend · Session #${current.session_id} · ${current.provider} · ${current.currency} ${Number(current.amount).toFixed(2)}`
+       : `Online top-up · ${current.provider} · ${current.currency} ${Number(current.amount).toFixed(2)}`,
+     `gateway:${current.provider}`, current.session_id || null, current.gaming_price_id || null]
   );
 
   const updated = await client.query(
@@ -739,19 +758,68 @@ export const createTopupOrder = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Self-service top-up is switched off' });
     }
 
-    const amount = Number(req.body?.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return res.status(400).json({ success: false, message: 'Enter an amount' });
+    /*
+     * Extend, via the kiosk: gaming_price_id present means this top-up is
+     * buying more play time on a specific open-ended session, not a
+     * free-form amount. The price is resolved here, server-side, off the
+     * session's own station category — an amount the client sent is never
+     * trusted for this, and no top-up bonus tier applies (the café already
+     * set this exact price for this exact duration; doubling up a bonus on
+     * top of it was never priced in).
+     */
+    let sessionId = null;
+    let gamingPriceIdForTag = null;
+    let charge;
+    let coins;
+    const requestedGamingPriceId = req.body?.gaming_price_id;
+    if (requestedGamingPriceId !== undefined && requestedGamingPriceId !== null && requestedGamingPriceId !== '') {
+      const requestedSessionId = parseInt(req.body?.session_id, 10);
+      if (!Number.isInteger(requestedSessionId)) {
+        return res.status(400).json({ success: false, message: 'A session is required to extend' });
+      }
+      const session = await client.query(
+        `SELECT s.session_id, s.status, s.pricing_unit, p.category AS pc_category
+           FROM sessions s LEFT JOIN pcs p ON p.pc_id = s.pc_id
+          WHERE s.session_id = $1 AND s.customer_id = $2`,
+        [requestedSessionId, customerId]
+      );
+      if (!session.rows[0]) {
+        return res.status(404).json({ success: false, message: 'That session was not found' });
+      }
+      if (session.rows[0].status !== 'active' && session.rows[0].status !== 'paused') {
+        return res.status(409).json({ success: false, message: 'That session has already ended' });
+      }
+      const resolved = await resolveGamingPrice(client, requestedGamingPriceId, {
+        stationCategory: session.rows[0].pc_category || null,
+        cafeId
+      });
+      if (resolved.error) return res.status(400).json({ success: false, message: resolved.error });
+      sessionId = requestedSessionId;
+      gamingPriceIdForTag = resolved.snapshot.gaming_price_id;
+      charge = Number(resolved.snapshot.flat_amount);
+      coins = charge; // 1:1 — no top-up bonus on an already-priced tier
+    } else {
+      const amount = Number(req.body?.amount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return res.status(400).json({ success: false, message: 'Enter an amount' });
+      }
+      if (amount < settings.min || amount > settings.max) {
+        return res.status(400).json({
+          success: false,
+          message: `Top-ups must be between ${settings.min} and ${settings.max}`
+        });
+      }
+      // Two decimal places; a fractional paisa is not a real amount.
+      charge = Number(amount.toFixed(2));
+      coins = resolveTopupCoins(charge, settings);
     }
-    if (amount < settings.min || amount > settings.max) {
+
+    if (providerId === 'directupi' && charge >= DIRECT_UPI_MAX_AMOUNT) {
       return res.status(400).json({
         success: false,
-        message: `Top-ups must be between ${settings.min} and ${settings.max}`
+        message: `Direct UPI is only available for payments under ₹${DIRECT_UPI_MAX_AMOUNT}. Choose another payment method for this amount.`
       });
     }
-    // Two decimal places; a fractional paisa is not a real amount.
-    const charge = Number(amount.toFixed(2));
-    const coins = resolveTopupCoins(charge, settings);
 
     const customer = await client.query(
       `SELECT ${CUSTOMER_COLUMNS} FROM customers WHERE customer_id = $1`,
@@ -774,10 +842,11 @@ export const createTopupOrder = async (req, res) => {
      */
     const draft = await client.query(
       `INSERT INTO topup_orders
-         (cafe_id, customer_id, provider, mode, amount, coins, currency, status, source)
-       VALUES ($1,$2,$3,$4,$5,$6,'INR','created',$7)
+         (cafe_id, customer_id, provider, mode, amount, coins, currency, status, source, session_id, gaming_price_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'INR','created',$7,$8,$9)
        RETURNING *`,
-      [cafeId, customerId, providerId, gateway.mode, charge, coins, req.body?.source === 'admin' ? 'admin' : 'client']
+      [cafeId, customerId, providerId, gateway.mode, charge, coins, req.body?.source === 'admin' ? 'admin' : 'client',
+       sessionId, gamingPriceIdForTag]
     );
     const order = draft.rows[0];
 
@@ -1028,14 +1097,6 @@ export const requestCashTopup = async (req, res) => {
       return res.status(403).json({ success: false, message: 'Cash top-ups are not available here' });
     }
 
-    const amount = Number(req.body?.amount);
-    if (!Number.isFinite(amount) || amount < settings.min || amount > settings.max) {
-      return res.status(400).json({
-        success: false,
-        message: `Top-ups must be between ${settings.min} and ${settings.max}`
-      });
-    }
-
     /*
      * One open request at a time. Without this a customer could queue up a
      * dozen requests and a distracted cashier could approve several for one
@@ -1054,16 +1115,59 @@ export const requestCashTopup = async (req, res) => {
       });
     }
 
-    const charge = Number(amount.toFixed(2));
-    const coins = resolveTopupCoins(charge, settings);
+    /* Extend via cash — same server-resolved price as the gateway path in
+       createTopupOrder; see its comment for why the client never states the
+       amount for this. */
+    let sessionId = null;
+    let gamingPriceIdForTag = null;
+    let charge;
+    let coins;
+    const requestedGamingPriceId = req.body?.gaming_price_id;
+    if (requestedGamingPriceId !== undefined && requestedGamingPriceId !== null && requestedGamingPriceId !== '') {
+      const requestedSessionId = parseInt(req.body?.session_id, 10);
+      if (!Number.isInteger(requestedSessionId)) {
+        return res.status(400).json({ success: false, message: 'A session is required to extend' });
+      }
+      const session = await client.query(
+        `SELECT s.session_id, s.status, p.category AS pc_category
+           FROM sessions s LEFT JOIN pcs p ON p.pc_id = s.pc_id
+          WHERE s.session_id = $1 AND s.customer_id = $2`,
+        [requestedSessionId, customerId]
+      );
+      if (!session.rows[0]) {
+        return res.status(404).json({ success: false, message: 'That session was not found' });
+      }
+      if (session.rows[0].status !== 'active' && session.rows[0].status !== 'paused') {
+        return res.status(409).json({ success: false, message: 'That session has already ended' });
+      }
+      const resolved = await resolveGamingPrice(client, requestedGamingPriceId, {
+        stationCategory: session.rows[0].pc_category || null,
+        cafeId
+      });
+      if (resolved.error) return res.status(400).json({ success: false, message: resolved.error });
+      sessionId = requestedSessionId;
+      gamingPriceIdForTag = resolved.snapshot.gaming_price_id;
+      charge = Number(resolved.snapshot.flat_amount);
+      coins = charge;
+    } else {
+      const amount = Number(req.body?.amount);
+      if (!Number.isFinite(amount) || amount < settings.min || amount > settings.max) {
+        return res.status(400).json({
+          success: false,
+          message: `Top-ups must be between ${settings.min} and ${settings.max}`
+        });
+      }
+      charge = Number(amount.toFixed(2));
+      coins = resolveTopupCoins(charge, settings);
+    }
 
     const created = await client.query(
       `INSERT INTO topup_orders
-         (cafe_id, customer_id, provider, mode, amount, coins, currency, status, source, customer_note)
-       VALUES ($1,$2,'cash','live',$3,$4,'INR','awaiting_approval','client',$5)
+         (cafe_id, customer_id, provider, mode, amount, coins, currency, status, source, customer_note, session_id, gaming_price_id)
+       VALUES ($1,$2,'cash','live',$3,$4,'INR','awaiting_approval','client',$5,$6,$7)
        RETURNING *`,
       [cafeId, customerId, charge, coins,
-       req.body?.note ? String(req.body.note).slice(0, 255) : null]
+       req.body?.note ? String(req.body.note).slice(0, 255) : null, sessionId, gamingPriceIdForTag]
     );
 
     res.status(201).json({

@@ -272,6 +272,7 @@
   function counts() {
     var c = {
       total: state.pcs.length, online: 0, offline: 0, running: 0, inactive: 0, occupied: 0,
+      maintenance: 0,
       discovered: state.discovered.length, failing: 0,
       /* Kept apart from online/offline on purpose. A pool table is neither
          connected nor disconnected — counting it as "online" made the
@@ -299,6 +300,12 @@
       // rather than folded into one that would misstate what it means.
       else if (s === "occupied") { c.occupied++; if (networked) c.online++; }
       else if (s === "inactive") { c.inactive++; }
+      // Taken out of service deliberately — kept apart from "offline" (which
+      // reads as a problem to go check on) so a station a café marked down
+      // on purpose doesn't sit in the same bucket as one that just dropped.
+      // Still counted in offline too (unchanged from before this field
+      // existed) so nothing already reading counts.offline changes meaning.
+      else if (s === "maintenance") { c.maintenance++; c.offline++; bucket.offline++; }
       else { c.offline++; bucket.offline++; }
 
       var cs = state.connectionStatus[pc.name];
@@ -698,6 +705,16 @@
       method: "PUT", body: JSON.stringify({ value: String(value) })
     });
   }
+  /* The kiosk welcome screen's background — a real file upload (image or a
+     short video), same shape as uploadProductImage above: upload first, get
+     back where it landed, then save that short URL (plus its type) into
+     billing.wallpaper_url/billing.wallpaper_type like any other setting. */
+  function uploadCafeWallpaper(file) {
+    var body = new FormData();
+    body.append("wallpaper", file);
+    return request("/api/settings/wallpaper-upload", { method: "POST", body: body })
+      .then(function (r) { return r.data; });
+  }
   /* Pushes a just-saved staff unlock PIN to every station connected right
      now, rather than leaving it to whenever each one next reconnects. */
   function refreshUnlockPin() {
@@ -744,6 +761,10 @@
 
   function getCustomerWalletTransactions(customerId, limit) {
     return request("/api/wallet/customer/" + customerId + "/transactions?limit=" + (limit || 25));
+  }
+
+  function getCustomerActivity(customerId, limit) {
+    return request("/api/customers/" + customerId + "/activity?limit=" + (limit || 15));
   }
 
   function creditWallet(customerId, payload) {
@@ -800,6 +821,10 @@
    * client that restarts mid-session gets its countdown back.
    */
   var reconcileTimer = null;
+  // In-flight guard so a session whose end request is still pending doesn't
+  // get a second one queued by the next 15s tick landing before the first
+  // resolves — keyed by session_id, cleared once that end call settles.
+  var endingForBalance = {};
   function reconcileOnce() {
     if (!state.user) return Promise.resolve();
     return loadSessions().then(function (sessions) {
@@ -812,12 +837,51 @@
       // Tell the backend which open sessions still have a connected station
       // watching them, so a crashed or disconnected kiosk's session shows up
       // as heartbeat_stale rather than silently running forever unobserved.
-      // Never ends or charges a session — staff still decide that.
+      // Never ends or charges a session on its own — staff still decide
+      // that — with one deliberate exception just below.
       Object.keys(sessions).forEach(function (pcName) {
         var cs = state.connectionStatus[pcName];
         if (!cs || cs.status !== "connected") return;
         request("/api/sessions/" + sessions[pcName].session_id + "/heartbeat", { method: "POST" })
           .catch(function () {});
+      });
+
+      /*
+       * Balance exhausted on an open-ended (HOUR/occupancy) session: end it
+       * the same way a customer's own logout would — no played time is lost,
+       * nothing here decides the charge, endSession's existing settle path
+       * does exactly what it always does. Scoped tightly: only a signed-in
+       * customer's own HOUR session (a guest has no wallet to exhaust, and a
+       * BLOCK session is postpaid by design — a short wallet never stops
+       * it), only once balance actually reaches the customer's real floor —
+       * 0 for a normal customer, but a regular with a credit limit is meant
+       * to be able to run negative down to it (the exact same floor the
+       * till already honours at settle time), so this must never end a
+       * regular's session just for going into credit they were granted.
+       *
+       * TEMPORARILY DISABLED (2026-09-17): this was ending real customer
+       * sessions it should not have — confirmed a regular customer well
+       * within their credit limit got auto-ended. Off while the root cause
+       * is found; nothing here runs until it's back.
+       */
+      if (false) Object.keys(sessions).forEach(function (pcName) {
+        var s = sessions[pcName];
+        if (!s || s.pricing_unit !== "HOUR" || !s.customer_id) return;
+        if (s.status !== "active" && s.status !== "paused") return;
+        if (s.wallet_balance === null || s.wallet_balance === undefined) return;
+        var floor = Number(s.wallet_floor) || 0;
+        if (Number(s.wallet_balance) > floor) return;
+        if (endingForBalance[s.session_id]) return;
+        endingForBalance[s.session_id] = true;
+        endSession(s, { reason: "balance_exhausted" })
+          .then(function () {
+            UIToast("warn", "Session ended — balance exhausted",
+              (s.customer_name || "That customer") + " on " + pcName + " ran out of balance.");
+          })
+          .catch(function (e) {
+            console.warn("[store] auto-end on balance exhaustion failed", e.message);
+          })
+          .then(function () { delete endingForBalance[s.session_id]; });
       });
     }).catch(function (err) {
       // Never let one failure stop the loop — the next tick tries again.
@@ -866,6 +930,27 @@
       names.forEach(function (name) {
         var s = state.sessions[name];
         if (s.status !== "active") return;
+
+        /* Same fix as client-app's session.js (see its comment on this exact
+           bug): the server holds elapsed_seconds at 0 (and remaining_seconds
+           at the full planned value) for the whole café load buffer —
+           billing_phase stays "grace" even though status is already
+           "active". Incrementing locally through that window regardless
+           counted the display up anyway, and the console's own ~15s
+           reconcile push then corrected it back to the still-zero server
+           figure — which is exactly what read as the timer resetting.
+           Held here the same way, from the same started_at/grace_seconds
+           pair, until the buffer has actually elapsed. */
+        if (s.started_at && s.grace_seconds &&
+            Date.now() - new Date(s.started_at).getTime() < s.grace_seconds * 1000) {
+          s.billing_phase = "grace";
+          s.grace_remaining_seconds = Math.max(0, s.grace_seconds -
+            Math.floor((Date.now() - new Date(s.started_at).getTime()) / 1000));
+          return;
+        }
+        s.billing_phase = "active";
+        s.grace_remaining_seconds = 0;
+
         s.elapsed_seconds += 1;
         if (s.remaining_seconds !== null) s.remaining_seconds = Math.max(0, s.remaining_seconds - 1);
         /* A FLAT (unlimited) and a BLOCK (fixed-length) session both cost a
@@ -917,20 +1002,27 @@
    * path a decrypted password ever travels: fetched here, attached to this
    * one outgoing message, never touching state.sessions or any rendered
    * screen in this console.
+   *
+   * `endedReason`, only ever set alongside `session: null`, is why: a
+   * customer's own logout needs no explanation (they're already leaving),
+   * but a station losing its session for any other reason — balance
+   * exhausted, staff ended it — has to say so, because the station uses it
+   * to decide whether to sign the customer out of the kiosk app itself, not
+   * just clear the game/wallet chips.
    */
-  function pushSessionToStation(pcName, session) {
+  function pushSessionToStation(pcName, session, endedReason) {
     if (!api.pushSessionState) return Promise.resolve();
     if (session && session.game_account_id && session.game_platform_id) {
       return fetchAccountCredential(session.game_account_id, session.game_platform_id)
         .then(function (cred) {
-          return api.pushSessionState(pcName, Object.assign({}, session, { account_credential: cred }));
+          return api.pushSessionState(pcName, Object.assign({}, session, { account_credential: cred }), endedReason);
         })
         .catch(function (e) {
           console.warn("[store] credential fetch failed, launching without auto sign-in", e);
-          return api.pushSessionState(pcName, session);
+          return api.pushSessionState(pcName, session, endedReason);
         });
     }
-    return api.pushSessionState(pcName, session).catch(function (e) {
+    return api.pushSessionState(pcName, session, endedReason).catch(function (e) {
       console.warn("[store] session push failed", e);
     });
   }
@@ -1061,8 +1153,12 @@
               platform_game_id: p.platform_game_id,
               launch_method: p.launch_method,
               launch_target: p.launch_target,
+              launch_target_override: p.launch_target_override,
+              cafe_launch_target_override: p.cafe_launch_target_override,
               process_name: p.process_name,
-              launch_arguments: p.launch_arguments
+              launch_arguments: p.launch_arguments,
+              launch_arguments_override: p.launch_arguments_override,
+              cafe_launch_arguments_override: p.cafe_launch_arguments_override
             });
           });
         });
@@ -1099,7 +1195,11 @@
     // The account is free for the next session the moment this one ends —
     // its cached password must not outlive it.
     if (session && !running && session.game_account_id) delete credentialCache[session.game_account_id];
-    return pushSessionToStation(pcName, stillRunning(session) ? session : null)
+    /* Told apart from a plain "no session" so the station can decide whether
+       to sign the customer out of the kiosk app itself — see
+       pushSessionToStation's own comment for which reasons that covers. */
+    var endedReason = session && !running ? session.end_reason : null;
+    return pushSessionToStation(pcName, running ? session : null, endedReason)
       .then(function () { return session; });
   }
 
@@ -1125,36 +1225,11 @@
       return afterSessionChange(r.data);
     });
   }
-  function extendSession(session, minutes) {
-    return sessionAction(session.session_id, "extend", { minutes: minutes }).then(function (r) {
-      var pcName = session.pc_name;
-      /* What actually landed, not what was asked for — a BLOCK-priced
-         session rounds a minutes request up to its nearest whole block on
-         the server, so the real addition can be more than requested. The
-         timer card and the toast both need the true figure, not the input. */
-      var actualAdded = (Number(r.data.planned_minutes) || 0) - (Number(session.planned_minutes) || 0);
-      if (actualAdded <= 0) actualAdded = minutes;
-
-      // Grows the station's own floating timer card to match — otherwise the
-      // café-session clock (pushed below, via afterSessionChange) knows about
-      // the added time but the timer card overlay does not, and would still
-      // count down to the old total. extendSessionBlocks already did this;
-      // the plain-minutes path never did.
-      if (pcName && api.pushExtendTimer) {
-        api.pushExtendTimer(pcName, actualAdded).catch(function (e) {
-          console.warn("[store] extend-timer push failed", e);
-        });
-      }
-      return afterSessionChange(r.data, pcName).then(function (s) {
-        return { session: s, message: r.message };
-      });
-    });
-  }
   /*
-   * Extend a fixed-price session by whole blocks. Used by the player-driven
-   * Extend at the station: the block is added to the bill (settled at the end,
-   * never a wallet debit here), the station's timer card is grown to match, and
-   * the floor is updated. `blocks` defaults to one.
+   * Extend a fixed-price session by whole blocks — the session's own
+   * starting block, repeated. Kept for anything still calling it directly
+   * (the staff dialog's quick "+1 block" tap knows its own block price up
+   * front and has no reason to go through a tier lookup for that).
    */
   function extendSessionBlocks(session, blocks) {
     var n = blocks || 1;
@@ -1167,6 +1242,46 @@
         });
       }
       return afterSessionChange(r.data, pcName);
+    });
+  }
+  /*
+   * Extend by ANY configured tier, not just the one the session started on —
+   * the station's own +Extend picker, and the staff console's own tier list,
+   * both go through this. `requestId`, when given, makes a double-send (a
+   * double-tap, a WS retry) a no-op on the backend rather than a second
+   * charge — see session_extend_requests.
+   */
+  function extendSessionByTier(session, gamingPriceId, requestId) {
+    return sessionAction(session.session_id, "extend", {
+      gaming_price_id: gamingPriceId, request_id: requestId
+    }).then(function (r) {
+      var pcName = session.pc_name;
+      // What actually landed, not assumed — a HOUR-session extend adds no
+      // minutes at all (it credits the wallet instead), so this is only
+      // ever positive for a BLOCK session's own growth.
+      var actualAdded = (Number(r.data.planned_minutes) || 0) - (Number(session.planned_minutes) || 0);
+      if (actualAdded > 0 && pcName && api.pushExtendTimer) {
+        api.pushExtendTimer(pcName, actualAdded).catch(function (e) {
+          console.warn("[store] extend-timer push failed", e);
+        });
+      }
+      return afterSessionChange(r.data, pcName).then(function (s) {
+        return { session: s, message: r.message };
+      });
+    });
+  }
+  /*
+   * Record which game a station just launched mid-session — the launch
+   * itself already happened locally on the station; this only tells the
+   * backend what to show in the GAME column. Fire-and-forget from the
+   * caller's point of view: a failed report loses a display detail, not
+   * money or play time, so it is never worth surfacing as an error toast.
+   */
+  function reportGameLaunched(session, gameId, gamePlatformId) {
+    return sessionAction(session.session_id, "game", {
+      game_id: gameId, game_platform_id: gamePlatformId
+    }).then(function (r) {
+      return afterSessionChange(r.data, session.pc_name);
     });
   }
   function transferSession(session, pcId) {
@@ -1557,8 +1672,23 @@
   function getPcGames(pcId) { return request("/api/games/pc/" + pcId); }
   /* Per PLATFORM now, not per game: a station installs Steam's F1 25 or EA's,
      and which one it has is exactly what the launcher needs to know. */
-  function setPcGames(pcId, gamePlatformIds) {
-    return request("/api/games/pc/" + pcId, { method: "PUT", body: JSON.stringify({ game_platform_ids: gamePlatformIds }) });
+  function setPcGames(pcId, gamePlatformIds, overrides, argOverrides) {
+    return request("/api/games/pc/" + pcId, {
+      method: "PUT",
+      body: JSON.stringify({
+        game_platform_ids: gamePlatformIds,
+        overrides: overrides || {},
+        arg_overrides: argOverrides || {}
+      })
+    });
+  }
+  /* The café-wide launch path/args default a station falls back to when it
+     has no override of its own — set once from the Game Library instead of
+     on every PC. */
+  function setGamePlatformOverride(gamePlatformId, patch) {
+    return request("/api/games/platform-override/" + gamePlatformId, {
+      method: "PUT", body: JSON.stringify(patch)
+    });
   }
 
   function listGamingPrices(params) { return request("/api/gaming-prices" + qs(params)); }
@@ -1594,9 +1724,15 @@
     return request("/api/pricing-rules/" + id, { method: "DELETE" });
   }
   /* What every catalogue price costs at a given moment. `at` is optional and
-     lets the rate card show any hour of the week, not only right now. */
-  function previewRates(at) {
-    return request("/api/pricing-rules/preview" + qs(at ? { at: at } : null))
+     lets the rate card show any hour of the week, not only right now.
+     `category` is optional too — pass a station's own category to get back
+     only that category's prices (plus anything priced with no category at
+     all, a deliberate café-wide price) instead of the whole rate card. */
+  function previewRates(at, category) {
+    var query = {};
+    if (at) query.at = at;
+    if (category) query.category = category;
+    return request("/api/pricing-rules/preview" + qs(Object.keys(query).length ? query : null))
       .then(function (r) { return r.data; });
   }
 
@@ -2006,14 +2142,27 @@
             " is not on a fixed-price block.");
           return;
         }
-        extendSessionBlocks(session, (data && data.blocks) || 1)
-          .then(function () {
+        extendSessionByTier(session, data && data.gamingPriceId, data && data.requestId)
+          .then(function (r) {
             UIToast("ok", "Extended at the station",
-              (session.customer_name || "Player") + " added a block to their session.");
+              (session.customer_name || "Player") + " — " + (r && r.message || "session extended") + ".");
           })
           .catch(function (e) {
             UIToast("error", "Extend failed", e.message || "Could not extend the session.");
           });
+      });
+    }
+
+    /* A player launched a game at their station mid-session — record it
+       against the session so the floor and sessions table show what they're
+       actually playing, the same as a game chosen at session start. */
+    if (api.onStationGameLaunched) {
+      api.onStationGameLaunched(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        if (!session || !data || !data.gameId) return;
+        reportGameLaunched(session, data.gameId, data.gamePlatformId)
+          .catch(function (e) { console.warn("[store] game-launch report failed", e.message); });
       });
     }
 
@@ -2139,6 +2288,18 @@
         var session = pcName && state.sessions[pcName];
         if (!session) return;    // already ended some other way; nothing to undo
         var who = session.customer_name || pcName || "The station";
+
+        /* A kiosk occupancy session is billing the seat, not the game — it
+           started at login, before any game was chosen, and stays valid
+           through any number of launch attempts, failed or not. Cancelling
+           it here (the STAFF_MANUAL behaviour below) would end billing for
+           someone who is still sitting at the station. */
+        if (session.session_type === "KIOSK_OCCUPANCY") {
+          UIToast("warn", "That game didn't start",
+            who + "'s game (" + (data.appName || "the game") + ") could not be launched. The session continues.");
+          return;
+        }
+
         cancelSession(session, { reason: "launch_failed" })
           .then(function () {
             UIToast("warn", "Session cancelled — game did not start",
@@ -2167,8 +2328,11 @@
           /* The current, peak/happy-hour-adjusted rate — not the flat catalogue
              price. A customer choosing at 7pm during a peak window must see
              the same number they are about to be charged, not the base rate
-             a pricing rule is quietly about to mark up. */
-          previewRates().catch(function () { return []; })
+             a pricing rule is quietly about to mark up.
+             This station's own category, so the backend sends back only what
+             actually applies here — a PC station has no business receiving
+             PS5 or Pool prices in the first place. */
+          previewRates(undefined, pc.category).catch(function () { return []; })
         ]).then(function (results) {
           /* Flattened to one entry per (game, platform installed here) — the
              same shape pushGamesToStation sends, so the customer's picker and
@@ -2183,13 +2347,21 @@
                 name: g.name, category: g.category, icon_url: g.icon_url,
                 account_mode: g.account_mode, platform: p.platform,
                 platform_game_id: p.platform_game_id, launch_method: p.launch_method,
-                launch_target: p.launch_target, process_name: p.process_name,
-                launch_arguments: p.launch_arguments
+                launch_target: p.launch_target, launch_target_override: p.launch_target_override,
+                cafe_launch_target_override: p.cafe_launch_target_override,
+                process_name: p.process_name,
+                launch_arguments: p.launch_arguments, launch_arguments_override: p.launch_arguments_override,
+                cafe_launch_arguments_override: p.cafe_launch_arguments_override
               });
             });
           });
+          /* The backend already scoped this to pc.category above; kept as a
+             cheap defensive re-check, not the primary filter — and without
+             the escape hatch the old version had (an untyped station used to
+             fall through to "no category → show everything"; now it
+             correctly reduces to "only the universal, no-category prices"). */
           var prices = (results[1] || []).filter(function (p) {
-            return !pc.category || !p.category || p.category === pc.category;
+            return !p.category || p.category === pc.category;
           }).map(function (p) {
             return {
               price_id: p.gaming_price_id, session_name: p.session_name,
@@ -2217,23 +2389,32 @@
 
         /*
          * Occupancy billing: fired automatically the moment a customer logs
-         * in, before any game or price is picked — only for a station
-         * category that has no catalog (block/flat) pricing at all. A PS5 or
-         * VR category is sold by the block on purpose; auto-starting an
-         * hourly meter there would bypass that price, so this silently does
-         * nothing and the customer still sees the normal picker. A
-         * genuinely uncatalogued category (plain counter PCs) starts an
-         * open-ended HOUR session at the café's default rate — no
-         * require_prepaid, matching the existing open-ended path, which has
-         * no fixed total to check a wallet against up front.
+         * in, before any game or price is picked — for every station
+         * category now, not just an uncatalogued one. The Gaming Price
+         * Master's block/flat prices remain exactly what the staff-manual
+         * dialog (sessions.js, untouched) sells; a kiosk login instead bills
+         * by the hour at this station's occupancy rate (per-category,
+         * configured under Gaming Prices → set from Settings, resolved
+         * server-side from the station's own category — see
+         * resolveOccupancyRate in the backend). No require_prepaid: an
+         * open-ended session has no fixed total to check a wallet against
+         * up front, same as the existing open-ended path always worked.
          */
         if (data.occupancy_login_start) {
-          return previewRates().catch(function () { return []; }).then(function (prices) {
-            var hasCatalogPricing = (prices || []).some(function (p) {
-              return !pc.category || !p.category || p.category === pc.category;
-            });
-            if (hasCatalogPricing) return;
-            return startSession({ pc_id: pc.pc_id, customer_id: data.customer_id }).catch(function () {});
+          return startSession({
+            pc_id: pc.pc_id,
+            customer_id: data.customer_id,
+            session_type: "KIOSK_OCCUPANCY"
+          }).catch(function (e) {
+            /* Silent before this — a login-triggered start failing (station
+               left non-AVAILABLE by a session that didn't end cleanly, a
+               transient backend error, etc.) had nowhere to go: no console
+               log, no toast, nothing. The customer just sat there signed in
+               with no timer and staff had no idea why. Still no customer-
+               facing toast (this is a background attempt, not something they
+               did), but staff needs to see it to do anything about it. */
+            console.error("[occupancy] Auto-start failed for " + pcName + ":", e.message);
+            UIToast("error", "Auto-start failed on " + pcName, e.message || "Could not start the session");
           });
         }
 
@@ -2252,6 +2433,24 @@
           use_venue_account: !!data.use_venue_account,
           require_prepaid: true
         }).catch(function (e) { fail(e.message || "Could not start the session"); });
+      });
+    }
+
+    /*
+     * The customer logged out at the kiosk. Ends occupancy billing through
+     * the exact same path a staff-driven end uses (endSession, above) — the
+     * server computes the bill from its own timestamps regardless of who
+     * asked. A STAFF_MANUAL session was never started by a kiosk login, so
+     * a kiosk logout has no business ending one; left alone here.
+     */
+    if (api.onStationEndRequest) {
+      api.onStationEndRequest(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        if (!session || session.session_type !== "KIOSK_OCCUPANCY") return;
+        endSession(session, { reason: "customer_logout" }).catch(function (e) {
+          console.error("[occupancy] Could not end session for " + pcName + ":", e.message);
+        });
       });
     }
 
@@ -2410,6 +2609,7 @@
     removeVenueAccount: removeVenueAccount,
     getPcGames: getPcGames,
     setPcGames: setPcGames,
+    setGamePlatformOverride: setGamePlatformOverride,
     listGamingPrices: listGamingPrices,
     createGamingPrice: createGamingPrice,
     updateGamingPrice: updateGamingPrice,
@@ -2439,8 +2639,8 @@
     startSession: startSession,
     pauseSession: pauseSession,
     resumeSession: resumeSession,
-    extendSession: extendSession,
     extendSessionBlocks: extendSessionBlocks,
+    extendSessionByTier: extendSessionByTier,
     transferSession: transferSession,
     endSession: endSession,
     cancelSession: cancelSession,
@@ -2490,6 +2690,7 @@
     assignStations: assignStations,
     getSettings: getSettings,
     setSetting: setSetting,
+    uploadCafeWallpaper: uploadCafeWallpaper,
     refreshUnlockPin: refreshUnlockPin,
 
     // customers & wallet
@@ -2500,6 +2701,7 @@
     getCustomerCredit: getCustomerCredit,
     getCustomerWallet: getCustomerWallet,
     getCustomerWalletTransactions: getCustomerWalletTransactions,
+    getCustomerActivity: getCustomerActivity,
     creditWallet: creditWallet,
     debitWallet: debitWallet,
 

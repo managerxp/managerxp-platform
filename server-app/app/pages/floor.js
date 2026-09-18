@@ -25,6 +25,30 @@
 
   var STATUS_TEXT = { online: "Available", occupied: "Signed in", gaming: "In use", paused: "Paused", offline: "Offline", inactive: "Deactivated" };
 
+  /*
+   * What a station looks like at a glance, from its category — a café can
+   * name a type anything ("Other…" in Add station), so this matches on
+   * keywords rather than an exact, closed list. A station with no type at
+   * all (not yet given one in Arrange) gets a neutral device glyph rather
+   * than the games controller — it isn't necessarily a games station, just
+   * an unconfigured one. Never leaves a card with no icon at all.
+   */
+  var CATEGORY_ICON_RULES = [
+    [/pool|billiard|snooker/i, "pool"],
+    [/vr|quest|headset|oculus/i, "vr"],
+    [/rac(e|ing)|kart|sim/i, "racing"],
+    [/\bpc\b|computer|desktop|laptop/i, "monitor"],
+    [/ps\d|xbox|console|switch/i, "games"]
+  ];
+  function categoryIcon(category) {
+    var c = String(category || "");
+    if (!c.trim()) return "devices";
+    for (var i = 0; i < CATEGORY_ICON_RULES.length; i++) {
+      if (CATEGORY_ICON_RULES[i][0].test(c)) return CATEGORY_ICON_RULES[i][1];
+    }
+    return "games";
+  }
+
   /* ==========================================================================
      LAYOUT
      A café is rarely one undifferentiated room, so the wall can be arranged to
@@ -317,7 +341,8 @@
         '<div class="station-subline">' +
           (session.game_name ? UI.esc(session.game_name) + " · " : "") +
           (session.status === "paused" ? "Paused" : SessionUI.timeLabel(session)) +
-          " · " + SessionUI.coins(session.running_amount) + " XP" +
+          ' · <span data-session-amount="' + UI.esc(pc.name) + '">' +
+            SessionUI.coins(session.running_amount) + " XP</span>" +
         "</div>";
     } else if (run) {
       middle =
@@ -357,7 +382,10 @@
     card.innerHTML =
       '<div class="station-top">' +
         "<div style='min-width:0'>" +
-          '<div class="station-name">' + UI.esc(pc.name) + "</div>" +
+          '<div class="station-name-row">' +
+            '<span class="station-icon">' + Icon(categoryIcon(pc.category), 14) + "</span>" +
+            '<span class="station-name">' + UI.esc(pc.name) + "</span>" +
+          "</div>" +
           /* An address is the useful second line for a machine on the network.
              For a pool table it is noise — "no address" reads like a fault
              when it is simply what a pool table is. Show what it is, or where
@@ -408,6 +436,10 @@
         SessionUI.endSessionDialog(session);
       }));
     } else if (canStartSession(pc).ok) {
+      quick.appendChild(quickBtn("play", "Quick start — guest, default duration", function (e) {
+        e.stopPropagation();
+        SessionUI.quickStartDialog(pc.name);
+      }));
       quick.appendChild(quickBtn("sessions", "Start a session", function (e) {
         e.stopPropagation();
         SessionUI.startSessionDialog(pc.name);
@@ -425,6 +457,18 @@
             return Promise.all([Store.loadPCs(), Store.refreshPCList()]);
           })
           .catch(function (err) { UI.toast.error("Could not reactivate", err.message); });
+      }));
+    } else if (status === "maintenance") {
+      // Symmetric with "Reactivate" above — the one thing worth doing to a
+      // station already stuck in this state is putting it back in service.
+      quick.appendChild(quickBtn("check", "Mark available again", function (e) {
+        e.stopPropagation();
+        Store.updatePC(pc.pc_id, { status: "AVAILABLE" })
+          .then(function () {
+            UI.toast.ok(pc.name + " is available again");
+            return Promise.all([Store.loadPCs(), Store.refreshPCList()]);
+          })
+          .catch(function (err) { UI.toast.error("Could not update", err.message); });
       }));
     } else if (!session) {
       // Launch-timer and connection actions only matter when no session owns
@@ -457,6 +501,17 @@
             .catch(function (err) { UI.toast.error("Connection failed", err.message); });
         }));
       }
+      // No session to interrupt, and not already pulled from service — the
+      // one remaining thing worth doing to a station from its own card.
+      quick.appendChild(quickBtn("construction", "Mark under maintenance", function (e) {
+        e.stopPropagation();
+        Store.updatePC(pc.pc_id, { status: "MAINTENANCE" })
+          .then(function () {
+            UI.toast.ok(pc.name + " marked under maintenance");
+            return Promise.all([Store.loadPCs(), Store.refreshPCList()]);
+          })
+          .catch(function (err) { UI.toast.error("Could not update", err.message); });
+      }));
     }
     quick.appendChild(quickBtn("panel", "Open control panel", function (e) {
       e.stopPropagation();
@@ -1153,7 +1208,7 @@
       var section = UI.el("div", { class: "floor-zone", dataset: { status: key ? "accent" : "idle" } });
       section.innerHTML =
         '<div class="floor-zone-head">' +
-          '<span class="legend-swatch"></span>' +
+          (key ? '<span class="station-icon">' + Icon(categoryIcon(key), 15) + "</span>" : '<span class="legend-swatch"></span>') +
           '<span class="floor-zone-name">' + UI.esc(key || "Untyped") + "</span>" +
           '<span class="badge">' + pcs.length + "</span>" +
           (key
@@ -1253,8 +1308,12 @@
           pc.name, pc.pc_id, pc.category || "", pc.ip_address || "",
           pc.zone_id || "", pc.description || "",
           Store.pcStatus(pc),
+          /* billing_phase included so the grace→active transition (same
+             session_id, same status, same customer) still rebuilds the card
+             — otherwise a card first drawn while "Preparing" would keep
+             that label forever, since nothing else about it ever changes. */
           s ? s.session_id + ":" + s.status + ":" + (s.customer_name || "") +
-              ":" + (s.low_balance ? "low" : "") : "",
+              ":" + (s.low_balance ? "low" : "") + ":" + (s.billing_phase || "") : "",
           run ? run.appName + ":" + (run.paused ? "p" : "r") : "",
           cs && cs.failures ? cs.failures : ""
         ].join(",");
@@ -1384,6 +1443,62 @@
     Motion.stagger(made, { step: 0.016, y: 10, maxDelay: 0.22 });
   }
 
+  /* ==========================================================================
+     SUMMARY SIDEBAR — the counts, the floor's own utilisation, and what is
+     running right now, at a glance without scanning every card.
+     ========================================================================== */
+  function renderSummary() {
+    if (!rootEl) return;
+    var host = rootEl.querySelector("#floorSummary");
+    if (!host) return;
+
+    var counts = Store.counts();
+    // Same arithmetic the filter chips already use for this — connected and
+    // free, neither running a session nor merely signed in.
+    var available = Math.max(0, counts.online - counts.running - counts.occupied);
+    var utilisation = counts.total ? Math.round((counts.running / counts.total) * 100) : 0;
+
+    var tiles = [
+      { label: "In session", value: counts.running, icon: "play", st: "var(--danger)" },
+      { label: "Available", value: available, icon: "monitor", st: "var(--ok)" },
+      { label: "Maintenance", value: counts.maintenance, icon: "construction", st: "var(--warn)" },
+      { label: "Utilisation", value: utilisation + "%", icon: "clock", st: "var(--accent)" }
+    ];
+
+    var sessions = Object.keys(Store.state.sessions)
+      .map(function (name) { return { pcName: name, session: Store.state.sessions[name] }; })
+      .sort(function (a, b) { return (b.session.elapsed_seconds || 0) - (a.session.elapsed_seconds || 0); });
+
+    host.innerHTML =
+      '<div class="grid grid-2" style="gap:var(--s-3)">' +
+        tiles.map(function (t) {
+          return '<div class="stat" style="--st:' + t.st + '">' +
+            '<div class="stat-label">' + Icon(t.icon, 13) + UI.esc(t.label) + "</div>" +
+            '<div class="stat-value">' + UI.esc(String(t.value)) + "</div>" +
+          "</div>";
+        }).join("") +
+      "</div>" +
+      '<div class="col gap-2" style="margin-top:var(--s-4)">' +
+        '<div class="row-between"><span class="faint" style="font-size:12px">Floor utilisation</span>' +
+          '<span class="mono" style="font-size:12px">' + utilisation + "%</span></div>" +
+        '<div class="meter"><div class="meter-fill" style="width:' + utilisation + '%"></div></div>' +
+      "</div>" +
+      '<div class="col gap-1" style="margin-top:var(--s-5)">' +
+        '<div class="faint" style="font-size:11px;letter-spacing:.05em;text-transform:uppercase;' +
+          'margin-bottom:var(--s-2)">Active sessions</div>' +
+        (sessions.length
+          ? sessions.map(function (row) {
+              return '<div class="row-between" style="padding:var(--s-2) 0;border-top:1px solid var(--line)">' +
+                '<span class="mono" style="font-size:13px">' + UI.esc(row.pcName) + "</span>" +
+                '<span class="row gap-1 faint mono" style="font-size:12px">' + Icon("clock", 12) +
+                  '<span data-summary-timer="' + UI.esc(row.pcName) + '">' +
+                    global.CXSessionUI.displayTime(row.session) +
+                  "</span></span></div>";
+            }).join("")
+          : '<div class="faint" style="font-size:12px;padding:var(--s-2) 0">No active sessions</div>') +
+      "</div>";
+  }
+
   function renderPageChrome() {
     if (!rootEl) return;
     var counts = Store.counts();
@@ -1415,14 +1530,26 @@
     if (!rootEl) return;
 
     Object.keys(Store.state.sessions).forEach(function (name) {
-      var el = rootEl.querySelector('[data-session-timer="' + CSS.escape(name) + '"]');
-      if (!el) return;
       var s = Store.state.sessions[name];
-      el.textContent = global.CXSessionUI.displayTime(s);
-      var low = s.remaining_seconds !== null && s.remaining_seconds <= 300;
-      var critical = s.remaining_seconds !== null && s.remaining_seconds <= 60;
-      el.classList.toggle("is-ending", low && !critical);
-      el.classList.toggle("is-critical", critical);
+
+      var el = rootEl.querySelector('[data-session-timer="' + CSS.escape(name) + '"]');
+      if (el) {
+        el.textContent = global.CXSessionUI.displayTime(s);
+        var low = s.remaining_seconds !== null && s.remaining_seconds <= 300;
+        var critical = s.remaining_seconds !== null && s.remaining_seconds <= 60;
+        el.classList.toggle("is-ending", low && !critical);
+        el.classList.toggle("is-critical", critical);
+      }
+
+      /* The running total, same story as the timer above it — it changes
+         every second for an open-ended session, but was only ever painted
+         once, at the last full card rebuild (every ~15s reconcile), so it
+         read as stuck while the clock right next to it kept moving. */
+      var amountEl = rootEl.querySelector('[data-session-amount="' + CSS.escape(name) + '"]');
+      if (amountEl) amountEl.textContent = global.CXSessionUI.coins(s.running_amount) + " XP";
+
+      var summaryEl = rootEl.querySelector('[data-summary-timer="' + CSS.escape(name) + '"]');
+      if (summaryEl) summaryEl.textContent = global.CXSessionUI.displayTime(s);
     });
 
     Object.keys(Store.state.running).forEach(function (name) {
@@ -1519,7 +1646,10 @@
           '<span class="legend-item" data-status="maintenance"><span class="legend-swatch"></span>Unregistered</span>' +
         "</div>" +
 
-        '<div id="stationGrid" class="grid grid-stations"></div>';
+        '<div class="grid floor-split">' +
+          '<div id="stationGrid" class="grid grid-stations"></div>' +
+          '<aside class="card card-pad floor-summary" id="floorSummary"></aside>' +
+        "</div>";
 
       root.appendChild(page);
 
@@ -1606,19 +1736,20 @@
 
       page.querySelector("#btnArrange").addEventListener("click", arrangeDialog);
 
-      offs.push(Store.on("pcs", function () { renderPageChrome(); renderGrid(); }));
-      offs.push(Store.on("connected", function () { renderPageChrome(); renderGrid(); }));
+      offs.push(Store.on("pcs", function () { renderPageChrome(); renderGrid(); renderSummary(); }));
+      offs.push(Store.on("connected", function () { renderPageChrome(); renderGrid(); renderSummary(); }));
       offs.push(Store.on("discovered", function () { renderPageChrome(); renderGrid(); }));
-      offs.push(Store.on("running", function () { renderPageChrome(); renderGrid(); }));
+      offs.push(Store.on("running", function () { renderPageChrome(); renderGrid(); renderSummary(); }));
       offs.push(Store.on("connection-status", renderGrid));
       offs.push(Store.on("tick", tickTimers));
-      offs.push(Store.on("sessions", function () { renderPageChrome(); renderGrid(); }));
+      offs.push(Store.on("sessions", function () { renderPageChrome(); renderGrid(); renderSummary(); }));
       offs.push(Store.on("help-requests", renderGrid));
-      offs.push(Store.on("signed-in", renderGrid));
+      offs.push(Store.on("signed-in", function () { renderGrid(); renderSummary(); }));
       offs.push(Store.on("session-tick", tickTimers));
 
       renderPageChrome();
       renderGrid();
+      renderSummary();
 
       // The saved arrangement arrives a beat after the wall does; render twice
       // rather than hold the whole page behind a settings call.

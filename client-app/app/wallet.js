@@ -372,10 +372,21 @@
     return request("/api/payments/topup/options").then(function (body) { return body.data; });
   }
 
-  /** Ask the server to open a payment. Returns what checkout needs, no secrets. */
-  function startTopup(provider, amountValue) {
-    return post("/api/payments/topup/order", { provider: provider, amount: amountValue })
-      .then(function (body) { return body.data; });
+  /**
+   * Ask the server to open a payment. Returns what checkout needs, no secrets.
+   *
+   * `extend`, when given ({sessionId, gamingPriceId}), turns this into an
+   * Extend purchase for that session — the server resolves and charges the
+   * tier's own price itself; amountValue is ignored, never sent, for exactly
+   * the reason every other price in this app is server-resolved, not
+   * client-stated.
+   */
+  function startTopup(provider, amountValue, extend) {
+    var body = extend && extend.gamingPriceId
+      ? { provider: provider, session_id: extend.sessionId, gaming_price_id: extend.gamingPriceId }
+      : { provider: provider, amount: amountValue };
+    return post("/api/payments/topup/order", body)
+      .then(function (r) { return r.data; });
   }
 
   /**
@@ -400,9 +411,12 @@
    * Nothing is credited here. This records the request; a member of staff
    * confirms the notes arrived and their approval is what moves the balance.
    */
-  function requestCashTopup(amountValue) {
-    return post("/api/payments/topup/cash", { amount: amountValue, pc_name: STATION_NAME })
-      .then(function (body) { return body.data; });
+  function requestCashTopup(amountValue, extend) {
+    var body = extend && extend.gamingPriceId
+      ? { session_id: extend.sessionId, gaming_price_id: extend.gamingPriceId, pc_name: STATION_NAME }
+      : { amount: amountValue, pc_name: STATION_NAME };
+    return post("/api/payments/topup/cash", body)
+      .then(function (r) { return r.data; });
   }
 
   function topupHistory() {

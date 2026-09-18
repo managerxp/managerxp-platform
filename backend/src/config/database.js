@@ -9,6 +9,7 @@ import { initializeExpenses } from './schema.expenses.js';
 import { initializePricingRules } from './schema.pricingRules.js';
 import { initializeCatalogueTenancy } from './schema.catalogueTenancy.js';
 import { initializeGamingPricePlayers } from './schema.gamingPricePlayers.js';
+import { initializeSessionType } from './schema.sessionType.js';
 import { initializeAccountReset } from './schema.accountReset.js';
 import { initializeCafeScoping } from './schema.cafeScoping.js';
 import { initializeSettingsScoping } from './schema.settingsScoping.js';
@@ -263,6 +264,13 @@ export const initializeDatabase = async () => {
         ADD COLUMN IF NOT EXISTS verify_otp_attempts SMALLINT NOT NULL DEFAULT 0
     `);
     await client.query(`ALTER TABLE customers ALTER COLUMN email_verified SET DEFAULT FALSE`);
+
+    /* Optional, sign-in-with-this-instead-of-email handle. The per-café
+       unique index (same scoping as email, and for the same reason) lives in
+       schema.cafeScoping.js next to idx_customers_cafe_email — customers has
+       no cafe_id column yet at this point in startup, only later once that
+       file's migration runs. */
+    await client.query(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS username VARCHAR(20)`);
 
     // wallet — one row per customer, holding the authoritative balance.
     // Money is NUMERIC, never floating point.
@@ -1526,6 +1534,15 @@ export const initializeDatabase = async () => {
       )
     `);
 
+    // 'directupi' joins the allowed providers — same widen-in-place pattern
+    // used for topup_orders_status_check below, so an existing install picks
+    // it up without a manual migration.
+    await client.query(`ALTER TABLE payment_gateways DROP CONSTRAINT IF EXISTS payment_gateways_provider_check`);
+    await client.query(`
+      ALTER TABLE payment_gateways ADD CONSTRAINT payment_gateways_provider_check
+        CHECK (provider IN ('razorpay','cashfree','payu','stripe','phonepe','directupi'))
+    `).catch(() => { /* already present */ });
+
     /* One row per attempt, created before the customer ever reaches the
        provider. Without this row there is nothing to verify a callback
        against, and a forged callback would be indistinguishable from a real
@@ -1665,6 +1682,43 @@ export const initializeDatabase = async () => {
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_topup_cafe_created
         ON topup_orders (cafe_id, created_at DESC)
+    `);
+
+    /*
+     * Extend, for a continuous (HOUR/occupancy) session: choosing a Gaming
+     * Price tier credits the wallet through this exact top-up flow (real
+     * payment, same gateway/cash-approval path) — not a new money-movement
+     * mechanism. These two nullable columns are the only addition: they tag
+     * an order (and, once credited, its wallet_transactions row) as "this
+     * was an extension for session #X, on this tier" so staff/reporting can
+     * tell it apart from a plain top-up. Every top-up that existed before
+     * Extend has neither and is completely unaffected.
+     */
+    await client.query(`ALTER TABLE topup_orders ADD COLUMN IF NOT EXISTS session_id INTEGER REFERENCES sessions(session_id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE topup_orders ADD COLUMN IF NOT EXISTS gaming_price_id INTEGER REFERENCES gaming_prices(id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS session_id INTEGER REFERENCES sessions(session_id) ON DELETE SET NULL`);
+    await client.query(`ALTER TABLE wallet_transactions ADD COLUMN IF NOT EXISTS gaming_price_id INTEGER REFERENCES gaming_prices(id) ON DELETE SET NULL`);
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_wallet_tx_session
+        ON wallet_transactions (session_id) WHERE session_id IS NOT NULL
+    `);
+
+    /*
+     * Idempotency for the two Extend paths that are a single direct write
+     * rather than a gateway order (BLOCK sessions growing planned_minutes,
+     * and a staff-direct wallet credit on an HOUR session) — a top-up-based
+     * extend doesn't need this, it already has provider_order_id/
+     * provider_payment_id unique indexes above. A double-click or WS retry
+     * sending the same request_id twice gets the first call's cached result
+     * back instead of being charged/extended twice.
+     */
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS session_extend_requests (
+        request_id VARCHAR(64) PRIMARY KEY,
+        session_id INTEGER NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
+        result JSONB NOT NULL,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
     `);
 
     await client.query(`
@@ -2318,6 +2372,14 @@ export const initializeDatabase = async () => {
         -- The printed template.
         ('billing.logo',         '',      'string',  'billing',
          'Café logo for the receipt head, stored as a data URI'),
+
+        -- The kiosk welcome screen's background — a real uploaded file
+        -- (see brandingUpload.js), so only its short /uploads/... URL and
+        -- kind live here, never the file itself.
+        ('billing.wallpaper_url', '', 'string', 'billing',
+         'Kiosk welcome-screen background — /uploads/... path to an uploaded image or video'),
+        ('billing.wallpaper_type','', 'string', 'billing',
+         '"image" or "video", matching whatever billing.wallpaper_url points at'),
         ('billing.receipt_width','80mm',  'string',  'billing',
          'Paper width: 58mm, 80mm or a4'),
         ('billing.receipt_show', 'logo,address,phone,tax_number,cashier,customer,footer', 'string', 'billing',
@@ -2400,6 +2462,9 @@ export const initializeDatabase = async () => {
     /* Widens the unique index catalogue tenancy just created, so it must run
        right after it rather than independently. */
     await initializeGamingPricePlayers(client);
+
+    // Adds columns to sessions — the table it needs already exists by now.
+    await initializeSessionType(client);
 
     // References software_master and cafes, both settled by now.
     await initializeSoftwareCategories(client);

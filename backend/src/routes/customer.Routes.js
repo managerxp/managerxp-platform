@@ -5,7 +5,10 @@ import {
   createCustomer,
   getCustomers,
   getCustomerById,
+  getCustomerActivity,
   getMyProfile,
+  updateMyProfile,
+  checkUsernameAvailable,
   setCustomerTier,
   getCustomerCredit
 } from '../controllers/customer.Controller.js';
@@ -34,6 +37,10 @@ customerRouter.post('/resend-verification', resetLimiter, resendCustomerVerifica
    this café's package includes the staff-facing Customers module. Literal
    path before "/:id", or "me" would be read as a customer id. */
 customerRouter.get('/me', requireAuth, getMyProfile);
+customerRouter.patch('/me', requireAuth, updateMyProfile);
+// Before "/:id" for the same reason "/me" itself is — read as a literal
+// path, not a customer id.
+customerRouter.get('/me/username-available', requireAuth, checkUsernameAvailable);
 
 // Staff only: these return other people's contact details.
 customerRouter.post('/', requirePermission('customers.manage'), feature, createCustomer);
@@ -43,6 +50,9 @@ customerRouter.get('/:id', requireStaff('Café staff access required'), feature,
 /* What they owe and what is left of their limit — read by the till before it
    offers to put a ticket on their tab. */
 customerRouter.get('/:id/credit', requireStaff('Café staff access required'), feature, getCustomerCredit);
+
+// Recent play history for the customer detail panel.
+customerRouter.get('/:id/activity', requireStaff('Café staff access required'), feature, getCustomerActivity);
 
 /* Making somebody a regular grants a standing discount and the right to owe
    the café money, so it needs the same permission as managing customers

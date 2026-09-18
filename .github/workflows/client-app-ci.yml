@@ -37,6 +37,21 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # electron-builder downloads its packaging tools (NSIS, winCodeSign,
+      # the electron zip itself, etc.) from GitHub releases on demand —
+      # setup-node's npm cache above doesn't cover these. Without this, every
+      # run re-fetches them from scratch, which is exactly what turned one
+      # transient network blip (ECONNRESET downloading nsis-*.7z) into a
+      # full build failure. Keyed on the lockfile so a dependency bump still
+      # gets a fresh cache rather than a stale/mismatched one.
+      - name: Cache electron-builder downloads
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.LOCALAPPDATA }}\electron-builder\Cache
+          key: electron-builder-cache-${{ runner.os }}-${{ hashFiles('client-app/package-lock.json') }}
+          restore-keys: |
+            electron-builder-cache-${{ runner.os }}-
+
       - name: Lint
         run: npm run lint --if-present
 
