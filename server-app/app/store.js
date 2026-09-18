@@ -272,6 +272,7 @@
   function counts() {
     var c = {
       total: state.pcs.length, online: 0, offline: 0, running: 0, inactive: 0, occupied: 0,
+      maintenance: 0,
       discovered: state.discovered.length, failing: 0,
       /* Kept apart from online/offline on purpose. A pool table is neither
          connected nor disconnected — counting it as "online" made the
@@ -299,6 +300,12 @@
       // rather than folded into one that would misstate what it means.
       else if (s === "occupied") { c.occupied++; if (networked) c.online++; }
       else if (s === "inactive") { c.inactive++; }
+      // Taken out of service deliberately — kept apart from "offline" (which
+      // reads as a problem to go check on) so a station a café marked down
+      // on purpose doesn't sit in the same bucket as one that just dropped.
+      // Still counted in offline too (unchanged from before this field
+      // existed) so nothing already reading counts.offline changes meaning.
+      else if (s === "maintenance") { c.maintenance++; c.offline++; bucket.offline++; }
       else { c.offline++; bucket.offline++; }
 
       var cs = state.connectionStatus[pc.name];
@@ -756,6 +763,10 @@
     return request("/api/wallet/customer/" + customerId + "/transactions?limit=" + (limit || 25));
   }
 
+  function getCustomerActivity(customerId, limit) {
+    return request("/api/customers/" + customerId + "/activity?limit=" + (limit || 15));
+  }
+
   function creditWallet(customerId, payload) {
     return request("/api/wallet/customer/" + customerId + "/credit", {
       method: "POST",
@@ -810,6 +821,10 @@
    * client that restarts mid-session gets its countdown back.
    */
   var reconcileTimer = null;
+  // In-flight guard so a session whose end request is still pending doesn't
+  // get a second one queued by the next 15s tick landing before the first
+  // resolves — keyed by session_id, cleared once that end call settles.
+  var endingForBalance = {};
   function reconcileOnce() {
     if (!state.user) return Promise.resolve();
     return loadSessions().then(function (sessions) {
@@ -822,12 +837,51 @@
       // Tell the backend which open sessions still have a connected station
       // watching them, so a crashed or disconnected kiosk's session shows up
       // as heartbeat_stale rather than silently running forever unobserved.
-      // Never ends or charges a session — staff still decide that.
+      // Never ends or charges a session on its own — staff still decide
+      // that — with one deliberate exception just below.
       Object.keys(sessions).forEach(function (pcName) {
         var cs = state.connectionStatus[pcName];
         if (!cs || cs.status !== "connected") return;
         request("/api/sessions/" + sessions[pcName].session_id + "/heartbeat", { method: "POST" })
           .catch(function () {});
+      });
+
+      /*
+       * Balance exhausted on an open-ended (HOUR/occupancy) session: end it
+       * the same way a customer's own logout would — no played time is lost,
+       * nothing here decides the charge, endSession's existing settle path
+       * does exactly what it always does. Scoped tightly: only a signed-in
+       * customer's own HOUR session (a guest has no wallet to exhaust, and a
+       * BLOCK session is postpaid by design — a short wallet never stops
+       * it), only once balance actually reaches the customer's real floor —
+       * 0 for a normal customer, but a regular with a credit limit is meant
+       * to be able to run negative down to it (the exact same floor the
+       * till already honours at settle time), so this must never end a
+       * regular's session just for going into credit they were granted.
+       *
+       * TEMPORARILY DISABLED (2026-09-17): this was ending real customer
+       * sessions it should not have — confirmed a regular customer well
+       * within their credit limit got auto-ended. Off while the root cause
+       * is found; nothing here runs until it's back.
+       */
+      if (false) Object.keys(sessions).forEach(function (pcName) {
+        var s = sessions[pcName];
+        if (!s || s.pricing_unit !== "HOUR" || !s.customer_id) return;
+        if (s.status !== "active" && s.status !== "paused") return;
+        if (s.wallet_balance === null || s.wallet_balance === undefined) return;
+        var floor = Number(s.wallet_floor) || 0;
+        if (Number(s.wallet_balance) > floor) return;
+        if (endingForBalance[s.session_id]) return;
+        endingForBalance[s.session_id] = true;
+        endSession(s, { reason: "balance_exhausted" })
+          .then(function () {
+            UIToast("warn", "Session ended — balance exhausted",
+              (s.customer_name || "That customer") + " on " + pcName + " ran out of balance.");
+          })
+          .catch(function (e) {
+            console.warn("[store] auto-end on balance exhaustion failed", e.message);
+          })
+          .then(function () { delete endingForBalance[s.session_id]; });
       });
     }).catch(function (err) {
       // Never let one failure stop the loop — the next tick tries again.
@@ -948,20 +1002,27 @@
    * path a decrypted password ever travels: fetched here, attached to this
    * one outgoing message, never touching state.sessions or any rendered
    * screen in this console.
+   *
+   * `endedReason`, only ever set alongside `session: null`, is why: a
+   * customer's own logout needs no explanation (they're already leaving),
+   * but a station losing its session for any other reason — balance
+   * exhausted, staff ended it — has to say so, because the station uses it
+   * to decide whether to sign the customer out of the kiosk app itself, not
+   * just clear the game/wallet chips.
    */
-  function pushSessionToStation(pcName, session) {
+  function pushSessionToStation(pcName, session, endedReason) {
     if (!api.pushSessionState) return Promise.resolve();
     if (session && session.game_account_id && session.game_platform_id) {
       return fetchAccountCredential(session.game_account_id, session.game_platform_id)
         .then(function (cred) {
-          return api.pushSessionState(pcName, Object.assign({}, session, { account_credential: cred }));
+          return api.pushSessionState(pcName, Object.assign({}, session, { account_credential: cred }), endedReason);
         })
         .catch(function (e) {
           console.warn("[store] credential fetch failed, launching without auto sign-in", e);
-          return api.pushSessionState(pcName, session);
+          return api.pushSessionState(pcName, session, endedReason);
         });
     }
-    return api.pushSessionState(pcName, session).catch(function (e) {
+    return api.pushSessionState(pcName, session, endedReason).catch(function (e) {
       console.warn("[store] session push failed", e);
     });
   }
@@ -1134,7 +1195,11 @@
     // The account is free for the next session the moment this one ends —
     // its cached password must not outlive it.
     if (session && !running && session.game_account_id) delete credentialCache[session.game_account_id];
-    return pushSessionToStation(pcName, stillRunning(session) ? session : null)
+    /* Told apart from a plain "no session" so the station can decide whether
+       to sign the customer out of the kiosk app itself — see
+       pushSessionToStation's own comment for which reasons that covers. */
+    var endedReason = session && !running ? session.end_reason : null;
+    return pushSessionToStation(pcName, running ? session : null, endedReason)
       .then(function () { return session; });
   }
 
@@ -1160,36 +1225,11 @@
       return afterSessionChange(r.data);
     });
   }
-  function extendSession(session, minutes) {
-    return sessionAction(session.session_id, "extend", { minutes: minutes }).then(function (r) {
-      var pcName = session.pc_name;
-      /* What actually landed, not what was asked for — a BLOCK-priced
-         session rounds a minutes request up to its nearest whole block on
-         the server, so the real addition can be more than requested. The
-         timer card and the toast both need the true figure, not the input. */
-      var actualAdded = (Number(r.data.planned_minutes) || 0) - (Number(session.planned_minutes) || 0);
-      if (actualAdded <= 0) actualAdded = minutes;
-
-      // Grows the station's own floating timer card to match — otherwise the
-      // café-session clock (pushed below, via afterSessionChange) knows about
-      // the added time but the timer card overlay does not, and would still
-      // count down to the old total. extendSessionBlocks already did this;
-      // the plain-minutes path never did.
-      if (pcName && api.pushExtendTimer) {
-        api.pushExtendTimer(pcName, actualAdded).catch(function (e) {
-          console.warn("[store] extend-timer push failed", e);
-        });
-      }
-      return afterSessionChange(r.data, pcName).then(function (s) {
-        return { session: s, message: r.message };
-      });
-    });
-  }
   /*
-   * Extend a fixed-price session by whole blocks. Used by the player-driven
-   * Extend at the station: the block is added to the bill (settled at the end,
-   * never a wallet debit here), the station's timer card is grown to match, and
-   * the floor is updated. `blocks` defaults to one.
+   * Extend a fixed-price session by whole blocks — the session's own
+   * starting block, repeated. Kept for anything still calling it directly
+   * (the staff dialog's quick "+1 block" tap knows its own block price up
+   * front and has no reason to go through a tier lookup for that).
    */
   function extendSessionBlocks(session, blocks) {
     var n = blocks || 1;
@@ -1202,6 +1242,32 @@
         });
       }
       return afterSessionChange(r.data, pcName);
+    });
+  }
+  /*
+   * Extend by ANY configured tier, not just the one the session started on —
+   * the station's own +Extend picker, and the staff console's own tier list,
+   * both go through this. `requestId`, when given, makes a double-send (a
+   * double-tap, a WS retry) a no-op on the backend rather than a second
+   * charge — see session_extend_requests.
+   */
+  function extendSessionByTier(session, gamingPriceId, requestId) {
+    return sessionAction(session.session_id, "extend", {
+      gaming_price_id: gamingPriceId, request_id: requestId
+    }).then(function (r) {
+      var pcName = session.pc_name;
+      // What actually landed, not assumed — a HOUR-session extend adds no
+      // minutes at all (it credits the wallet instead), so this is only
+      // ever positive for a BLOCK session's own growth.
+      var actualAdded = (Number(r.data.planned_minutes) || 0) - (Number(session.planned_minutes) || 0);
+      if (actualAdded > 0 && pcName && api.pushExtendTimer) {
+        api.pushExtendTimer(pcName, actualAdded).catch(function (e) {
+          console.warn("[store] extend-timer push failed", e);
+        });
+      }
+      return afterSessionChange(r.data, pcName).then(function (s) {
+        return { session: s, message: r.message };
+      });
     });
   }
   function transferSession(session, pcId) {
@@ -2062,10 +2128,10 @@
             " is not on a fixed-price block.");
           return;
         }
-        extendSessionBlocks(session, (data && data.blocks) || 1)
-          .then(function () {
+        extendSessionByTier(session, data && data.gamingPriceId, data && data.requestId)
+          .then(function (r) {
             UIToast("ok", "Extended at the station",
-              (session.customer_name || "Player") + " added a block to their session.");
+              (session.customer_name || "Player") + " — " + (r && r.message || "session extended") + ".");
           })
           .catch(function (e) {
             UIToast("error", "Extend failed", e.message || "Could not extend the session.");
@@ -2312,7 +2378,17 @@
             pc_id: pc.pc_id,
             customer_id: data.customer_id,
             session_type: "KIOSK_OCCUPANCY"
-          }).catch(function () {});
+          }).catch(function (e) {
+            /* Silent before this — a login-triggered start failing (station
+               left non-AVAILABLE by a session that didn't end cleanly, a
+               transient backend error, etc.) had nowhere to go: no console
+               log, no toast, nothing. The customer just sat there signed in
+               with no timer and staff had no idea why. Still no customer-
+               facing toast (this is a background attempt, not something they
+               did), but staff needs to see it to do anything about it. */
+            console.error("[occupancy] Auto-start failed for " + pcName + ":", e.message);
+            UIToast("error", "Auto-start failed on " + pcName, e.message || "Could not start the session");
+          });
         }
 
         if (!data.gaming_price_id) return fail("Choose a duration to start");
@@ -2536,8 +2612,8 @@
     startSession: startSession,
     pauseSession: pauseSession,
     resumeSession: resumeSession,
-    extendSession: extendSession,
     extendSessionBlocks: extendSessionBlocks,
+    extendSessionByTier: extendSessionByTier,
     transferSession: transferSession,
     endSession: endSession,
     cancelSession: cancelSession,
@@ -2598,6 +2674,7 @@
     getCustomerCredit: getCustomerCredit,
     getCustomerWallet: getCustomerWallet,
     getCustomerWalletTransactions: getCustomerWalletTransactions,
+    getCustomerActivity: getCustomerActivity,
     creditWallet: creditWallet,
     debitWallet: debitWallet,
 

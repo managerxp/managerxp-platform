@@ -38,7 +38,7 @@ contextBridge.exposeInMainWorld("api", {
   getCafePCs: () => ipcRenderer.invoke("pcs:get-cafe-pcs"),
 
   // Session state push to a station
-  pushSessionState: (pcName, session) => ipcRenderer.invoke("session:push-state", { pcName, session }),
+  pushSessionState: (pcName, session, endedReason) => ipcRenderer.invoke("session:push-state", { pcName, session, endedReason }),
   // Grow a station's floating timer card after its session was extended.
   pushExtendTimer: (pcName, minutes) => ipcRenderer.invoke("session:push-extend-timer", { pcName, minutes }),
   // Tell one connected station a newer client build is available.

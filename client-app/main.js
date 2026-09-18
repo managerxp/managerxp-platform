@@ -1593,10 +1593,14 @@ function createWindow() {
      auto-approves this (see server-app's onStationExtendRequest) — nothing
      here decides whether it's allowed, that's the portal's job via
      session.can_extend before it ever offers the button. */
-  ipcMain.on('extend-request', (event, blocks) => {
+  ipcMain.on('extend-request', (event, payload) => {
+    const gamingPriceId = payload && payload.gamingPriceId;
     if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
-      serverConnection.send(JSON.stringify({ type: "EXTEND_REQUEST", simId: SIM_ID, pcName: SIM_ID, blocks: Number(blocks) || 1 }));
-      log(`Sent EXTEND_REQUEST to console (+${Number(blocks) || 1} block)`);
+      serverConnection.send(JSON.stringify({
+        type: "EXTEND_REQUEST", simId: SIM_ID, pcName: SIM_ID,
+        gaming_price_id: gamingPriceId, request_id: payload && payload.requestId
+      }));
+      log(`Sent EXTEND_REQUEST to console (price ${gamingPriceId})`);
     } else {
       log("Extend requested but console not connected");
     }
@@ -1827,6 +1831,13 @@ function createWindow() {
         occupancy_login_start: true
       }));
       log("Sent occupancy-start START_SESSION_REQUEST to console");
+    } else {
+      // Previously silent — a login landing in the gap while this station's
+      // socket to the console is still (re)connecting dropped the request on
+      // the floor with no trace anywhere. Not a customer-facing toast (same
+      // reasoning as above), but worth a trace: this is the other half of
+      // "sometimes the timer doesn't start."
+      console.warn('[occupancy] Auto-start skipped — not connected to the café server');
     }
   });
 
@@ -1964,11 +1975,13 @@ function createWindow() {
    */
   const VOLUME_SCRIPT = path.join(__dirname, 'scripts', 'volume.ps1').replace('app.asar', 'app.asar.unpacked');
   function runVolumeScript(args) {
+    console.log('[DIAG volume] invoking:', VOLUME_SCRIPT, args);
     return new Promise((resolve) => {
       exec(
         `powershell -NoProfile -ExecutionPolicy Bypass -File "${VOLUME_SCRIPT}" ${args}`,
         { windowsHide: true, timeout: 5000 },
-        (err, stdout) => {
+        (err, stdout, stderr) => {
+          console.log('[DIAG volume] err:', err && err.message, 'stdout:', JSON.stringify(stdout), 'stderr:', JSON.stringify(stderr));
           if (err) return resolve({ success: false, error: err.message });
           try {
             const state = JSON.parse(stdout.trim());
@@ -2173,6 +2186,10 @@ function createWindow() {
       // No dev tools on a customer machine.
       devTools: false
     }
+  });
+
+  win.webContents.on('console-message', (e, level, message) => {
+    if (level >= 1) console.log('[DIAG renderer]', message);
   });
 
   /*
@@ -3241,6 +3258,19 @@ function listen() {
           sendToWindow(win, "session-state", forRenderer);
         } else {
           sendToWindow(win, "session-state", currentSession);
+        }
+
+        /* Told apart from a customer's own logout (which needs no signal —
+           they're already leaving): the session ending for any other reason
+           — balance exhausted, staff ended it from the console — means this
+           station should sign the customer out of the kiosk app itself, not
+           just clear the session chips. A separate, one-shot event rather
+           than folding this into session-state above, so the far more
+           common "no session, no reason" case (idle station, a fresh push)
+           is untouched. */
+        if (!currentSession && msg.ended_reason) {
+          console.log('[DIAG] session-ended-reason ->', msg.ended_reason);
+          sendToWindow(win, "session-ended-reason", msg.ended_reason);
         }
 
         /* The self-started session just went live — launch the title the

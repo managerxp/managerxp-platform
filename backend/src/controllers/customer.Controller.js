@@ -364,7 +364,24 @@ const CUSTOMER_DETAIL_SELECT = `
   w.balance AS wallet_balance,
   w.currency AS wallet_currency,
   (SELECT COALESCE(SUM(s.billable_seconds), 0) FROM sessions s
-     WHERE s.customer_id = c.customer_id AND s.status = 'ended') AS total_play_seconds
+     WHERE s.customer_id = c.customer_id AND s.status = 'ended') AS total_play_seconds,
+  -- A calendar day with at least one session counts as one visit, so two
+  -- sessions on the same afternoon aren't counted as two separate visits.
+  (SELECT COUNT(DISTINCT s.started_at::date) FROM sessions s
+     WHERE s.customer_id = c.customer_id AND s.status <> 'cancelled') AS visit_count,
+  (SELECT MAX(s.started_at) FROM sessions s
+     WHERE s.customer_id = c.customer_id AND s.status <> 'cancelled') AS last_visit_at,
+  (SELECT COALESCE(SUM(b.total), 0) FROM bills b
+     WHERE b.customer_id = c.customer_id AND b.status = 'PAID') AS total_spend,
+  -- Most-played game by session count; only sessions sold off a Gaming Price
+  -- tier carry a game at all, so an all-manual-rate customer has none.
+  (SELECT sm.software_name FROM sessions s
+     JOIN gaming_prices gp ON gp.id = s.gaming_price_id
+     JOIN software_master sm ON sm.software_id = gp.software_id
+     WHERE s.customer_id = c.customer_id AND s.status <> 'cancelled'
+     GROUP BY sm.software_name
+     ORDER BY COUNT(*) DESC, MAX(s.started_at) DESC
+     LIMIT 1) AS favorite_game
 `;
 
 const shapeCustomer = (row) => ({
@@ -403,7 +420,14 @@ const shapeCustomer = (row) => ({
   // a per-row subquery on every listing would be a query per customer.
   total_play_seconds: row.total_play_seconds === undefined || row.total_play_seconds === null
     ? undefined
-    : Number(row.total_play_seconds)
+    : Number(row.total_play_seconds),
+
+  // The four fields below are only present where CUSTOMER_DETAIL_SELECT ran
+  // (a single-customer lookup) — same reasoning as total_play_seconds.
+  visit_count: row.visit_count === undefined ? undefined : Number(row.visit_count),
+  last_visit_at: row.visit_count === undefined ? undefined : (row.last_visit_at || null),
+  total_spend: row.total_spend === undefined ? undefined : Number(row.total_spend) || 0,
+  favorite_game: row.visit_count === undefined ? undefined : (row.favorite_game || null)
 });
 
 /*
@@ -742,6 +766,62 @@ export const getCustomerById = async (req, res) => {
   } catch (error) {
     console.error('Error fetching customer:', error);
     res.status(500).json({ success: false, message: 'Error fetching customer' });
+  }
+};
+
+/*
+ * GET /api/customers/:id/activity
+ *
+ * A recent-play feed for the customer detail panel — what they played, when,
+ * and what it cost. Cancelled sessions (started by mistake, released again)
+ * are left out; they were never really a visit.
+ */
+export const getCustomerActivity = async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid customer id' });
+    }
+    const limit = Math.min(parseInt(req.query.limit, 10) || 15, 50);
+
+    const own = await pool.query(
+      'SELECT customer_id FROM customers WHERE customer_id = $1 AND cafe_id IS NOT DISTINCT FROM $2',
+      [id, req.actor?.cafe_id ?? null]
+    );
+    if (own.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Customer not found' });
+    }
+
+    const result = await pool.query(
+      `SELECT s.session_id, s.started_at, s.ended_at, s.status, s.billable_seconds,
+              s.amount_charged, s.price_label, p.name AS pc_name, sm.software_name
+       FROM sessions s
+       JOIN pcs p ON p.pc_id = s.pc_id
+       LEFT JOIN gaming_prices gp ON gp.id = s.gaming_price_id
+       LEFT JOIN software_master sm ON sm.software_id = gp.software_id
+       WHERE s.customer_id = $1 AND s.status <> 'cancelled'
+       ORDER BY s.started_at DESC
+       LIMIT $2`,
+      [id, limit]
+    );
+
+    res.status(200).json({
+      success: true,
+      data: result.rows.map((row) => ({
+        session_id: row.session_id,
+        started_at: row.started_at,
+        ended_at: row.ended_at,
+        status: row.status,
+        billable_seconds: row.billable_seconds === null ? null : Number(row.billable_seconds),
+        amount_charged: row.amount_charged === null ? null : Number(row.amount_charged),
+        game: row.software_name || null,
+        station_name: row.pc_name,
+        label: row.software_name || row.price_label || row.pc_name
+      }))
+    });
+  } catch (error) {
+    console.error('Error fetching customer activity:', error);
+    res.status(500).json({ success: false, message: 'Error fetching customer activity' });
   }
 };
 

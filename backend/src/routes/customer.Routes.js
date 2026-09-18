@@ -5,6 +5,7 @@ import {
   createCustomer,
   getCustomers,
   getCustomerById,
+  getCustomerActivity,
   getMyProfile,
   updateMyProfile,
   checkUsernameAvailable,
@@ -49,6 +50,9 @@ customerRouter.get('/:id', requireStaff('Café staff access required'), feature,
 /* What they owe and what is left of their limit — read by the till before it
    offers to put a ticket on their tab. */
 customerRouter.get('/:id/credit', requireStaff('Café staff access required'), feature, getCustomerCredit);
+
+// Recent play history for the customer detail panel.
+customerRouter.get('/:id/activity', requireStaff('Café staff access required'), feature, getCustomerActivity);
 
 /* Making somebody a regular grants a standing discount and the right to owe
    the café money, so it needs the same permission as managing customers

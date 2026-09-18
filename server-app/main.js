@@ -145,6 +145,10 @@ function createWindow() {
     // Remove the application menu
     Menu.setApplicationMenu(null);
 
+    win.webContents.on('console-message', (e, level, message) => {
+      if (level >= 2) console.log('[DIAG renderer]', message);
+    });
+
     // Load the home page
     win.loadFile(path.join(__dirname, "index.html")).catch(err => {
       console.error('[Navigation] Error loading home page:', err);
@@ -228,8 +232,12 @@ function handleStationRequest(msg, ws) {
   if (!pcName) return false;
 
   if (msg.type === "EXTEND_REQUEST") {
-    log(`[Extend] ${pcName} requested +${msg.blocks || 1} block`);
-    if (win) win.webContents.send("station:extend-request", { pcName, blocks: msg.blocks || 1 });
+    log(`[Extend] ${pcName} requested price #${msg.gaming_price_id}`);
+    if (win) {
+      win.webContents.send("station:extend-request", {
+        pcName, gamingPriceId: msg.gaming_price_id, requestId: msg.request_id
+      });
+    }
     return true;
   }
   /*
@@ -1357,7 +1365,7 @@ function registerIPCHandlers() {
    * customer's name and countdown. Display only — the backend remains the
    * source of truth and the station never talks back about sessions.
    */
-  ipcMain.handle("session:push-state", async (_, { pcName, session }) => {
+  ipcMain.handle("session:push-state", async (_, { pcName, session, endedReason }) => {
     /* A station with no address has no portal to show anything on — the
        session is tracked entirely on the counter's screen. Not an error and
        not worth logging every tick: there was never a display to push to. */
@@ -1371,7 +1379,7 @@ function registerIPCHandlers() {
       console.log(`[Session] Push skipped, ${pcName} not connected`);
       return { success: false, error: "Station is not connected" };
     }
-    client.ws.send(JSON.stringify({ type: "SESSION_STATE", session: session || null }));
+    client.ws.send(JSON.stringify({ type: "SESSION_STATE", session: session || null, ended_reason: endedReason || null }));
     const summary = session ? `${session.status} for ${session.customer_name}` : "cleared";
     log(`Sent session state to ${pcName}: ${summary}`);
     console.log(`[Session] Pushed to ${pcName}: ${summary}`);

@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld("api", {
   onAppLaunchFailed: (cb) => ipcRenderer.on("app-launch-failed", (_, data) => cb(data)),
   onAppClosed: (cb) => ipcRenderer.on("app-closed", (_, data) => cb(data)),
   onSessionState: (cb) => ipcRenderer.on("session-state", (_, data) => cb(data)),
+  // Fired once, alongside session-state going to null, only when the session
+  // ended for a reason other than the customer's own logout — see main.js's
+  // SESSION_STATE handler.
+  onSessionEndedReason: (cb) => ipcRenderer.on("session-ended-reason", (_, reason) => cb(reason)),
   // The games this station may offer the customer, pushed by the console.
   onGamesList: (cb) => ipcRenderer.on("games-list", (_, data) => cb(data)),
   getGames: (cb) => ipcRenderer.invoke("get-games").then(cb),
@@ -75,7 +79,7 @@ contextBridge.exposeInMainWorld("api", {
   callStaff: () => ipcRenderer.send("call-staff"),
   // The customer tapped "Extend" on the low-time prompt — adds a block to
   // their own session, same as a staff-driven extend from the console.
-  extendRequest: (blocks) => ipcRenderer.send("extend-request", blocks),
+  extendRequest: (payload) => ipcRenderer.send("extend-request", payload),
   // Station tools from the Help menu — screen resolution, NVIDIA Control
   // Panel, Device Manager. panel is "display" | "nvidia" | "devicemgmt".
   openSystemPanel: (panel) => ipcRenderer.invoke("system:open-panel", panel),

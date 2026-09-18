@@ -10,7 +10,6 @@
   global.CXPages = global.CXPages || {};
 
   var DURATIONS = [30, 60, 120, 180];
-  var EXTEND_BY = [10, 15, 30, 60, 120];
   var defaultRate = 60;
 
   Store.sessionDefaults()
@@ -842,52 +841,72 @@
      EXTEND / TRANSFER
      ========================================================================== */
   /*
-   * Always minutes, never "blocks" — a café owner thinks in "give them 15
-   * more minutes," not in billing units. A BLOCK-priced session still has a
-   * fixed price per whole block behind the scenes, but that's the backend's
-   * problem to round up and charge for correctly (see extendSession there);
-   * this dialog only ever asks for and shows minutes, for every session.
+   * A tier picker, not a free-typed minutes box — the café already has a
+   * rate card (Gaming Price Master); staff pick from it the same way the
+   * station's own +Extend does, rather than guessing a number. Works for
+   * either session shape: a BLOCK session grows its bill by the chosen
+   * tier's own duration/price, an open-ended (HOUR) session has the tier's
+   * price credited straight to the customer's wallet — extendSession on the
+   * backend is what decides which, from the session's own pricing_unit, not
+   * this dialog.
    */
   function extendDialog(session, onDone) {
-    var body = UI.el("div", { class: "col gap-4" });
-    body.innerHTML =
-      '<div class="field"><label class="field-label">Add time</label>' +
-        '<div class="row gap-2" id="extendRow">' +
-          EXTEND_BY.map(function (m) {
-            return '<button type="button" class="chip" data-min="' + m + '">+' +
-              (m >= 60 ? (m / 60) + "h" : m + " min") + "</button>";
-          }).join("") +
-        "</div></div>" +
-      '<div class="field"><label class="field-label field-req" for="extendMinutes">Minutes</label>' +
-        '<input class="input" id="extendMinutes" type="number" min="1" max="1440" value="30" data-autofocus></div>';
+    var body = UI.el("div", { class: "col gap-3" });
+    body.innerHTML = '<div class="row gap-3"><span class="spinner"></span><span>Loading prices…</span></div>';
 
     var dialog = UI.modal({
       title: "Extend session",
       description: session.customer_name + " on " + session.pc_name,
       body: body,
-      actions: [
-        { label: "Cancel", variant: "ghost" },
-        {
-          label: "Extend", variant: "primary", icon: "plus",
-          onClick: function (ctx) {
-            var minutes = parseInt(ctx.body.querySelector("#extendMinutes").value, 10);
-            if (!minutes || minutes < 1) { Motion.shake(ctx.node); return false; }
-            return Store.extendSession(session, minutes)
-              .then(function (r) {
-                UI.toast.ok(r.message, clock(r.session.remaining_seconds) + " left");
-                if (onDone) onDone(r.session);
-                return true;
-              })
-              .catch(function (err) { UI.toast.error("Could not extend", err.message); return false; });
-          }
-        }
-      ]
+      actions: [{ label: "Cancel", variant: "ghost" }]
     });
 
-    var input = body.querySelector("#extendMinutes");
-    UI.$$("#extendRow .chip", body).forEach(function (chip) {
-      chip.addEventListener("click", function () { input.value = chip.dataset.min; });
-    });
+    function priceLabel(p) {
+      var length = p.is_unlimited ? "Unlimited" : (
+        p.duration_minutes >= 60
+          ? (p.duration_minutes % 60 === 0 ? (p.duration_minutes / 60) + " Hr" : p.duration_minutes + " Min")
+          : p.duration_minutes + " Min"
+      );
+      return p.software_name + " · " + length;
+    }
+
+    Store.previewRates(undefined, session.category)
+      .then(function (prices) {
+        var options = (prices || []).filter(function (p) {
+          return session.pricing_unit === "BLOCK" ? !p.is_unlimited : true;
+        });
+        UI.clear(body);
+        if (!options.length) {
+          body.appendChild(UI.emptyState({
+            icon: "billing", title: "No extension prices configured",
+            text: "Add a price for this station's category from Gaming Prices first."
+          }));
+          return;
+        }
+        options.forEach(function (p) {
+          var row = UI.el("button", { class: "btn btn-outline btn-block row-between", type: "button" });
+          row.innerHTML =
+            '<span>' + UI.esc(priceLabel(p)) + '</span>' +
+            '<strong>' + UI.esc(coins(p.current_price)) + '</strong>';
+          row.addEventListener("click", function () {
+            UI.withBusy(row, function () {
+              return Store.extendSessionByTier(session, p.gaming_price_id)
+                .then(function (r) {
+                  UI.toast.ok(r.message, r.session.customer_name || session.customer_name);
+                  if (onDone) onDone(r.session);
+                  dialog.close();
+                })
+                .catch(function (err) { UI.toast.error("Could not extend", err.message); });
+            });
+          });
+          body.appendChild(row);
+        });
+      })
+      .catch(function (err) {
+        UI.clear(body);
+        body.appendChild(UI.errorState(err.message));
+      });
+
     return dialog;
   }
 

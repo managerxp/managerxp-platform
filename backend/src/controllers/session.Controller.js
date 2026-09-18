@@ -86,6 +86,14 @@ const shape = async (row) => {
   const plannedSeconds = row.planned_minutes ? row.planned_minutes * 60 : null;
   const running = amountForSeconds(row, elapsed);
   const walletBalance = num(row.wallet_balance);
+  /* A regular customer with a credit limit is allowed to run this far
+     negative before they've genuinely run out — the same floor the till
+     already checks at settle time (checkCredit/floorFor). Exposed so a
+     caller deciding "has this customer actually run out" (see server-app's
+     balance-exhaustion auto-end) compares against the real floor, not a
+     hardcoded zero that would end a regular's session while they still had
+     credit left to spend. */
+  const walletFloor = floorFor(await customerStanding(null, row.customer_id));
 
   /* Open (active/paused) vs. still inside the free setup buffer — computed
      from the same timestamps as everything else here, not a stored column,
@@ -190,6 +198,7 @@ const shape = async (row) => {
     started_by: row.started_by,
     ended_by: row.ended_by,
     wallet_balance: walletBalance,
+    wallet_floor: walletFloor,
     /* The wallet cannot cover what this session already owes. Only meaningful
        for a registered customer settling from a wallet — a guest pays at the
        counter, so "low balance" is not a state they can be in. The game is
@@ -806,6 +815,124 @@ export const extendSession = (req, res) => mutate(req, res, async (client, row, 
     return { error: 'That session has already ended', status: 409 };
   }
 
+  /* Idempotency: a double-click, a WS retry, or a re-sent request with the
+     same client-generated id replays the first call's result rather than
+     extending (or charging) a second time. Scoped to this session, not
+     global, so a reused id against a different session is still refused by
+     the unique constraint on insert below rather than silently matching. */
+  const requestId = request.body?.request_id ? String(request.body.request_id).slice(0, 64) : null;
+  if (requestId) {
+    const seen = await client.query(
+      'SELECT result FROM session_extend_requests WHERE request_id = $1 AND session_id = $2',
+      [requestId, row.session_id]
+    );
+    if (seen.rows[0]) return seen.rows[0].result;
+  }
+
+  /*
+   * Extend by ANY configured tier, not just the one this session started on
+   * — the actual ask: a 1-hour session should be able to top up with the
+   * 30-minute tier's price to reach 1.5 hours, not be locked into repeating
+   * 1-hour blocks. Resolved the exact same way startSession resolves a
+   * price, so a crafted gaming_price_id cannot smuggle in another café's
+   * rate or a station-category mismatch.
+   */
+  const gamingPriceId = request.body?.gaming_price_id;
+  if (gamingPriceId !== undefined && gamingPriceId !== null && gamingPriceId !== '') {
+    const pc = await client.query('SELECT category FROM pcs WHERE pc_id = $1', [row.pc_id]);
+    const resolved = await resolveGamingPrice(client, gamingPriceId, {
+      stationCategory: pc.rows[0]?.category || null,
+      cafeId: row.cafe_id
+    });
+    if (resolved.error) return { error: resolved.error };
+    const tier = resolved.snapshot;
+
+    let outcome;
+    if (row.pricing_unit === 'BLOCK') {
+      if (tier.pricing_unit !== 'BLOCK') {
+        return { error: 'Choose a timed price to extend by — an unlimited price has no duration to add' };
+      }
+      await client.query(
+        `UPDATE sessions
+            SET planned_minutes = planned_minutes + $1,
+                flat_amount = COALESCE(flat_amount, 0) + $2,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE session_id = $3`,
+        [tier.block_minutes, tier.flat_amount, row.session_id]
+      );
+      outcome = {
+        message: `Extended by ${tier.block_minutes} min — ${tier.flat_amount} on the bill`,
+        extension: {
+          gaming_price_id: tier.gaming_price_id, minutes: tier.block_minutes,
+          amount: tier.flat_amount, method: 'bill'
+        }
+      };
+    } else {
+      /*
+       * Open-ended (HOUR / occupancy) session: there is no planned_minutes
+       * ceiling to grow, so "extend" means buying more spending allowance —
+       * credit the wallet by the tier's price, the same locked-row
+       * transaction the wallet endpoints themselves use, so wallet_balance
+       * climbs back past running_amount and low_balance clears on its own.
+       * The session's own timeline (started_at, elapsed, billing) is not
+       * touched at all.
+       *
+       * Staff-only here: this is real money materialising with no payment
+       * step, which is fine when a member of staff is vouching cash/card was
+       * actually taken at the counter — the kiosk's own self-service Extend
+       * goes through the real top-up/payment flow instead (see
+       * createTopupOrder's session_id/gaming_price_id tagging), never this
+       * branch, so a customer can never mint themselves free balance.
+       */
+      if (!row.customer_id) {
+        return {
+          error: 'A guest session has no wallet to extend — settle at the counter instead',
+          status: 409
+        };
+      }
+      const wallet = await client.query(
+        'SELECT * FROM wallets WHERE customer_id = $1 FOR UPDATE', [row.customer_id]
+      );
+      if (!wallet.rows[0]) return { error: 'This customer has no wallet yet', status: 409 };
+      const nextBalance = Number((Number(wallet.rows[0].balance) + tier.flat_amount).toFixed(2));
+      await client.query(
+        'UPDATE wallets SET balance = $1, updated_at = CURRENT_TIMESTAMP WHERE wallet_id = $2',
+        [nextBalance, wallet.rows[0].wallet_id]
+      );
+      const ledger = await client.query(
+        `INSERT INTO wallet_transactions
+           (wallet_id, customer_id, direction, amount, balance_after, category, note, performed_by, session_id, gaming_price_id)
+         VALUES ($1,$2,'credit',$3,$4,'session_extend',$5,$6,$7,$8)
+         RETURNING transaction_id`,
+        [
+          wallet.rows[0].wallet_id, row.customer_id, tier.flat_amount, nextBalance,
+          `Extend — Session #${row.session_id} — ${tier.price_label || tier.session_name}`,
+          request.actor?.label || null, row.session_id, tier.gaming_price_id
+        ]
+      );
+      outcome = {
+        message: `${tier.flat_amount} added to the wallet — balance now ${nextBalance}`,
+        extension: {
+          gaming_price_id: tier.gaming_price_id, amount: tier.flat_amount, method: 'wallet_credit',
+          wallet_balance: nextBalance, transaction_id: ledger.rows[0].transaction_id
+        }
+      };
+    }
+
+    if (requestId) {
+      await client.query(
+        `INSERT INTO session_extend_requests (request_id, session_id, result) VALUES ($1,$2,$3)
+         ON CONFLICT (request_id) DO NOTHING`,
+        [requestId, row.session_id, JSON.stringify(outcome)]
+      );
+    }
+    return outcome;
+  }
+
+  /* Legacy path below — repeats the session's own starting block/rate.
+     Left exactly as it was; the station's existing single-tap "+1 block"
+     affordance and anything else not yet updated to send gaming_price_id
+     still works unchanged. */
   if (row.pricing_unit === 'BLOCK') {
     const unitMinutes = parseInt(row.block_unit_minutes, 10);
     const unitAmount = Number(row.block_unit_amount);

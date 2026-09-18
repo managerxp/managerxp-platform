@@ -509,8 +509,68 @@
             UI.esc(UI.fmtDate(current.created_at)) + "</span></div>" +
           '<div class="kv"><span class="kv-key">Hours played</span><span class="kv-val">' +
             UI.esc(playTime(current.total_play_seconds)) + "</span></div>" +
+          '<div class="kv"><span class="kv-key">Visits</span><span class="kv-val">' +
+            (current.visit_count || 0) + "</span></div>" +
+          '<div class="kv"><span class="kv-key">Last visit</span><span class="kv-val">' +
+            UI.esc(current.last_visit_at ? UI.fmtDate(current.last_visit_at) : "Never") + "</span></div>" +
+          '<div class="kv"><span class="kv-key">Total spend</span><span class="kv-val">' +
+            coins(current.total_spend) + " XP</span></div>" +
+          '<div class="kv"><span class="kv-key">Favourite</span><span class="kv-val">' +
+            UI.esc(current.favorite_game || "—") + "</span></div>" +
         "</div>";
       wrap.appendChild(profile);
+
+      /* ---- recent activity ---- */
+      var activity = UI.el("div", { class: "card" });
+      activity.innerHTML = '<div class="card-head"><h3>Recent activity</h3></div>';
+      var activityBody = UI.el("div", { class: "card-body-flush" });
+      activityBody.appendChild(UI.skeletonRows(4));
+      activity.appendChild(activityBody);
+      wrap.appendChild(activity);
+
+      Store.getCustomerActivity(current.customer_id, 15)
+        .then(function (body) {
+          UI.clear(activityBody);
+          var rows = body.data || [];
+          if (!rows.length) {
+            activityBody.appendChild(UI.emptyState({
+              icon: "clock",
+              title: "No activity yet",
+              text: "Nothing played here yet."
+            }));
+            return;
+          }
+          var made = [];
+          rows.forEach(function (s) {
+            var when = new Date(s.started_at);
+            var mins = s.billable_seconds ? Math.round(s.billable_seconds / 60) : 0;
+            var row = UI.el("div", {
+              class: "kv",
+              style: { padding: "12px var(--s-5)", borderBottom: "1px solid var(--line-faint)" }
+            });
+            row.innerHTML =
+              '<span style="min-width:0">' +
+                '<span style="font-size:13px;font-weight:600;display:block">' +
+                  UI.esc(s.label || "Session") + "</span>" +
+                '<span class="faint" style="font-size:11px">' +
+                  UI.esc([
+                    isNaN(when) ? null : when.toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }),
+                    s.station_name, mins ? (mins + " min") : null
+                  ].filter(Boolean).join(" · ")) + "</span>" +
+              "</span>" +
+              '<span style="text-align:right;white-space:nowrap">' +
+                '<span style="font-size:14px;font-weight:700;font-variant-numeric:tabular-nums">' +
+                  coins(s.amount_charged) + " XP</span>" +
+              "</span>";
+            activityBody.appendChild(row);
+            made.push(row);
+          });
+          Motion.stagger(made, { step: 0.018, y: 6 });
+        })
+        .catch(function (err) {
+          UI.clear(activityBody);
+          activityBody.appendChild(UI.errorState(err.message));
+        });
 
       /* ---- ledger ---- */
       var ledger = UI.el("div", { class: "card" });

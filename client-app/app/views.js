@@ -548,7 +548,12 @@
       });
       // A game that offers both account routes cannot start until one is picked.
       var accountAnswered = !needsAccountChoice(selectedGame) || useVenue !== null;
-      startBtn.disabled = !selectedGame || !selectedPriceId || !accountAnswered || starting;
+      // Can't afford it and no credit room to cover the gap either — the
+      // notice above already says so in words; the button itself must not
+      // be pressable for a doomed attempt (a regular within their credit
+      // limit is not blocked here, same as the server's own check).
+      var cannotAfford = !!selectedPrice && !covers && !onCredit;
+      startBtn.disabled = !selectedGame || !selectedPriceId || !accountAnswered || cannotAfford || starting;
       startBtn.addEventListener("click", function () {
         starting = true;
         render();
