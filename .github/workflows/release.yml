@@ -79,10 +79,20 @@ jobs:
         shell: pwsh
         run: |
           $content = Get-Content main.js -Raw
-          $backendLiteral = '"http://localhost:5000"'
+          # BACKEND_LOCAL's dev/LAN fallback is a template literal now (it
+          # auto-detects this machine's LAN IP so stations can reach a
+          # console running on the café network, rather than a plain
+          # "localhost" string) — only that fallback expression gets
+          # replaced, so process.env.BACKEND_URL || still wins when a
+          # station's own .env repoints it, same as before.
+          $backendLiteral = '`http://${getServerLocalIP()}:${process.env.BACKEND_PORT || 5000}`'
           $webAppLiteral = '"http://localhost:5173"'
-          if ($content -notlike "*$backendLiteral*") { throw "Expected literal not found in main.js — has BACKEND_LOCAL's definition changed?" }
-          if ($content -notlike "*$webAppLiteral*") { throw "Expected literal not found in main.js — has WEB_APP_URL's definition changed?" }
+          # .Contains(), not -like — -like's wildcard pattern parsing does not
+          # reliably treat a literal containing backticks/braces as plain
+          # text, so it reported this literal missing even though it is
+          # present and .Replace() (also a plain string method) finds it fine.
+          if (-not $content.Contains($backendLiteral)) { throw "Expected literal not found in main.js — has BACKEND_LOCAL's definition changed?" }
+          if (-not $content.Contains($webAppLiteral)) { throw "Expected literal not found in main.js — has WEB_APP_URL's definition changed?" }
           $content = $content.Replace($backendLiteral, '"${{ secrets.BACKEND_API_URL }}"')
           $content = $content.Replace($webAppLiteral, '"${{ secrets.BACKEND_API_URL }}"')
           $content | Set-Content main.js -NoNewline
