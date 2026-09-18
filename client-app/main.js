@@ -411,9 +411,15 @@ function startWindowsKioskGuard() {
             lines.forEach((line) => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
-                if (trimmed === "ALTTAB") { handleAltTabToggle(); return; }
+                if (trimmed === "ALTTAB") {
+                    console.log("[KIOSK] Alt+Tab detected");
+                    console.log("[KIOSK] ALTTAB received from keyboard guard");
+                    handleAltTabToggle();
+                    return;
+                }
                 if (trimmed === "HOOK_INSTALLED") {
                     confirmedThisRun = true;
+                    console.log("[KIOSK] Keyboard guard hook installed");
                     reportKioskGuardRecovered();
                     return;
                 }
@@ -598,7 +604,7 @@ while ($true) {
         $p = Get-Process -Name $targetName -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne 0 } | Select-Object -First 1
         if ($p) {
             [CafeXPFocus]::Focus($p.MainWindowHandle)
-            Write-Output 'FOCUSED'
+            Write-Output ('FOCUSED ' + $p.MainWindowHandle)
         } else {
             Write-Output 'NOT_FOUND'
         }
@@ -630,12 +636,17 @@ function startFocusHelper() {
             lines.forEach((line) => {
                 const trimmed = line.trim();
                 if (!trimmed) return;
-                if (trimmed === "HELPER_READY") { focusHelperReady = true; return; }
-                if (trimmed === "FOCUSED" || trimmed === "NOT_FOUND") {
+                if (trimmed === "HELPER_READY") {
+                    focusHelperReady = true;
+                    console.log("[KIOSK] Focus helper ready");
+                    return;
+                }
+                if (trimmed === "NOT_FOUND" || trimmed.startsWith("FOCUSED")) {
                     if (pendingFocusResolve) {
                         const resolve = pendingFocusResolve;
                         pendingFocusResolve = null;
-                        resolve(trimmed);
+                        const hwnd = trimmed.startsWith("FOCUSED") ? trimmed.slice(8).trim() : null;
+                        resolve({ result: trimmed.startsWith("FOCUSED") ? "FOCUSED" : "NOT_FOUND", hwnd });
                     }
                     return;
                 }
@@ -652,7 +663,7 @@ function startFocusHelper() {
             focusHelper = null;
             focusHelperStarting = false;
             focusHelperReady = false;
-            if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r("NOT_FOUND"); }
+            if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
         });
 
         child.on("exit", (code, signal) => {
@@ -660,7 +671,7 @@ function startFocusHelper() {
             focusHelper = null;
             focusHelperStarting = false;
             focusHelperReady = false;
-            if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r("NOT_FOUND"); }
+            if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
             if (kioskLocked) {
                 setTimeout(() => {
                     if (kioskLocked && !focusHelper) startFocusHelper();
@@ -686,29 +697,34 @@ function stopFocusHelper() {
     focusHelper = null;
     focusHelperStarting = false;
     focusHelperReady = false;
-    if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r("NOT_FOUND"); }
+    if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
 }
 
 /*
  * Ask the focus helper to foreground exeName's main window. Resolves
- * 'FOCUSED' or 'NOT_FOUND' — never rejects, and the caller never falls
- * through to focusing anything else on a 'NOT_FOUND'. A helper that isn't
- * running or hasn't finished its one-time compile yet resolves 'NOT_FOUND'
- * immediately rather than queuing the request indefinitely.
+ * { result: 'FOCUSED'|'NOT_FOUND', hwnd: <string|null> } — never rejects,
+ * and the caller never falls through to focusing anything else on a
+ * 'NOT_FOUND'. hwnd is the exact window handle the helper acted on, purely
+ * for diagnostic logging (Electron decided WHICH process to target by name
+ * before ever calling this; the helper resolves that name to a window
+ * deterministically, it never picks among alternatives or targets anything
+ * Electron didn't ask for). A helper that isn't running or hasn't finished
+ * its one-time compile yet resolves 'NOT_FOUND' immediately rather than
+ * queuing the request indefinitely.
  */
 function focusViaHelper(exeName) {
     return new Promise((resolve) => {
-        if (!exeName || !focusHelper || !focusHelperReady) { resolve("NOT_FOUND"); return; }
+        if (!exeName || !focusHelper || !focusHelperReady) { resolve({ result: "NOT_FOUND", hwnd: null }); return; }
         // Alt+Tab presses are inherently one-at-a-time from a human; a
         // request that somehow arrives while another is still pending
         // pre-empts it rather than silently getting lost.
-        if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r("NOT_FOUND"); }
+        if (pendingFocusResolve) { const r = pendingFocusResolve; pendingFocusResolve = null; r({ result: "NOT_FOUND", hwnd: null }); }
         pendingFocusResolve = resolve;
         try {
             focusHelper.stdin.write(`FOCUS_EXE:${psSingleQuoteEscape(exeName)}\n`);
         } catch (error) {
             pendingFocusResolve = null;
-            resolve("NOT_FOUND");
+            resolve({ result: "NOT_FOUND", hwnd: null });
         }
     });
 }
@@ -729,15 +745,24 @@ function focusViaHelper(exeName) {
  * a customer at an idle, locked station has nowhere for this to send them.
  */
 function handleAltTabToggle() {
-    if (!kioskLocked || !alive(win)) return;
-    if (!currentGameName) return;
+    console.log("[KIOSK] handleAltTabToggle()");
 
-    log("[Kiosk] Alt+Tab requested");
-    log(`[Kiosk] Current foreground: ${activeFocusTarget}`);
+    if (!kioskLocked || !alive(win)) {
+        console.log("[KIOSK] Ignored — kiosk not locked or window unavailable");
+        return;
+    }
+    if (!currentGameName) {
+        console.log("[KIOSK] Ignored — no game currently tracked, nothing to switch to");
+        return;
+    }
+
+    console.log(`[KIOSK] Current focus: ${activeFocusTarget}`);
 
     if (activeFocusTarget === 'GAME') {
+        console.log("[KIOSK] Target focus: CAFEXP");
         switchFocusToCafeXP();
     } else {
+        console.log("[KIOSK] Target focus: GAME");
         const info = runningProcesses.get(currentGameName);
         const exeName = deriveExeName(info && info.appPath, currentGameName);
         switchFocusToGame(currentGameName, exeName);
@@ -753,15 +778,19 @@ function handleAltTabToggle() {
  */
 async function switchFocusToGame(appName, exeName) {
     log(`[Kiosk] Switching to game ${appName} (exe=${exeName})`);
-    let result = await focusViaHelper(exeName);
+    console.log("[KIOSK] Focus request sent");
+    let { result, hwnd } = await focusViaHelper(exeName);
     if (result !== 'FOCUSED') {
         await new Promise((r) => setTimeout(r, 400));
-        result = await focusViaHelper(exeName);
+        ({ result, hwnd } = await focusViaHelper(exeName));
     }
+    console.log(`[KIOSK] Target HWND: ${hwnd || 'not found'}`);
     if (result === 'FOCUSED') {
         activeFocusTarget = 'GAME';
+        console.log("[KIOSK] Focus result: SUCCESS");
         log('[Kiosk] Game foreground confirmed');
     } else {
+        console.log("[KIOSK] Focus result: FAILURE");
         log('[Kiosk] Failed to find active game window — staying on CafeXP');
     }
 }
@@ -774,6 +803,11 @@ async function switchFocusToGame(appName, exeName) {
 function switchFocusToCafeXP() {
     if (!alive(win)) return;
     log('[Kiosk] Switching to CafeXP');
+    try {
+        const hwndBuf = win.getNativeWindowHandle();
+        console.log(`[KIOSK] Target HWND: 0x${hwndBuf.readUIntLE(0, hwndBuf.length >= 8 ? 8 : hwndBuf.length).toString(16)}`);
+    } catch (error) { /* diagnostic only — never block the actual switch on this */ }
+    console.log("[KIOSK] Focus request sent");
     let attempts = 0;
     const tryFocus = () => {
         win.show();
@@ -781,10 +815,12 @@ function switchFocusToCafeXP() {
         attempts += 1;
         if (win.isFocused()) {
             activeFocusTarget = 'CAFEXP';
+            console.log("[KIOSK] Focus result: SUCCESS");
             log('[Kiosk] CafeXP foreground confirmed');
         } else if (attempts < 3) {
             setTimeout(tryFocus, 150);
         } else {
+            console.log("[KIOSK] Focus result: FAILURE");
             log('[Kiosk] Failed to confirm CafeXP foreground');
         }
     };
@@ -810,7 +846,7 @@ function focusLaunchedGame(exeName) {
     [500, 2000, 5000, 10000].forEach((delay) => {
         setTimeout(() => {
             if (focused) return;
-            focusViaHelper(exeName).then((result) => {
+            focusViaHelper(exeName).then(({ result }) => {
                 if (result === 'FOCUSED') {
                     focused = true;
                     activeFocusTarget = 'GAME';
