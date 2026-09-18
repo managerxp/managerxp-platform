@@ -58,6 +58,8 @@ contextBridge.exposeInMainWorld("api", {
   cacheRelease: (payload) => ipcRenderer.invoke("updates:cache-release", payload),
   // A player tapped Extend at the station; the console acts with its token.
   onStationExtendRequest: (cb) => ipcRenderer.on("station:extend-request", (_, d) => cb(d)),
+  // A station launched a game mid-session; the console records it with its token.
+  onStationGameLaunched: (cb) => ipcRenderer.on("station:game-launched", (_, d) => cb(d)),
   // A station's block ran out with the game still running.
   onStationOvertime: (cb) => ipcRenderer.on("station:overtime", (_, d) => cb(d)),
   // A customer tapped "Call staff" on the Help menu at their station.

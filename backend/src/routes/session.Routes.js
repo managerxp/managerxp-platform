@@ -6,6 +6,7 @@ import {
   pauseSession,
   resumeSession,
   extendSession,
+  updateSessionGame,
   transferSession,
   endSession,
   cancelSession,
@@ -29,6 +30,7 @@ sessionRouter.get('/:id', staff, feature, getSession);
 sessionRouter.post('/:id/pause', staff, feature, pauseSession);
 sessionRouter.post('/:id/resume', staff, feature, resumeSession);
 sessionRouter.post('/:id/extend', staff, feature, extendSession);
+sessionRouter.post('/:id/game', staff, feature, updateSessionGame);
 sessionRouter.post('/:id/transfer', staff, feature, transferSession);
 sessionRouter.post('/:id/end', staff, feature, endSession);
 sessionRouter.post('/:id/heartbeat', staff, feature, heartbeatSession);

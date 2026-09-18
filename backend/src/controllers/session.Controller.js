@@ -757,6 +757,60 @@ const mutate = async (req, res, handler, action) => {
   }
 };
 
+/*
+ * POST /api/sessions/:id/game
+ *
+ * Records which game a customer launched mid-session. The in-session
+ * launcher grid (client-app's Session.launchGame) runs entirely locally — it
+ * just opens the title on the station — so without this call the console's
+ * GAME column stays blank forever for any session that didn't already have
+ * one chosen at start, which is every KIOSK_OCCUPANCY login. Validated the
+ * same way startSession validates a game/platform choice, just without the
+ * venue-account reservation dance: this only records what is already
+ * running, it never starts or reserves anything.
+ */
+export const updateSessionGame = (req, res) => mutate(req, res, async (client, row, request) => {
+  if (row.status !== 'active' && row.status !== 'paused') {
+    return { error: 'That session has already ended', status: 409 };
+  }
+
+  const gameId = parseInt(request.body?.game_id, 10);
+  if (!Number.isInteger(gameId)) {
+    return { error: 'A game is required' };
+  }
+
+  const cafeGame = (await client.query(
+    `SELECT 1 FROM cafe_games WHERE game_id = $1 AND cafe_id IS NOT DISTINCT FROM $2 AND enabled = TRUE`,
+    [gameId, row.cafe_id]
+  )).rows[0];
+  if (!cafeGame) {
+    return { error: 'This game is not available at this café' };
+  }
+
+  // An explicit platform is only trusted once confirmed installed on this
+  // exact station for this exact game — otherwise recorded as null rather
+  // than refusing the whole call, since the game itself is still real.
+  let gamePlatformId = null;
+  const requestedPlatformId = parseInt(request.body?.game_platform_id, 10);
+  if (Number.isInteger(requestedPlatformId)) {
+    const installed = await client.query(
+      `SELECT gp.id FROM station_game_platforms sgp
+         JOIN game_platforms gp ON gp.id = sgp.game_platform_id
+        WHERE sgp.pc_id = $1 AND sgp.installed = TRUE AND gp.id = $2 AND gp.game_id = $3 AND gp.status = 'ACTIVE'`,
+      [row.pc_id, requestedPlatformId, gameId]
+    );
+    if (installed.rows[0]) gamePlatformId = requestedPlatformId;
+  }
+
+  await client.query(
+    `UPDATE sessions SET game_id = $2, game_platform_id = $3, updated_at = CURRENT_TIMESTAMP
+     WHERE session_id = $1`,
+    [row.session_id, gameId, gamePlatformId]
+  );
+
+  return { message: 'Game recorded' };
+});
+
 // POST /api/sessions/:id/pause
 export const pauseSession = (req, res) => mutate(req, res, async (client, row) => {
   if (row.status !== 'active') {

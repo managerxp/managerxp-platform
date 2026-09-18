@@ -241,6 +241,21 @@ function handleStationRequest(msg, ws) {
     return true;
   }
   /*
+   * A station launched a game mid-session (the in-session launcher grid) —
+   * this only reports which title, it never starts or ends anything. Without
+   * it the console's GAME column stays blank for every occupancy session
+   * that didn't already have one chosen at start.
+   */
+  if (msg.type === "GAME_LAUNCHED") {
+    log(`[Game] ${pcName} launched game #${msg.game_id}`);
+    if (win) {
+      win.webContents.send("station:game-launched", {
+        pcName, gameId: msg.game_id, gamePlatformId: msg.game_platform_id
+      });
+    }
+    return true;
+  }
+  /*
    * The customer logged out at the kiosk. Carries nothing but which station
    * this is — no played time, no amount — the renderer looks up whatever
    * session is actually running there and ends it through the exact same

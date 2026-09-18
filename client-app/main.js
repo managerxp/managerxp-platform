@@ -779,9 +779,26 @@ function reportLaunchFailedIfSessionStart(game, isSessionStart, error) {
   serverConnection.send(JSON.stringify({ type: 'LAUNCH_FAILED', simId: SIM_ID, appName: game.name, error }));
 }
 
-function markSessionGameConfirmed() {
+function markSessionGameConfirmed(game) {
   const sessionId = currentSession && currentSession.session_id;
   if (sessionId) sessionGameConfirmed = sessionId;
+  /*
+   * Tell the console which title actually launched. The in-session launcher
+   * grid runs entirely on this side (it just opens the game) — without this
+   * report the console's GAME column stays blank forever for a session that
+   * didn't already have one chosen at start, i.e. every occupancy login.
+   * Only meaningful when the game came from the console's own list (it
+   * carries game_id) and there's a live session to attach it to; advisory
+   * only, so a missed send costs a display detail, never the launch itself.
+   */
+  if (sessionId && game && game.game_id && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+    serverConnection.send(JSON.stringify({
+      type: 'GAME_LAUNCHED',
+      simId: SIM_ID,
+      game_id: game.game_id,
+      game_platform_id: game.game_platform_id || null
+    }));
+  }
 }
 
 /* Splits an admin-typed launch-arguments string into an argv array for
@@ -867,7 +884,7 @@ function launchGameNow(game) {
     // Protocol hand-off to the launcher. openExternal resolves once the OS
     // has accepted the URL, not when the game is up — which is all we need.
     const openGame = () => shell.openExternal(plan.url).then(() => {
-      markSessionGameConfirmed();
+      markSessionGameConfirmed(game);
       // Nothing to poll for a protocol hand-off (there is no PID to watch),
       // so this is the only launched signal it ever gets — without it the
       // "Getting your game ready…" overlay has nothing to close it.
@@ -951,7 +968,7 @@ function launchGameNow(game) {
         exec(`taskkill /F /PID ${child.pid} /T`, { windowsHide: true, timeout: 10000 });
         return;
       }
-      markSessionGameConfirmed();
+      markSessionGameConfirmed(game);
       sendToWindow(win, 'app-launched', { appName: game.name });
       const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
       const mins = sessionRemainingMinutes();

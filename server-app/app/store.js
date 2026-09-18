@@ -1270,6 +1270,20 @@
       });
     });
   }
+  /*
+   * Record which game a station just launched mid-session — the launch
+   * itself already happened locally on the station; this only tells the
+   * backend what to show in the GAME column. Fire-and-forget from the
+   * caller's point of view: a failed report loses a display detail, not
+   * money or play time, so it is never worth surfacing as an error toast.
+   */
+  function reportGameLaunched(session, gameId, gamePlatformId) {
+    return sessionAction(session.session_id, "game", {
+      game_id: gameId, game_platform_id: gamePlatformId
+    }).then(function (r) {
+      return afterSessionChange(r.data, session.pc_name);
+    });
+  }
   function transferSession(session, pcId) {
     var from = session.pc_name;
     return sessionAction(session.session_id, "transfer", { pc_id: pcId }).then(function (r) {
@@ -2136,6 +2150,19 @@
           .catch(function (e) {
             UIToast("error", "Extend failed", e.message || "Could not extend the session.");
           });
+      });
+    }
+
+    /* A player launched a game at their station mid-session — record it
+       against the session so the floor and sessions table show what they're
+       actually playing, the same as a game chosen at session start. */
+    if (api.onStationGameLaunched) {
+      api.onStationGameLaunched(function (data) {
+        var pcName = data && data.pcName;
+        var session = pcName && state.sessions[pcName];
+        if (!session || !data || !data.gameId) return;
+        reportGameLaunched(session, data.gameId, data.gamePlatformId)
+          .catch(function (e) { console.warn("[store] game-launch report failed", e.message); });
       });
     }
 
