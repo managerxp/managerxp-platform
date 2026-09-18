@@ -121,8 +121,17 @@ jobs:
         # reads req.body.component to pick the client/server subfolder, and
         # multer only has form fields available in its destination callback
         # if they arrived in the multipart stream BEFORE the file field.
+        #
+        # An installer runs 60-150+ MB over the open internet to a production
+        # server with no explicit timeout — curl's own defaults can time out
+        # (exit 28) on a merely-slow connection, not just a dead one, failing
+        # an otherwise-fine release. --retry-all-errors covers that exit code
+        # too (plain --retry alone only retries a fixed set of HTTP statuses
+        # and connection errors), and --max-time is a generous ceiling rather
+        # than however long GitHub's own network happens to allow by default.
         run: |
           response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.BACKEND_API_URL }}/api/platform/releases/upload" \
+            --connect-timeout 30 --max-time 900 --retry 3 --retry-delay 10 --retry-all-errors \
             -H "Authorization: Bearer ${{ secrets.RELEASE_PUBLISH_TOKEN }}" \
             -F "component=${{ matrix.component }}" \
             -F "file=@${{ steps.artifact.outputs.path }}")
@@ -142,6 +151,7 @@ jobs:
         shell: bash
         run: |
           response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.BACKEND_API_URL }}/api/platform/releases/upload" \
+            --connect-timeout 30 --max-time 120 --retry 3 --retry-delay 10 --retry-all-errors \
             -H "Authorization: Bearer ${{ secrets.RELEASE_PUBLISH_TOKEN }}" \
             -F "component=${{ matrix.component }}" \
             -F "file=@${{ matrix.app }}/dist/latest.yml")
@@ -163,6 +173,7 @@ jobs:
             '{version:$version, component:$component, channel:"stable", is_published:true,
               download_url:$download_url, file_name:$file_name, file_size:$file_size, sha512:$sha512}')
           response=$(curl -s -w '\n%{http_code}' -X POST "${{ secrets.BACKEND_API_URL }}/api/platform/releases" \
+            --connect-timeout 30 --max-time 60 --retry 3 --retry-delay 10 --retry-all-errors \
             -H "Authorization: Bearer ${{ secrets.RELEASE_PUBLISH_TOKEN }}" \
             -H "Content-Type: application/json" -d "$payload")
           status="${response##*$'\n'}"
