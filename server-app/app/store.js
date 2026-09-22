@@ -418,7 +418,20 @@
   }
 
   function updatePC(pcId, payload) {
-    return request("/api/pcs/" + pcId, { method: "PUT", body: JSON.stringify(payload) });
+    return request("/api/pcs/" + pcId, { method: "PUT", body: JSON.stringify(payload) })
+      .then(function (r) {
+        // Live-push a status change to the kiosk right away — its idle
+        // welcome screen shows "Under maintenance" off this, and a customer
+        // sitting there shouldn't have to wait for a reconnect to see it.
+        if (payload.status && api.pushStationStatus) {
+          var pc = (r && r.data && r.data.name) ? r.data : state.pcs.filter(function (p) {
+            return p.pc_id === pcId;
+          })[0];
+          var pcName = pc && pc.name;
+          if (pcName) api.pushStationStatus(pcName, payload.status).catch(function () {});
+        }
+        return r;
+      });
   }
 
   /** Soft delete — backend sets is_active = false unless ?permanent=true. */
@@ -859,12 +872,13 @@
        * till already honours at settle time), so this must never end a
        * regular's session just for going into credit they were granted.
        *
-       * TEMPORARILY DISABLED (2026-09-17): this was ending real customer
-       * sessions it should not have — confirmed a regular customer well
-       * within their credit limit got auto-ended. Off while the root cause
-       * is found; nothing here runs until it's back.
+       * Was disabled 2026-09-17 after wrongly auto-ending a regular customer
+       * well within their credit limit — root cause was the floor being
+       * read as a hard-coded zero. Fixed by session.Controller.js's shape()
+       * now computing and exposing the real per-customer wallet_floor (see
+       * its own comment), which floor below reads instead of assuming zero.
        */
-      if (false) Object.keys(sessions).forEach(function (pcName) {
+      Object.keys(sessions).forEach(function (pcName) {
         var s = sessions[pcName];
         if (!s || s.pricing_unit !== "HOUR" || !s.customer_id) return;
         if (s.status !== "active" && s.status !== "paused") return;
@@ -1793,6 +1807,13 @@
         // A station that just (re)connected needs its session pushed again,
         // otherwise a client restart would lose the customer's countdown.
         pushSessionToStation(n, state.sessions[n] || null);
+        // Same reasoning for status — a station that reconnects (or one the
+        // console only just noticed) needs to know right away whether it's
+        // under maintenance, not wait for the next edit to tell it.
+        var pc = getPC(n);
+        if (pc && api.pushStationStatus) {
+          api.pushStationStatus(n, pc.status || "AVAILABLE").catch(function () {});
+        }
       }
     });
     before.forEach(function (n) {
