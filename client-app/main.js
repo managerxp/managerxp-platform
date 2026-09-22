@@ -25,6 +25,10 @@ for (const dir of [path.dirname(process.execPath), app.getPath("userData"), __di
 
 let SIM_ID = "SIM-01"; // Will be updated by server
 let CAFE_NAME = ""; // This station's café — set by the console's SET_NAME, shown on the login screen
+// This PC's own status (AVAILABLE/MAINTENANCE/INACTIVE), pushed by the
+// console — read by the idle welcome screen to show "Under maintenance"
+// instead of inviting a customer to sign in.
+let STATION_STATUS = "AVAILABLE";
 // The café's own branding, if it has set any — see the CAFE_BRANDING handler
 // below. businessName is preferred over CAFE_NAME when set (the café's own
 // trading name vs. its registration name); logo is a data URI or null.
@@ -2209,6 +2213,12 @@ function createWindow() {
     return SIM_ID;
   });
 
+  // Same pull-on-load reasoning as get-pc-name — the welcome screen loads
+  // before the console's next STATION_STATUS push necessarily arrives.
+  ipcMain.handle('get-station-status', async (event) => {
+    return STATION_STATUS;
+  });
+
   // Same pull-on-load reasoning as get-pc-name — the login screen loads
   // before SET_NAME necessarily arrives.
   ipcMain.handle('get-cafe-name', async (event) => {
@@ -3574,6 +3584,15 @@ function listen() {
       // the time this arrives the decision is made.
       if (msg.type === "POWER") {
         runPowerAction(ws, msg.action, msg.delaySeconds);
+      }
+
+      // This station's own PC status, pushed on connect and on every change
+      // — the idle welcome screen reads this to show "Under maintenance"
+      // instead of inviting a customer to sign in.
+      if (msg.type === "STATION_STATUS") {
+        STATION_STATUS = msg.status || "AVAILABLE";
+        console.log(`[Kiosk] Station status: ${STATION_STATUS}`);
+        sendToWindow(win, "station-status", STATION_STATUS);
       }
 
       // Session state pushed by the admin console. The client only displays

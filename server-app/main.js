@@ -1420,6 +1420,22 @@ function registerIPCHandlers() {
     return { success: true };
   });
 
+  /* A station's own status (AVAILABLE/MAINTENANCE/INACTIVE) changed, or it
+     just (re)connected and needs to know what it currently is — the kiosk's
+     idle welcome screen reads this to show "Under maintenance" instead of
+     inviting a customer to sign in. Silent no-op if the station isn't
+     connected right now; it'll get the current status via this same call
+     the moment it does (see store.js's applyConnected). */
+  ipcMain.handle("station:push-status", async (_, { pcName, status }) => {
+    const client = clients.get(pcName);
+    if (!client || client.ws.readyState !== WebSocket.OPEN) {
+      return { success: false, error: "Station is not connected" };
+    }
+    client.ws.send(JSON.stringify({ type: "STATION_STATUS", status }));
+    log(`Sent status to ${pcName}: ${status}`);
+    return { success: true };
+  });
+
   /* The games a station may offer its customer. The renderer resolves the list
      (only this PC's installed, enabled titles) and hands it here to send down
      the station's connection, the same channel session state travels on. An

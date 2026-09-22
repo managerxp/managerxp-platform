@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("api", {
   getStatus: (cb) => ipcRenderer.invoke("get-status").then(cb),
   onPcName: (cb) => ipcRenderer.on("pc-name", (_, name) => cb(name)),
   getPcName: (cb) => ipcRenderer.invoke("get-pc-name").then(cb),
+  onStationStatus: (cb) => ipcRenderer.on("station-status", (_, status) => cb(status)),
+  getStationStatus: (cb) => ipcRenderer.invoke("get-station-status").then(cb),
   onCafeName: (cb) => ipcRenderer.on("cafe-name", (_, name) => cb(name)),
   getCafeName: (cb) => ipcRenderer.invoke("get-cafe-name").then(cb),
   onCafeBranding: (cb) => ipcRenderer.on("cafe-branding", (_, branding) => cb(branding)),
