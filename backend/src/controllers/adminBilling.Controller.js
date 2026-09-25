@@ -511,10 +511,20 @@ export const recordPayment = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Enter an amount greater than zero' });
     }
 
+    /* Locked for the duration, same reasoning as refundPayment below: two
+       operators recording a payment against the same invoice at once would
+       otherwise each read the same stale amount_paid, both pass the
+       overpayment check below, and both insert — double-paying an invoice
+       that only owed one payment's worth. */
+    await client.query('BEGIN');
     const invoice = (await client.query(
-      'SELECT * FROM subscription_invoices WHERE invoice_id = $1', [invoiceId])).rows[0];
-    if (!invoice) return res.status(404).json({ success: false, message: 'Not found' });
+      'SELECT * FROM subscription_invoices WHERE invoice_id = $1 FOR UPDATE', [invoiceId])).rows[0];
+    if (!invoice) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ success: false, message: 'Not found' });
+    }
     if (invoice.status === 'VOID') {
+      await client.query('ROLLBACK');
       return res.status(409).json({ success: false, message: 'That invoice has been voided' });
     }
 
@@ -522,6 +532,7 @@ export const recordPayment = async (req, res) => {
        extra zero should be a question, not a credit nobody notices. */
     const outstanding = money(Number(invoice.total) - Number(invoice.amount_paid));
     if (amount > outstanding) {
+      await client.query('ROLLBACK');
       return res.status(409).json({
         success: false,
         message: `That is more than the ${invoice.invoice_no} balance of ${outstanding}.`,
@@ -529,7 +540,6 @@ export const recordPayment = async (req, res) => {
       });
     }
 
-    await client.query('BEGIN');
     const payment = (await client.query(`
       INSERT INTO subscription_payments
         (cafe_id, organization_id, subscription_id, invoice_id, amount, currency,

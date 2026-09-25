@@ -41,6 +41,20 @@ export const initializeCafeScoping = async (client) => {
     `);
   }
 
+  /*
+   * wallet_transactions is documented (database.js) as an append-only ledger
+   * — its wallet_id/customer_id FKs were already migrated there to SET NULL
+   * instead of CASCADE, but this loop's own cafe_id column, added above,
+   * still cascaded independently: a permanent café delete would still wipe
+   * the ledger through this column alone. Overridden right after the column
+   * that needs it is guaranteed to exist, rather than assuming load order.
+   */
+  await client.query(`ALTER TABLE wallet_transactions DROP CONSTRAINT IF EXISTS wallet_transactions_cafe_id_fkey`);
+  await client.query(`
+    ALTER TABLE wallet_transactions ADD CONSTRAINT wallet_transactions_cafe_id_fkey
+      FOREIGN KEY (cafe_id) REFERENCES cafes(cafe_id) ON DELETE SET NULL
+  `);
+
   /* The café that actually trades, for rows nothing else can attribute. */
   const fallback = (await client.query(`
     SELECT COALESCE(

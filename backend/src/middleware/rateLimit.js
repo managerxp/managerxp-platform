@@ -49,6 +49,23 @@ export const resetLimiter = rateLimit({
 });
 
 /*
+ * Registration. Every attempt creates an account and sends a verification
+ * email — same reasoning as resetLimiter, the registering itself is the
+ * abuse to slow down, not just a wrong password guess. Sized generously
+ * like deviceCheckLimiter, not tightly like resetLimiter: every customer at
+ * a busy café shares that café's one public IP, and a LAN night could see a
+ * real burst of brand-new signups in a short window — this only needs to
+ * stop a scripted flood, not a genuinely busy evening.
+ */
+export const registerLimiter = rateLimit({
+  windowMs: minutes(15),
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: refusal('Too many registration attempts from here. Wait a few minutes and try again.')
+});
+
+/*
  * The public booking page (managerxp.com/book/:slug) takes no login at all,
  * which is exactly what makes it worth limiting — nothing else stops a
  * script from filling a café's calendar with junk reservations.

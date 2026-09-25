@@ -573,12 +573,8 @@
         {
           label: "Print", variant: "primary", icon: "download",
           onClick: function () {
-            // Print the receipt alone rather than the whole console.
-            document.body.classList.add("printing-receipt");
-            global.print();
-            setTimeout(function () {
-              document.body.classList.remove("printing-receipt");
-            }, 500);
+            // Prints the receipt alone rather than the whole console.
+            CXReceipt.print();
             return false;
           }
         }

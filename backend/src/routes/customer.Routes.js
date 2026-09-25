@@ -14,7 +14,7 @@ import {
 } from '../controllers/customer.Controller.js';
 import { verifyCustomerEmail, resendCustomerVerification } from '../controllers/emailVerification.Controller.js';
 import { requireStaff, requirePermission, requireAuth } from '../middleware/authGuards.js';
-import { loginLimiter, resetLimiter } from '../middleware/rateLimit.js';
+import { loginLimiter, resetLimiter, registerLimiter } from '../middleware/rateLimit.js';
 import { requireCafeFeature } from '../modules/entitlements/entitlements.service.js';
 
 const customerRouter = express.Router();
@@ -22,8 +22,11 @@ const feature = requireCafeFeature('CUSTOMERS');
 
 // Public: the client app registers and signs customers in. The login limiter
 // counts only failed attempts, so a busy café's successful sign-ins — many
-// from one IP — are never throttled; only a run of failures is.
-customerRouter.post('/register', register);
+// from one IP — are never throttled; only a run of failures is. Registering
+// has its own limiter (registerLimiter) instead — unlike login, every
+// registration attempt creates a row and sends an email, so there is no
+// "only count failures" equivalent.
+customerRouter.post('/register', registerLimiter, register);
 customerRouter.post('/login', loginLimiter, login);
 
 // Public: finishing sign-up. Both send an email, so they share the OTP

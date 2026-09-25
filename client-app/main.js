@@ -1,8 +1,8 @@
-const { app, BrowserWindow, ipcMain, screen, Menu, globalShortcut, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, Menu, globalShortcut, shell, safeStorage } = require("electron");
 const WebSocket = require("ws");
 const os = require("os");
 const path = require("path");
-const { exec,spawn } = require("child_process");
+const { exec,spawn,execFile } = require("child_process");
 const fs = require("fs");
 const http = require("http");
 const dgram = require("dgram");
@@ -42,6 +42,25 @@ let CAFE_WALLPAPER_URL = "";
 let CAFE_WALLPAPER_TYPE = "";
 const CLIENT_PORT = Number(process.env.CLIENT_PORT) || 9090; // Port this client listens on
 const SERVER_APP_PORT = Number(process.env.SERVER_APP_PORT) || 3334; // Server app HTTP port for discovery
+/*
+ * The WS server below (listen()) accepts connections from anyone on the same
+ * network who can reach this port — there is no other check on who a
+ * connecting peer is. This is the one thing standing between "the café's own
+ * console" and "any other device on the café's Wi-Fi" being treated as it.
+ * Matched against the same constant in server-app/main.js, sent with the
+ * very first message on a new connection (see the "authed" gate in listen()
+ * below) — a connection that never presents it is closed before any message
+ * type is acted on.
+ *
+ * The fallback below is shared, fixed and shipped in every build, so it only
+ * stops a generic/opportunistic connection, not someone who has unpacked the
+ * installed app and read this file. Set STATION_PROTOCOL_SECRET in both
+ * apps' environment to a real per-deployment value for that protection —
+ * ideally baked in at release time the same way release.yml already bakes
+ * in BACKEND_URL/WEB_APP_URL, which this does not yet do.
+ */
+const STATION_PROTOCOL_SECRET = process.env.STATION_PROTOCOL_SECRET
+  || 'dev-only-insecure-shared-secret-CHANGE-IN-PRODUCTION';
 let LOCAL_IP = null; // Will be set on startup
 let BROADCAST_INTERVAL = null; // For periodic IP/MAC broadcasts
 let TELEMETRY_INTERVAL = null; // Hardware sampling loop, started once registered
@@ -887,7 +906,16 @@ function loadUnlockPin() {
   try {
     const raw = fs.readFileSync(unlockPinFile(), "utf8");
     const parsed = JSON.parse(raw);
-    staffUnlockPin = typeof parsed.staffUnlockPin === "string" ? parsed.staffUnlockPin : "";
+    if (typeof parsed.staffUnlockPinEnc === "string" && safeStorage.isEncryptionAvailable()) {
+      staffUnlockPin = safeStorage.decryptString(Buffer.from(parsed.staffUnlockPinEnc, "base64"));
+    } else {
+      // Plain staffUnlockPin only ever comes from a file written before this
+      // encryption existed, or a machine where encryption isn't available at
+      // all — read once here, re-saved encrypted the next time the console
+      // pushes a PIN (persistUnlockPin never writes plaintext when it can
+      // encrypt).
+      staffUnlockPin = typeof parsed.staffUnlockPin === "string" ? parsed.staffUnlockPin : "";
+    }
     disabledSystemTools = Array.isArray(parsed.disabledSystemTools) ? parsed.disabledSystemTools : [];
   } catch (e) {
     staffUnlockPin = "";   // never configured, or unreadable — treat as unset
@@ -897,9 +925,18 @@ function loadUnlockPin() {
 
 function persistUnlockPin(pin, tools) {
   try {
+    /* Encrypted with the OS's own per-machine/per-user key (DPAPI on
+       Windows) rather than written as plain text — a customer with brief
+       file-system access to the station no longer reads the PIN straight out
+       of this file. Falls back to plain text only on a machine where that
+       encryption genuinely isn't available, so the escape hatch this PIN
+       guards never silently stops working. */
+    const stored = (pin && safeStorage.isEncryptionAvailable())
+      ? { staffUnlockPinEnc: safeStorage.encryptString(pin).toString("base64") }
+      : { staffUnlockPin: pin };
     fs.writeFileSync(
       unlockPinFile(),
-      JSON.stringify({ staffUnlockPin: pin, disabledSystemTools: tools || [] }),
+      JSON.stringify({ ...stored, disabledSystemTools: tools || [] }),
       "utf8"
     );
   } catch (e) {
@@ -1234,7 +1271,26 @@ function launchGameNow(game) {
     // shell string, so a path or an admin-typed argument containing a
     // space, quote or shell metacharacter can't be misread as a second
     // command. No shell is invoked at all.
-    const child = spawn(plan.exe, splitLaunchArguments(effectiveLaunchArguments(game)), { windowsHide: false });
+    //
+    // An exe whose manifest requires elevation (Riot's Vanguard-protected
+    // titles included) fails at the OS level with ERROR_ELEVATION_REQUIRED,
+    // which Windows' spawn surfaces as a SYNCHRONOUS throw here rather than
+    // an async 'error' event on the returned child — left uncaught, this took
+    // down the entire main process (and with it every other station) for a
+    // single customer's launch. Caught the same way the async path already
+    // reports a launch failure, just without a child to attach 'error' to.
+    let child;
+    try {
+      child = spawn(plan.exe, splitLaunchArguments(effectiveLaunchArguments(game)), { windowsHide: false });
+    } catch (err) {
+      log(`Launch failed for ${game.name}: ${err.message}`);
+      const error = err && err.code === 'EPERM'
+        ? 'This game needs to be launched by staff — it requires administrator access on this station.'
+        : (game.platform === 'EA' ? 'EA game could not be launched.' : 'The game could not be started.');
+      sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+      reportLaunchFailedIfSessionStart(game, isSessionStart, error);
+      return;
+    }
     child.once('error', (err) => {
       log(`Launch failed for ${game.name}: ${err.message}`);
       const error = game.platform === 'EA' ? 'EA game could not be launched.' : 'The game could not be started.';
@@ -1346,7 +1402,10 @@ const LAUNCHER_REGISTRY = {
 /** Ask the Windows registry for one value. Resolves null on any failure. */
 function readRegistry(key, value) {
   return new Promise((resolve) => {
-    exec(`reg query "${key}" /v ${value}`, { windowsHide: true, timeout: 4000 }, (err, stdout) => {
+    // execFile, not exec — only ever called with LAUNCHER_REGISTRY's own
+    // fixed keys/values today, but kept consistent with the rest of this
+    // file's process-management calls rather than relying on that staying true.
+    execFile('reg.exe', ['query', key, '/v', value], { windowsHide: true, timeout: 4000 }, (err, stdout) => {
       if (err || !stdout) return resolve(null);
       // "    SteamPath    REG_SZ    C:/Program Files (x86)/Steam"
       const m = stdout.match(new RegExp(value + '\\s+REG_\\w+\\s+(.+)'));
@@ -1409,7 +1468,9 @@ async function detectLaunchers() {
  */
 function isProcessRunning(imageName) {
   return new Promise((resolve) => {
-    exec(`tasklist /FI "IMAGENAME eq ${imageName}" /NH`, { windowsHide: true }, (err, stdout) => {
+    // execFile, not exec — imageName can trace back to catalog data
+    // (game.process_name) and must never be interpreted as shell syntax.
+    execFile('tasklist.exe', ['/FI', `IMAGENAME eq ${imageName}`, '/NH'], { windowsHide: true }, (err, stdout) => {
       resolve(!err && !!stdout && stdout.toLowerCase().includes(imageName.toLowerCase()));
     });
   });
@@ -1557,8 +1618,12 @@ function ensureSteamSignedIn(credential) {
           log('[Steam] Starting authentication');
           log(`[Steam] PC: ${SIM_ID}`);
           sendSteamAuthStatus('AUTHENTICATING', credential.username);
-          exec(
-            `"${steam.path}" -login "${credential.username}" "${credential.password}"`,
+          // execFile, not exec — the credential travels over the console
+          // connection and must never be interpreted as shell syntax (a
+          // quote or & in a password must stay literal, not break out).
+          execFile(
+            steam.path,
+            ['-login', credential.username, credential.password],
             { windowsHide: true },
             (err) => { if (err) log(`Steam sign-in command failed: ${err.message}`); }
           );
@@ -1725,7 +1790,9 @@ const SIGNOUT_RECIPES = {
 /** taskkill one image name. Resolves either way — "not running" is a success. */
 function killProcess(imageName) {
   return new Promise((resolve) => {
-    exec(`taskkill /F /IM "${imageName}" /T`, { windowsHide: true, timeout: 10000 }, () => resolve());
+    // execFile, not exec — imageName can trace back to catalog data
+    // (game.process_name) and must never be interpreted as shell syntax.
+    execFile('taskkill.exe', ['/F', '/IM', imageName, '/T'], { windowsHide: true, timeout: 10000 }, () => resolve());
   });
 }
 
@@ -1746,7 +1813,10 @@ function removeIfPresent(file) {
 /** Blank a registry value (used to forget Steam's auto-login user). */
 function blankRegistryValue(key, value) {
   return new Promise((resolve) => {
-    exec(`reg add "${key}" /v ${value} /t REG_SZ /d "" /f`,
+    // execFile, not exec — key/value are static SIGNOUT_RECIPES literals
+    // today, never catalog data, but kept consistent with the rest of this
+    // file's process-management calls rather than relying on that staying true.
+    execFile('reg.exe', ['add', key, '/v', value, '/t', 'REG_SZ', '/d', '', '/f'],
       { windowsHide: true, timeout: 5000 }, () => resolve());
   });
 }
@@ -1965,7 +2035,7 @@ function createWindow() {
       if (Date.now() - start < graceMs) { setTimeout(tick, pollMs); return; }
 
       Promise.all(processNames.map((name) => new Promise((resolve) => {
-        exec(`tasklist /FI "IMAGENAME eq ${name}" /NH`, (err, stdout) => {
+        execFile('tasklist.exe', ['/FI', `IMAGENAME eq ${name}`, '/NH'], (err, stdout) => {
           resolve(!err && stdout && stdout.toLowerCase().includes(name.toLowerCase()));
         });
       }))).then((stillRunning) => {
@@ -1978,8 +2048,10 @@ function createWindow() {
 
   /*
    * Station system tools — screen resolution, NVIDIA Control Panel, Device
-   * Manager — from the Help menu, with no staff PIN. Available any time,
-   * not just mid-session: there is no gate on who is allowed to reach these.
+   * Manager — from the Help menu. Refused while the station is sealed (see
+   * the kioskLocked check in system:open-panel below, the same rule every
+   * other desktop-escape control in this file follows); available once
+   * staff have unlocked it with the PIN, the same as an ordinary machine.
    *
    * There is no way to show an ordinary window over an always-on-top kiosk
    * one, so using any of these makes the same trade a remote "Minimise
@@ -2021,7 +2093,7 @@ function createWindow() {
       },
       watchProcess: (found) => [path.basename(found)],
       open: (found) => {
-        exec(`"${found}"`, (err) => { if (err) log(`NVIDIA Control Panel failed to launch: ${err.message}`); });
+        execFile(found, [], (err) => { if (err) log(`NVIDIA Control Panel failed to launch: ${err.message}`); });
         return { success: true };
       }
     },
@@ -2039,6 +2111,16 @@ function createWindow() {
     const entry = SYSTEM_PANELS[panel];
     if (!entry) return { success: false, message: 'Unknown panel' };
     if (!alive(win)) return { success: false, message: 'The client window is not available' };
+    /* Same rule as every other desktop-escape control in this file (see
+       ifUnlocked above) — each of these panels is a way onto the Windows
+       desktop, so all three stay refused until staff unlock the station
+       with the PIN. Previously reachable by anyone at the Help menu,
+       session or not — this comment block's own "no gate on who is allowed
+       to reach these" was the gap. */
+    if (kioskLocked) {
+      log(`Ignored a request to open ${entry.label}: this station is sealed. Unlock it with Ctrl+Alt+Shift+Q.`);
+      return { success: false, message: 'Ask a staff member to unlock this station first.' };
+    }
     // Enforced here too, not just by hiding the button in the Help menu —
     // a stale renderer (still showing an option the console just disabled)
     // must not be able to open it anyway.
@@ -2270,7 +2352,7 @@ function createWindow() {
     const info = launchers[name];
     if (!info || !info.installed) return { success: false, error: 'Not installed on this station' };
     return new Promise((resolve) => {
-      exec(`"${info.path}"`, (err) => resolve({ success: !err, error: err ? err.message : null }));
+      execFile(info.path, [], (err) => resolve({ success: !err, error: err ? err.message : null }));
     });
   });
 
@@ -2433,16 +2515,26 @@ function createWindow() {
       webPreferences: {
         // The payment page is third-party script by definition. It gets no
         // preload, no node, and its own session partition so it cannot read
-        // the station's cookies or storage.
+        // the station's cookies or storage. DevTools stays off too, same as
+        // every other window a customer can reach (win, pinWin) — without
+        // it, a customer mid-payment could open a console and run arbitrary
+        // JS in this page's own context, including forging the
+        // CAFEXP_TOPUP console line the handler below trusts.
         contextIsolation: true,
         nodeIntegration: false,
         sandbox: true,
+        devTools: false,
         partition: 'temp:cafexp-checkout'
       }
     });
 
-    // The page reports the outcome on the console; the portal needs to know so
-    // it can refresh the balance without the customer hunting for a button.
+    /* The page reports the outcome on the console; the portal needs to know
+       so it can refresh the balance without the customer hunting for a
+       button. This is a UI convenience, not the source of truth: a forged
+       or premature CAFEXP_TOPUP line only shows a misleading toast for a
+       moment — CXWallet.load() (see topup.js) re-fetches the customer's
+       real balance from the backend right after, so nothing here can
+       actually create coins that were never paid for. */
     checkoutWin.webContents.on('console-message', (e, level, message) => {
       if (typeof message !== 'string' || message.indexOf('CAFEXP_TOPUP:') !== 0) return;
       try {
@@ -2951,9 +3043,10 @@ function createTimerCard(appName, timerMinutes, bufferSeconds) {
        five-minute warning fires. */
     show: false,
     webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
+      preload: path.join(__dirname, "preload-timercard.js"),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      devTools: false
     }
   });
 
@@ -3462,11 +3555,27 @@ function listen() {
     serverConnection = ws;
     log("Connected to VMS Server");
     updateStatus("CONNECTED");
+    ws._authed = false;
 
     // Listen for server to send the PC name
     ws.on("message", async (raw) => {
       const msg = JSON.parse(raw);
-      
+
+      /* The connection itself is the trust boundary from here on — once one
+         message carries the right secret, every later message on this same
+         connection is treated as the console, exactly as before this check
+         existed. A connection whose first message doesn't carry it is cut
+         off immediately, before its type is even looked at, so SET_NAME
+         itself is covered along with everything else. */
+      if (!ws._authed) {
+        if (msg.secret !== STATION_PROTOCOL_SECRET) {
+          log("Rejected an unauthenticated connection attempt on the station port");
+          ws.close();
+          return;
+        }
+        ws._authed = true;
+      }
+
       // Handle SET_NAME message from server
       if (msg.type === "SET_NAME") {
         SIM_ID = msg.name;
@@ -3717,17 +3826,29 @@ function listen() {
           // Purely a UI notification; the launch itself is unchanged.
           sendToWindow(win, "app-launching", { appName: msg.appName });
 
-          const child = exec(`"${msg.appPath}"`, (err) => {
-            if (err) {
-              log(`Error launching app: ${err.message}`);
-              sendToWindow(win, "app-launch-failed", { appName: msg.appName, error: err.message });
-            } else {
-              log(`Successfully launched: ${msg.appName}`);
-            }
-          });
-          
+          // execFile, not exec — msg.appPath arrives over the console
+          // connection and must never be interpreted as shell syntax.
+          // Wrapped in try/catch: an exe requiring elevation fails this
+          // synchronously rather than through the callback (same failure
+          // mode fixed for the customer-facing launch path above), and left
+          // uncaught here it would crash the whole station.
+          let child;
+          try {
+            child = execFile(msg.appPath, [], (err) => {
+              if (err) {
+                log(`Error launching app: ${err.message}`);
+                sendToWindow(win, "app-launch-failed", { appName: msg.appName, error: err.message });
+              } else {
+                log(`Successfully launched: ${msg.appName}`);
+              }
+            });
+          } catch (err) {
+            log(`Error launching app: ${err.message}`);
+            sendToWindow(win, "app-launch-failed", { appName: msg.appName, error: err.message });
+          }
+
           // Store the process info with timer card if timer is set
-          if (child.pid) {
+          if (child && child.pid) {
             const processInfo = {
               pid: child.pid,
               appPath: msg.appPath,
@@ -3915,21 +4036,24 @@ function closeByExecutableName(appPath, appName) {
   const exeName = deriveExeName(appPath, appName);
   log(`Closing by executable name: ${exeName}`);
 
-  // Use taskkill for reliable closing
-  const command = `taskkill /F /IM "${exeName}.exe" /T`;
-  
-  exec(command, (err, stdout, stderr) => {
+  // execFile, not exec — exeName traces back to catalog data
+  // (game.process_name / the game's own display name) and must never be
+  // interpreted as shell syntax.
+  execFile('taskkill.exe', ['/F', '/IM', `${exeName}.exe`, '/T'], (err, stdout, stderr) => {
     if (err) {
       // taskkill couldn't find the process or failed
       if (stderr && stderr.includes('not found')) {
         log(`No running process found for: ${exeName}`);
       } else {
         log(`Taskkill failed for ${exeName}, trying PowerShell...`);
-        
-        // Fallback to PowerShell
-        const psCommand = `powershell -Command "Get-Process -Name '${psSingleQuoteEscape(exeName)}' -ErrorAction SilentlyContinue | Stop-Process -Force; if ($?) { Write-Output 'Success' } else { Write-Output 'Not found' }"`;
-        
-        exec(psCommand, (psErr, psStdout, psStderr) => {
+
+        // Fallback to PowerShell. Passed as its own execFile argv element —
+        // never built into a shell string — so only psSingleQuoteEscape's
+        // escaping of PowerShell's own single-quoted string matters here;
+        // there is no outer shell layer left to break out of.
+        const psCommand = `Get-Process -Name '${psSingleQuoteEscape(exeName)}' -ErrorAction SilentlyContinue | Stop-Process -Force; if ($?) { Write-Output 'Success' } else { Write-Output 'Not found' }`;
+
+        execFile('powershell.exe', ['-NoProfile', '-Command', psCommand], (psErr, psStdout) => {
           if (psStdout && psStdout.includes('Success')) {
             log(`Successfully closed ${appName} via PowerShell`);
           } else {
@@ -3959,7 +4083,8 @@ function closeByExecutableName(appPath, appName) {
 function pollRunningProcesses() {
   runningProcesses.forEach((info, appName) => {
     const exeName = deriveExeName(info.appPath, appName);
-    exec(`tasklist /FI "IMAGENAME eq ${exeName}.exe" /NH`, (err, stdout) => {
+    // execFile, not exec — same reasoning as closeByExecutableName above.
+    execFile('tasklist.exe', ['/FI', `IMAGENAME eq ${exeName}.exe`, '/NH'], (err, stdout) => {
       if (err) return;   // a failed check must never look like "it closed"
       const stillRunning = stdout && stdout.toLowerCase().includes(exeName.toLowerCase());
       if (stillRunning) return;

@@ -45,6 +45,8 @@ contextBridge.exposeInMainWorld("api", {
   pushUpdateAvailable: (pcName, payload) => ipcRenderer.invoke("update:push-available", { pcName, payload }),
   // Tell one connected station its current PC status (maintenance, etc).
   pushStationStatus: (pcName, status) => ipcRenderer.invoke("station:push-status", { pcName, status }),
+  listPrinters: () => ipcRenderer.invoke("printer:list"),
+  printReceipt: (opts) => ipcRenderer.invoke("printer:print", opts),
   // Send a station the games its customer may choose from (installed + enabled).
   pushGames: (pcName, games) => ipcRenderer.invoke("session:push-games", { pcName, games }),
   // End-of-session cleanup on a station (close game, sign launchers out, free PC).

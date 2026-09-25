@@ -61,3 +61,21 @@ export const handleReleaseUploadErrors = (err, req, res, next) => {
   }
   return res.status(400).json({ success: false, message: err.message || 'That file could not be accepted' });
 };
+
+/*
+ * Only the newest installer per channel is ever offered to a station, so
+ * older ones are dead weight (60-150 MB each) that nothing deletes. Called
+ * right after a release is published: removes every other .exe in that
+ * component's folder, keeping exactly the names passed in. latest.yml is
+ * never touched — it is overwritten by each upload anyway.
+ */
+export const pruneOldInstallers = async (component, keepNames) => {
+  const dir = path.join(RELEASES_DIR, component === 'server' ? 'server' : 'client');
+  const keep = new Set(keepNames.filter(Boolean).map((n) => path.basename(n)));
+  let removed = 0;
+  for (const name of await fs.readdir(dir).catch(() => [])) {
+    if (!name.toLowerCase().endsWith('.exe') || keep.has(name)) continue;
+    await fs.unlink(path.join(dir, name)).then(() => { removed += 1; }).catch(() => {});
+  }
+  return removed;
+};

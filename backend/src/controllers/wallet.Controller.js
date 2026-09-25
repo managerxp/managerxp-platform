@@ -177,7 +177,8 @@ const applyMovement = async (req, res, direction) => {
 
     await client.query('BEGIN');
 
-    // Always a staff token here (canMoveMoney = requireStaff) — always scoped.
+    // Always a staff token here, holding wallet.credit or wallet.debit
+    // specifically (see wallet.Routes.js) — always scoped.
     const wallet = await ensureWallet(client, customerId, req.actor?.cafe_id ?? null);
     if (!wallet) {
       await client.query('ROLLBACK');

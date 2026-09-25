@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, Menu, shell, safeStorage } = require("electron");
 const WebSocket = require("ws");
 const path = require("path");
 const http = require("http");
@@ -568,6 +568,13 @@ const BACKEND_LOCAL = process.env.BACKEND_URL || `http://${getServerLocalIP()}:$
    no rebuild, release.yml bakes in the real one for a fresh install. */
 const WEB_APP_URL = process.env.WEB_APP_URL || "http://localhost:5173";
 const TOKEN_SERVER_PORT = Number(process.env.TOKEN_SERVER_PORT) || 3334;
+/* Matched against the identical constant in client-app/main.js — a station's
+   WS port accepts connections from anyone on the same network, so this is
+   sent with every SET_NAME below to prove this console is who it claims to
+   be. See client-app/main.js's own comment on the same constant for the
+   production caveat (this default is fine for dev, not for a real café). */
+const STATION_PROTOCOL_SECRET = process.env.STATION_PROTOCOL_SECRET
+  || 'dev-only-insecure-shared-secret-CHANGE-IN-PRODUCTION';
 function getServerLocalIP() {
   try {
     const interfaces = os.networkInterfaces();
@@ -601,6 +608,79 @@ function backendBaseUrl() {
 }
 
 /*
+ * Is this actually a token the backend issued? The /auth/token HTTP endpoint
+ * below accepts a POST from a normal web browser tab — CORS on it is wide
+ * open — so without this, anything on the same machine (another local app,
+ * or literally any other website the operator happens to have open) could
+ * hand this console an arbitrary made-up token and user object and be
+ * treated as logged in. Only the backend holds JWT_SECRET, so asking it is
+ * the only place this can actually be checked — a 200 here means the
+ * signature and expiry are real, not just that the POST body was well-formed.
+ */
+async function verifyTokenWithBackend(token) {
+  try {
+    const res = await fetch(`${backendBaseUrl()}/api/staff/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.ok;
+  } catch (error) {
+    console.error('[Auth] Token verification against backend failed:', error.message);
+    return false;
+  }
+}
+
+function authFilePath() {
+  return path.join(app.getPath('userData'), 'auth.json');
+}
+
+/*
+ * A live session token, previously written to this file as plain text —
+ * readable by anyone with brief file-system access to the station. Encrypted
+ * with the OS's own per-machine/per-user key (DPAPI on Windows) instead.
+ * Falls back to plain text only where that encryption genuinely isn't
+ * available, so login never silently stops working.
+ */
+function saveAuthToDisk(user, token) {
+  const fs = require('fs');
+  try {
+    fs.mkdirSync(path.dirname(authFilePath()), { recursive: true });
+    const stored = safeStorage.isEncryptionAvailable()
+      ? {
+          userEnc: safeStorage.encryptString(JSON.stringify(user)).toString('base64'),
+          tokenEnc: safeStorage.encryptString(token).toString('base64')
+        }
+      : { user, token };
+    fs.writeFileSync(authFilePath(), JSON.stringify(stored));
+    return true;
+  } catch (error) {
+    console.error('[Auth] Could not save auth to disk:', error.message);
+    return false;
+  }
+}
+
+/** Reads back whatever saveAuthToDisk wrote — encrypted or, from a file
+    written before this existed, plain. Null if there's nothing usable. */
+function loadAuthFromDisk() {
+  const fs = require('fs');
+  try {
+    if (!fs.existsSync(authFilePath())) return null;
+    const parsed = JSON.parse(fs.readFileSync(authFilePath(), 'utf-8'));
+    if (typeof parsed.userEnc === 'string' && typeof parsed.tokenEnc === 'string'
+        && safeStorage.isEncryptionAvailable()) {
+      return {
+        user: JSON.parse(safeStorage.decryptString(Buffer.from(parsed.userEnc, 'base64'))),
+        token: safeStorage.decryptString(Buffer.from(parsed.tokenEnc, 'base64'))
+      };
+    }
+    if (parsed.user && parsed.token) return { user: parsed.user, token: parsed.token };
+    return null;
+  } catch (error) {
+    console.error('[Auth] Could not load auth from disk:', error.message);
+    return null;
+  }
+}
+
+/*
  * A café's own branding for the kiosk — its logo and trading name, if it has
  * set either. Both are plain café-scoped settings (category "billing"), the
  * same ones the Receipt Template page already reads and writes; this never
@@ -627,7 +707,9 @@ async function getCafeBranding() {
     (body.data || []).forEach((r) => { byKey[r.setting_key] = r.setting_value; });
     cafeBrandingCache = {
       businessName: (byKey['billing.business_name'] || '').trim() || null,
-      logo: (byKey['billing.logo'] || '').trim() || null,
+      // The kiosk has its own logo (Settings → Branding); blank falls back to
+      // the receipt logo, which is all a café had before that setting existed.
+      logo: (byKey['billing.kiosk_logo'] || byKey['billing.logo'] || '').trim() || null,
       // The kiosk welcome screen's background — a short /uploads/... URL,
       // not the file itself (see brandingUpload.js), so it costs nothing
       // extra to carry alongside the logo/name in this same cached fetch.
@@ -732,12 +814,20 @@ async function cacheRelease({ component, download_url, sha512 }) {
 
   await downloadToFile(download_url, filePath);
 
-  if (sha512) {
-    const actual = await sha512OfFile(filePath);
-    if (actual.toLowerCase() !== String(sha512).toLowerCase()) {
-      fs.unlinkSync(filePath);
-      throw new Error('Downloaded installer failed checksum verification');
-    }
+  /* Not actually optional in practice — the backend refuses to publish a
+     release without a sha512 (see updates.Controller.js's updateRelease/
+     createRelease), and every station-facing update query only ever returns
+     a published one. A missing checksum here means something upstream is
+     wrong, so this relays nothing rather than caching and serving every
+     station at this café an installer nobody verified. */
+  if (!sha512) {
+    fs.unlinkSync(filePath);
+    throw new Error('This release has no checksum on record — refusing to relay an unverified installer');
+  }
+  const actual = await sha512OfFile(filePath);
+  if (actual.toLowerCase() !== String(sha512).toLowerCase()) {
+    fs.unlinkSync(filePath);
+    throw new Error('Downloaded installer failed checksum verification');
   }
 
   fs.writeFileSync(markerPath, JSON.stringify({ download_url, sha512, file_name: fileName }));
@@ -976,16 +1066,24 @@ function startTokenServer() {
         body += chunk.toString();
       });
       
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const { token, user } = JSON.parse(body);
-          
+
           if (token && user) {
             console.log('Token received from web app for user:', user.name || user.email);
-            
+
+            const verified = await verifyTokenWithBackend(token);
+            if (!verified) {
+              console.error('[Auth] Rejected a /auth/token POST — token did not verify against the backend');
+              res.writeHead(401, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, message: 'Token could not be verified' }));
+              return;
+            }
+
             // Process the login and check if it was successful
             const loginSuccess = handleWebAppLogin(token, user);
-            
+
             if (loginSuccess) {
               // Send success response
               res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -1077,18 +1175,10 @@ function handleWebAppLogin(token, user) {
   authContext.setAuth(user, token);
   console.log('[WebAppLogin] Auth context set');
   
-  const fs = require('fs');
-  const authFile = path.join(app.getPath('userData'), 'auth.json');
-  
-  // Save to file as backup
-  try {
-    fs.mkdirSync(path.dirname(authFile), { recursive: true });
-    fs.writeFileSync(authFile, JSON.stringify({ user, token }));
+  if (saveAuthToDisk(user, token)) {
     console.log('[WebAppLogin] Auth saved to file for user:', user.email || user.name);
-  } catch (error) {
-    console.error('[WebAppLogin] Error saving auth:', error);
   }
-  
+
   // Navigate to home page with single window model
   console.log('[WebAppLogin] Window exists:', !!(win && !win.isDestroyed()));
   
@@ -1143,25 +1233,12 @@ app.whenReady().then(() => {
   startTokenServer();
   
   // Check if user is already authenticated
-  const authFile = path.join(app.getPath('userData'), 'auth.json');
-  const fs = require('fs');
-  
-  try {
-    if (fs.existsSync(authFile)) {
-      const authData = JSON.parse(fs.readFileSync(authFile, 'utf-8'));
-      if (authData.user && authData.token) {
-        // Restore auth context
-        authContext.setAuth(authData.user, authData.token);
-        createWindow();
-        connectToClients().catch(err => console.error('Error connecting to clients:', err));
-      } else {
-        createLoginWindow();
-      }
-    } else {
-      createLoginWindow();
-    }
-  } catch (error) {
-    console.error('Auth file error:', error);
+  const restoredAuth = loadAuthFromDisk();
+  if (restoredAuth) {
+    authContext.setAuth(restoredAuth.user, restoredAuth.token);
+    createWindow();
+    connectToClients().catch(err => console.error('Error connecting to clients:', err));
+  } else {
     createLoginWindow();
   }
 });
@@ -1410,6 +1487,32 @@ function registerIPCHandlers() {
   /* checkForSoftwareUpdate() found a station running an older client build
      than what ManagerXP has published — tell it directly, the same way a
      session push reaches one specific station. */
+  /* Printers Windows knows about on this machine — a thermal printer shows
+     up here once its driver is installed, no separate "connect" step. */
+  ipcMain.handle("printer:list", async (event) => {
+    const printers = await event.sender.getPrintersAsync();
+    return printers.map((p) => ({
+      name: p.name,
+      displayName: p.displayName || p.name,
+      isDefault: !!p.isDefault
+    }));
+  });
+
+  /* Prints the calling window itself (the receipt alone, via the
+     printing-receipt class the page sets first). silent skips the Windows
+     print dialog and sends it straight to deviceName, or the default. */
+  ipcMain.handle("printer:print", (event, opts) => new Promise((resolve) => {
+    const { silent, deviceName } = opts || {};
+    event.sender.print(
+      {
+        silent: !!silent,
+        deviceName: typeof deviceName === "string" && deviceName ? deviceName : undefined,
+        printBackground: true
+      },
+      (success, reason) => resolve({ success, reason: success ? null : reason })
+    );
+  }));
+
   ipcMain.handle("update:push-available", async (_, { pcName, payload }) => {
     const client = clients.get(pcName);
     if (!client || client.ws.readyState !== WebSocket.OPEN) {
@@ -1661,13 +1764,9 @@ function registerIPCHandlers() {
     authContext.setAuth(user, token);
     console.log('[Auth] Auth context set');
     
-    const fs = require('fs');
-    const authFile = path.join(app.getPath('userData'), 'auth.json');
-    
     // Save to file as backup
     try {
-      fs.mkdirSync(path.dirname(authFile), { recursive: true });
-      fs.writeFileSync(authFile, JSON.stringify({ user, token }));
+      saveAuthToDisk(user, token);
       console.log('[Auth] Auth saved to file');
     } catch (error) {
       console.error('[Auth] Failed to save auth:', error);
@@ -1727,24 +1826,17 @@ function registerIPCHandlers() {
     console.log('\n========== AUTH:LOGIN-SUCCESS RECEIVED ==========');
     console.log('[Login-Success] User:', user.email || user.name);
     
-    const fs = require('fs');
-    const authFile = path.join(app.getPath('userData'), 'auth.json');
-    
     // Get token and set auth
     const token = authContext.getToken();
     console.log('[Login-Success] Token available:', !!token);
     console.log('[Login-Success] Token length:', token ? token.length : 0);
-    
+
     authContext.setAuth(user, token);
     console.log('[Login-Success] Auth context set');
-    
+
     // Save to file
-    try {
-      fs.mkdirSync(path.dirname(authFile), { recursive: true });
-      fs.writeFileSync(authFile, JSON.stringify({ user, token: token }));
+    if (saveAuthToDisk(user, token)) {
       console.log('[Login-Success] Auth saved to file');
-    } catch (error) {
-      console.error('[Login-Success] Failed to save auth:', error);
     }
     
     console.log('[Login-Success] Starting navigation logic...');
@@ -2470,7 +2562,8 @@ async function heartbeat() {
               type: "SET_NAME",
               name: pcName,
               apiBase: backendBaseUrl(),
-              cafeName: authContext.getCafeName()
+              cafeName: authContext.getCafeName(),
+              secret: STATION_PROTOCOL_SECRET
             }));
             sendCafeBranding(ws);
             setupClientHandlers();
@@ -2605,7 +2698,8 @@ function connectToSpecificPC(ip, port, pcName) {
       type: "SET_NAME",
       name: pcName,
       apiBase: backendBaseUrl(),
-      cafeName: authContext.getCafeName()
+      cafeName: authContext.getCafeName(),
+      secret: STATION_PROTOCOL_SECRET
     }));
     sendCafeBranding(ws);
     setupClientHandlers();
@@ -2775,7 +2869,8 @@ async function connectToClients() {
         type: "SET_NAME",
         name: simId,
         apiBase: backendBaseUrl(),
-        cafeName: authContext.getCafeName()
+        cafeName: authContext.getCafeName(),
+        secret: STATION_PROTOCOL_SECRET
       }));
       sendCafeBranding(ws);
       log(`Sent PC name to client: ${simId}`);
