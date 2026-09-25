@@ -866,9 +866,11 @@ function switchFocusToCafeXP() {
 function focusLaunchedGame(exeName) {
     if (!exeName) return;
     let focused = false;
-    [500, 2000, 5000, 10000].forEach((delay) => {
+    [500, 2000, 5000, 10000, 20000, 40000, 70000, 100000].forEach((delay) => {
         setTimeout(() => {
             if (focused) return;
+            // The game was closed, or another launch replaced it — nothing to bring forward.
+            if (!currentGameName) return;
             focusViaHelper(exeName).then(({ result }) => {
                 if (result === 'FOCUSED') {
                     focused = true;
@@ -958,7 +960,27 @@ let cancelledLaunches = new Set(); // appName -> customer closed the loading scr
  * calling runningProcesses.set(...) directly — it's a separate, staff-only
  * remote-launch flow that predates and doesn't participate in Alt+Tab.
  */
+/*
+ * Which process is the game. A launcher (Riot Client for Valorant) starts the
+ * real game as a different process and often has no window of its own, so
+ * following the program that was launched means Alt+Tab looks for a window
+ * that will never exist. The catalog's process_name is the real answer; the
+ * short table covers titles whose catalog row has none recorded, and the
+ * launched program itself is only the last resort.
+ */
+const GAME_PROCESS_FALLBACK = {
+  'valorant': 'VALORANT-Win64-Shipping.exe',
+  'league of legends': 'League of Legends.exe'
+};
+function trackedProcessFor(game, launchedExe) {
+  return (game.process_name && String(game.process_name).trim())
+    || GAME_PROCESS_FALLBACK[String(game.name || '').trim().toLowerCase()]
+    || launchedExe
+    || null;
+}
+
 function trackGameProcess(appName, info) {
+    info.launchedAt = Date.now();
     runningProcesses.set(appName, info);
     currentGameName = appName;
 }
@@ -1148,6 +1170,32 @@ function launchGame(game) {
   // A fresh attempt at the same title supersedes any earlier cancel.
   cancelledLaunches.delete(game.name);
 
+  /* A venue-account game in a customer-login session has no credential yet —
+     ask the console to reserve one and push it, and only launch once it lands
+     (otherwise the launcher opens signed-out). */
+  const haveAccount = () => currentSession && currentSession.account_credential
+    && (!game.game_account_id || currentSession.game_account_id === game.game_account_id);
+  if (game.account_mode === 'VENUE_ACCOUNT' && currentSession && !haveAccount()
+      && serverConnection && serverConnection.readyState === WebSocket.OPEN) {
+    log(`Requesting venue account for ${game.name}`);
+    serverConnection.send(JSON.stringify({
+      type: 'GAME_LAUNCHED', simId: SIM_ID, game_id: game.game_id, game_platform_id: game.game_platform_id || null,
+      game_account_id: game.game_account_id || null
+    }));
+    const started = Date.now();
+    const wait = () => {
+      if (haveAccount()) { launchGame(game); return; }
+      if (!currentSession || Date.now() - started > 10000) {
+        const error = 'No venue account is available for this game right now. Please ask staff.';
+        sendToWindow(win, 'app-launch-failed', { appName: game.name, error });
+        return;
+      }
+      setTimeout(wait, 400);
+    };
+    setTimeout(wait, 400);
+    return;
+  }
+
   /*
    * EA App has no CLI sign-in and no per-game "is this actually installed"
    * signal to check — but whether EA App itself is on this station at all
@@ -1223,10 +1271,10 @@ function launchGameNow(game) {
          runSessionCleanup already trusts for this. */
       trackGameProcess(game.name, {
         pid: null,
-        appPath: game.process_name || null,
+        appPath: trackedProcessFor(game, null),
         timerCardWin: null
       });
-      focusLaunchedGame(deriveExeName(game.process_name, game.name));
+      focusLaunchedGame(deriveExeName(trackedProcessFor(game, null), game.name));
     }).catch((err) => {
       log(`Launch failed for ${game.name}: ${err.message}`);
       const error = 'Could not reach the launcher.';
@@ -1310,11 +1358,12 @@ function launchGameNow(game) {
       }
       markSessionGameConfirmed(game);
       sendToWindow(win, 'app-launched', { appName: game.name });
-      const info = { pid: child.pid, appPath: plan.exe, timerCardWin: null };
+      const runningExe = trackedProcessFor(game, plan.exe);
+      const info = { pid: child.pid, appPath: runningExe, timerCardWin: null };
       const mins = sessionRemainingMinutes();
       if (mins > 0) info.timerCardWin = createTimerCard(game.name, mins, sessionBufferRemainingSeconds());
       trackGameProcess(game.name, info);
-      focusLaunchedGame(deriveExeName(plan.exe, game.name));
+      focusLaunchedGame(deriveExeName(runningExe, game.name));
     }
   }
 }
@@ -1623,7 +1672,7 @@ function ensureSteamSignedIn(credential) {
           // quote or & in a password must stay literal, not break out).
           execFile(
             steam.path,
-            ['-login', credential.username, credential.password],
+            ['-noreactlogin', '-login', credential.username, credential.password],
             { windowsHide: true },
             (err) => { if (err) log(`Steam sign-in command failed: ${err.message}`); }
           );
@@ -3860,7 +3909,8 @@ function listen() {
               processInfo.timerCardWin = createTimerCard(msg.appName, msg.timerMinutes, sessionBufferRemainingSeconds());
             }
             
-            runningProcesses.set(msg.appName, processInfo);
+            trackGameProcess(msg.appName, processInfo);
+            focusLaunchedGame(deriveExeName(msg.appPath, msg.appName));
             log(`Tracking process PID: ${child.pid}${msg.timerMinutes ? ` with ${msg.timerMinutes} min timer` : ''}`);
           }
         }
@@ -4080,6 +4130,9 @@ function closeByExecutableName(appPath, appName) {
  * exec() handed back) because many launches hand off to a second process —
  * the PID we have is often already gone the moment the real game starts.
  */
+// How long a launched game may go without its process appearing before it counts as closed.
+const GAME_START_GRACE_MS = 3 * 60 * 1000;
+
 function pollRunningProcesses() {
   runningProcesses.forEach((info, appName) => {
     const exeName = deriveExeName(info.appPath, appName);
@@ -4087,7 +4140,13 @@ function pollRunningProcesses() {
     execFile('tasklist.exe', ['/FI', `IMAGENAME eq ${exeName}.exe`, '/NH'], (err, stdout) => {
       if (err) return;   // a failed check must never look like "it closed"
       const stillRunning = stdout && stdout.toLowerCase().includes(exeName.toLowerCase());
-      if (stillRunning) return;
+      if (stillRunning) { info.seenRunning = true; return; }
+
+      /* A launcher-started game (Valorant, Steam titles) can take a minute to
+         put its process on screen. Until it has been seen running once, its
+         absence is "still starting", not "closed" — untracking it here is what
+         left Alt+Tab with nothing to switch to. */
+      if (!info.seenRunning && Date.now() - (info.launchedAt || 0) < GAME_START_GRACE_MS) return;
 
       log(`${appName} is no longer running (detected by poll)`);
       const current = runningProcesses.get(appName);

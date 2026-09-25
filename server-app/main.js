@@ -250,7 +250,7 @@ function handleStationRequest(msg, ws) {
     log(`[Game] ${pcName} launched game #${msg.game_id}`);
     if (win) {
       win.webContents.send("station:game-launched", {
-        pcName, gameId: msg.game_id, gamePlatformId: msg.game_platform_id
+        pcName, gameId: msg.game_id, gamePlatformId: msg.game_platform_id, gameAccountId: msg.game_account_id
       });
     }
     return true;

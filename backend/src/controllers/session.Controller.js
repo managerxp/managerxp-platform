@@ -836,10 +836,46 @@ export const updateSessionGame = (req, res) => mutate(req, res, async (client, r
     if (installed.rows[0]) gamePlatformId = requestedPlatformId;
   }
 
+  /* A venue-account game picked mid-session (the customer logged in with
+     their own account, so nothing was reserved at start) needs its shared
+     licence reserved now — otherwise no credential ever reaches the kiosk. */
+  let gameAccountId = row.game_account_id;
+  const mode = (await client.query(
+    `SELECT account_mode FROM cafe_games WHERE game_id = $1 AND cafe_id IS NOT DISTINCT FROM $2`,
+    [gameId, row.cafe_id]
+  )).rows[0]?.account_mode;
+  const wantsVenue = gamePlatformId && (mode === 'VENUE_ACCOUNT'
+    || (mode === 'CUSTOMER_OR_VENUE' && !!request.body?.use_venue_account));
+  if (wantsVenue) {
+    const wantedId = parseInt(request.body?.game_account_id, 10);
+    const held = gameAccountId && (!Number.isInteger(wantedId) || wantedId === gameAccountId) && (await client.query(
+      `SELECT 1 FROM game_accounts WHERE id = $1 AND game_platform_id = $2`, [gameAccountId, gamePlatformId]
+    )).rows[0];
+    if (!held) {
+      if (gameAccountId) {
+        await client.query(
+          `UPDATE game_accounts SET status = 'AVAILABLE', current_session_id = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND status = 'IN_USE'`, [gameAccountId]);
+        gameAccountId = null;
+      }
+      const reserved = (await client.query(
+        `UPDATE game_accounts SET status = 'IN_USE', current_session_id = $3, updated_at = CURRENT_TIMESTAMP
+           WHERE id = (SELECT id FROM game_accounts
+                        WHERE cafe_id = $1 AND game_platform_id = $2 AND status = 'AVAILABLE'
+                          AND ($4::int IS NULL OR id = $4)
+                        ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+         RETURNING id`,
+        [row.cafe_id, gamePlatformId, row.session_id, Number.isInteger(wantedId) ? wantedId : null]
+      )).rows[0];
+      if (!reserved) return { error: 'No venue account is free for this game right now', status: 409 };
+      gameAccountId = reserved.id;
+    }
+  }
+
   await client.query(
-    `UPDATE sessions SET game_id = $2, game_platform_id = $3, updated_at = CURRENT_TIMESTAMP
+    `UPDATE sessions SET game_id = $2, game_platform_id = $3, game_account_id = $4, updated_at = CURRENT_TIMESTAMP
      WHERE session_id = $1`,
-    [row.session_id, gameId, gamePlatformId]
+    [row.session_id, gameId, gamePlatformId, gameAccountId]
   );
 
   return { message: 'Game recorded' };
@@ -1133,7 +1169,14 @@ const closeSession = async (id, { shouldCharge = true, reason = 'staff', actorLa
     /* Duration from the server's own timestamps and the amount from the
        session's own snapshot. Neither is taken from the request: what the
        browser believed the timer said has no bearing on what is charged. */
-    const billableSeconds = gracedSeconds(row, undefined, await graceSecondsForRow(row));
+    /* The console ends a session for a used-up balance from a check that only
+       runs every 15 seconds, so it can never act at the exact moment the
+       start-up buffer ends. The play in that gap is the console's lag, not the
+       customer's, and left billed it turns a zero-balance customer into a
+       ₹10 unpaid debt (hourly play rounds up to the next ₹10). Ends with this
+       reason get a little extra buffer to absorb it. */
+    const graceLag = reason === 'balance_exhausted' ? 30 : 0;
+    const billableSeconds = gracedSeconds(row, undefined, (await graceSecondsForRow(row)) + graceLag);
     const rate = Number(row.rate_per_hour || 0);
     /* Still inside the grace period: whatever this was priced at, the
        customer never really started playing, so it costs nothing — not just

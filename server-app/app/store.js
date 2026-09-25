@@ -860,7 +860,7 @@
       });
 
       /*
-       * Balance exhausted on an open-ended (HOUR/occupancy) session: end it
+       * Balance used up on an open-ended (HOUR/occupancy) session: end it
        * the same way a customer's own logout would — no played time is lost,
        * nothing here decides the charge, endSession's existing settle path
        * does exactly what it always does. Scoped tightly: only a signed-in
@@ -883,8 +883,27 @@
         if (!s || s.pricing_unit !== "HOUR" || !s.customer_id) return;
         if (s.status !== "active" && s.status !== "paused") return;
         if (s.wallet_balance === null || s.wallet_balance === undefined) return;
+        // Never inside the free start-up buffer — nothing is billed there, so
+        // a customer with no balance still gets the buffer, then is ended.
+        if (s.billing_phase !== "active") return;
+
+        /* End once what they have used reaches what they can still spend: the
+           balance plus, for a regular, their credit limit (floor is 0 or
+           negative). This covers a zero balance (ended as soon as the buffer
+           is over) and a low one (ended as the money runs out) — balance is
+           only debited when the session ends, so the balance itself never
+           drops while they play.
+
+           closeSession rounds an hourly charge up to the next 10, and settles
+           it whole or not at all. So the cut-off is the last multiple of 10
+           they can afford, less one poll's worth of play (this loop runs every
+           15s) — ending a little early keeps the final charge inside what
+           they can pay instead of leaving an unpaid remainder. */
         var floor = Number(s.wallet_floor) || 0;
-        if (Number(s.wallet_balance) > floor) return;
+        var available = Number(s.wallet_balance) - floor;
+        var limit = Math.floor(Math.max(available, 0) / 10) * 10;
+        var pollPlay = (Number(s.rate_per_hour) || 0) * 20 / 3600;
+        if (Number(s.running_amount) < limit - pollPlay) return;
         if (endingForBalance[s.session_id]) return;
         endingForBalance[s.session_id] = true;
         endSession(s, { reason: "balance_exhausted" })
@@ -1147,6 +1166,22 @@
     if (!pcId) return api.pushGames(pcName, []).catch(function () {});
     return getPcGames(pcId)
       .then(function (body) {
+        /* Venue-account games: attach the licences (name + free/in-use only —
+           never a password) so the customer can pick one. */
+        var wanted = [];
+        (body.data.games || []).forEach(function (g) {
+          if (g.enabled && g.account_mode === "VENUE_ACCOUNT") (g.platforms || []).forEach(function (p) {
+            if (p.installed) wanted.push(p.id);
+          });
+        });
+        return Promise.all(wanted.map(function (id) {
+          return request("/api/games/platforms/" + id + "/accounts")
+            .then(function (r) { return [id, (r.data || []).filter(function (a) { return a.has_password && a.status !== "DISABLED"; })]; })
+            .catch(function () { return [id, []]; });
+        })).then(function (pairs) { return [body, pairs.reduce(function (m, p) { m[p[0]] = p[1]; return m; }, {})]; });
+      })
+      .then(function (bp) {
+        var body = bp[0], accountsByPlatform = bp[1];
         /* One entry per (game, platform installed here) — the same game on
            both Steam and EA is two launchable things on this station, and
            the station has to know which one it is starting. */
@@ -1163,6 +1198,9 @@
               category: g.category,
               icon_url: g.icon_url,
               account_mode: g.account_mode,
+              accounts: (accountsByPlatform[p.id] || []).map(function (a) {
+                return { id: a.id, name: a.account_name, status: a.status };
+              }),
               platform: p.platform,
               platform_game_id: p.platform_game_id,
               launch_method: p.launch_method,
@@ -1291,9 +1329,9 @@
    * caller's point of view: a failed report loses a display detail, not
    * money or play time, so it is never worth surfacing as an error toast.
    */
-  function reportGameLaunched(session, gameId, gamePlatformId) {
+  function reportGameLaunched(session, gameId, gamePlatformId, gameAccountId) {
     return sessionAction(session.session_id, "game", {
-      game_id: gameId, game_platform_id: gamePlatformId
+      game_id: gameId, game_platform_id: gamePlatformId, game_account_id: gameAccountId || undefined
     }).then(function (r) {
       return afterSessionChange(r.data, session.pc_name);
     });
@@ -2182,7 +2220,7 @@
         var pcName = data && data.pcName;
         var session = pcName && state.sessions[pcName];
         if (!session || !data || !data.gameId) return;
-        reportGameLaunched(session, data.gameId, data.gamePlatformId)
+        reportGameLaunched(session, data.gameId, data.gamePlatformId, data.gameAccountId)
           .catch(function (e) { console.warn("[store] game-launch report failed", e.message); });
       });
     }

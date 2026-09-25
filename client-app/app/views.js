@@ -640,6 +640,29 @@
           '<span class="btn btn-primary btn-sm" style="flex:0 0 auto">' + Icon("play", 14) +
             '<span class="btn-label">Play</span></span>';
         el.addEventListener("click", function () {
+          /* A venue-account game: the customer picks which licence to play on
+             (free ones only) and the station signs that account in. */
+          if (g.account_mode === "VENUE_ACCOUNT" && g.accounts) {
+            var picker = UI.el("div", { class: "col gap-3" });
+            var modal;
+            if (!g.accounts.length) {
+              picker.innerHTML = '<div class="faint">No licences are set up for this game. Please ask staff.</div>';
+            }
+            g.accounts.forEach(function (acc) {
+              var free = acc.status === "AVAILABLE";
+              var b = UI.el("button", { class: "card card-pad row gap-4", style: { alignItems: "center", textAlign: "left", cursor: free ? "pointer" : "not-allowed", opacity: free ? "1" : "0.5" } });
+              b.disabled = !free;
+              b.innerHTML = '<span class="grow" style="font-weight:700">' + UI.esc(acc.name) + "</span>" +
+                '<span class="chip" data-status="' + (free ? "online" : "idle") + '">' + (free ? "Available" : "In use") + "</span>";
+              b.addEventListener("click", function () {
+                modal.close();
+                Session.launchGame(Object.assign({}, g, { game_account_id: acc.id }));
+              });
+              picker.appendChild(b);
+            });
+            modal = UI.modal({ title: "Choose a licence for " + g.name, body: picker, actions: [{ label: "Cancel" }] });
+            return;
+          }
           Session.launchGame(g);   // portal's global "launching" handler shows the overlay
         });
         return el;
