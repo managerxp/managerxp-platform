@@ -273,10 +273,6 @@ public static class CafeXPKbdGuard {
         if (vk == VK_F11 || vk == VK_F12)
             return true;
 
-        // Alt+Tab
-        if (alt && vk == VK_TAB)
-            return true;
-
         // Alt+F4
         if (alt && vk == VK_F4)
             return true;
@@ -328,18 +324,6 @@ public static class CafeXPKbdGuard {
                 IsDown(VK_SHIFT)) {
                 return CallNextHookEx(hookId, nCode, wParam, lParam);
             }
-
-            // Alt+Tab is still swallowed — Windows' own switcher would list
-            // every open window, not just CafeXP and the running game — but
-            // announced first so Node can do the narrower two-window switch
-            // itself. Only on the down transition, or one physical press
-            // would print this twice (once per key-repeat is still possible
-            // if held, which Node treats as idempotent).
-            if (IsDown(VK_MENU) && vk == VK_TAB && IsKeyDownMessage(wParam)) {
-                Console.WriteLine("ALTTAB");
-                return (IntPtr)1;
-            }
-
             if (IsBlockedShortcut(vk)) {
                 return (IntPtr)1;
             }
@@ -2696,7 +2680,7 @@ function createWindow() {
       // Reload, close, print, dev tools, and the "open a new window" family.
       ((input.control || input.meta) && ['r', 'w', 'n', 't', 'p', 'q'].includes(key)) ||
       ((input.control || input.meta) && input.shift && ['i', 'j', 'c', 'r'].includes(key)) ||
-      (input.alt && ['f4', 'tab'].includes(key))
+      (input.alt && ['f4'].includes(key))
     );
 
     /* Only while sealed. Once staff have unlocked the station these are the
