@@ -403,7 +403,7 @@
               UI.esc(UI.initials(current.customer_name)) + "</span>" +
             "<div style='min-width:0'>" +
               '<div class="page-title" style="font-size:21px">' + UI.esc(current.customer_name) + "</div>" +
-              '<div class="faint" style="font-size:12px">' + UI.esc(current.email || "") + "</div>" +
+              '<div class="faint" style="font-size:12px">' + (current.username ? "@" + UI.esc(current.username) + " · " : "") + UI.esc(current.email || "") + "</div>" +
             "</div>" +
           "</div>" +
           '<button class="modal-close" id="custClose" aria-label="Close">' + Icon("close", 15) + "</button>" +
@@ -497,6 +497,8 @@
       profile.innerHTML =
         '<div class="card-head"><h3>Profile</h3></div>' +
         '<div class="card-body col">' +
+          '<div class="kv"><span class="kv-key">Username</span><span class="kv-val selectable">' +
+            UI.esc(current.username || "—") + "</span></div>" +
           '<div class="kv"><span class="kv-key">Mobile</span><span class="kv-val selectable">' +
             UI.esc(current.phone_number || "—") + "</span></div>" +
           '<div class="kv"><span class="kv-key">Email</span><span class="kv-val selectable">' +
@@ -878,6 +880,7 @@
           '<span class="avatar" style="width:28px;height:28px;font-size:11px">' +
             UI.esc(UI.initials(c.customer_name)) + "</span>" +
           "<strong>" + UI.esc(c.customer_name) + "</strong>" +
+          (c.username ? ' <span class="faint mono" style="font-size:11px">@' + UI.esc(c.username) + "</span>" : "") +
           /* A regular is worth seeing at a glance — it changes what the till
              offers them and what they pay. The badge carries the discount so
              staff do not have to open the record to answer "how much off?". */

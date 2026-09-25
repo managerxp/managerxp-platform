@@ -1874,9 +1874,11 @@
           '<div class="field">' +
             '<label class="field-label" for="acctUsername">Username</label>' +
             '<input class="input" id="acctUsername" maxlength="20" placeholder="Not set" ' +
-              'value="' + UI.esc(user.username || "") + '">' +
-            '<div class="field-hint">3–20 characters, starting with a letter — letters, numbers and ' +
-              'underscore only. Sign in with this instead of your email, once set.</div>' +
+              (user.username ? "readonly " : "") + 'value="' + UI.esc(user.username || "") + '">' +
+            '<div class="field-hint">' + (user.username
+              ? "Your username can’t be changed."
+              : "3–20 characters, starting with a letter — letters, numbers and underscore only. " +
+                "Once set it can’t be changed. Sign in with it instead of your email.") + '</div>' +
             '<div class="field-hint hidden" id="acctUsernameStatus"></div>' +
           "</div>" +
           '<div class="field">' +
@@ -1952,10 +1954,10 @@
         errorBox.classList.add("hidden");
 
         var payload = {
-          username: editCard.querySelector("#acctUsername").value.trim(),
           phone_number: editCard.querySelector("#acctPhone").value.trim(),
           address: editCard.querySelector("#acctAddress").value.trim()
         };
+        if (!user.username) payload.username = editCard.querySelector("#acctUsername").value.trim();
         if (payload.username && !usernameAvailable) {
           errorBox.textContent = "That username is already taken.";
           errorBox.classList.remove("hidden");

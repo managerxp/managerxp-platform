@@ -648,7 +648,9 @@ export const updateMyProfile = async (req, res) => {
     const values = [];
     let n = 1;
 
-    if (username !== undefined) {
+    // A username is permanent once set — the customer signs in with it. Only
+    // a customer who never set one may claim one; after that it is ignored.
+    if (username !== undefined && !own.rows[0].username) {
       const trimmed = String(username || '').trim();
       // Blank clears it back to "not set" — the field's own placeholder
       // already says as much. Unchanged from what this customer already has
@@ -665,7 +667,7 @@ export const updateMyProfile = async (req, res) => {
           return res.status(409).json({ success: false, message: 'That username is already taken.' });
         }
       }
-      updates.push(`username = $${n++}`); values.push(trimmed || null);
+      if (trimmed) { updates.push(`username = $${n++}`); values.push(trimmed); }
     }
     if (phone_number !== undefined) {
       const trimmed = String(phone_number || '').trim();
