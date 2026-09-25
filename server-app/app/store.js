@@ -1176,7 +1176,7 @@
         });
         return Promise.all(wanted.map(function (id) {
           return request("/api/games/platforms/" + id + "/accounts")
-            .then(function (r) { return [id, (r.data || []).filter(function (a) { return a.has_password && a.status !== "DISABLED"; })]; })
+            .then(function (r) { return [id, (r.data || []).filter(function (a) { return a.status !== "DISABLED"; })]; })
             .catch(function () { return [id, []]; });
         })).then(function (pairs) { return [body, pairs.reduce(function (m, p) { m[p[0]] = p[1]; return m; }, {})]; });
       })
@@ -2397,6 +2397,18 @@
              same shape pushGamesToStation sends, so the customer's picker and
              the launcher read the same fields either way. */
           var games = [];
+          var venuePlatforms = [];
+          (results[0].data.games || []).forEach(function (g) {
+            if (g.enabled && g.account_mode === "VENUE_ACCOUNT") (g.platforms || []).forEach(function (p) {
+              if (p.installed) venuePlatforms.push(p.id);
+            });
+          });
+          return Promise.all(venuePlatforms.map(function (id) {
+            return request("/api/games/platforms/" + id + "/accounts")
+              .then(function (r) { return [id, (r.data || []).filter(function (a) { return a.status !== "DISABLED"; })]; })
+              .catch(function () { return [id, []]; });
+          })).then(function (pairs) {
+          var accountsByPlatform = pairs.reduce(function (m, x) { m[x[0]] = x[1]; return m; }, {});
           (results[0].data.games || []).forEach(function (g) {
             if (!g.enabled) return;
             (g.platforms || []).forEach(function (p) {
@@ -2405,6 +2417,9 @@
                 cafe_game_id: g.cafe_game_id, game_id: g.game_id, game_platform_id: p.id,
                 name: g.name, category: g.category, icon_url: g.icon_url,
                 account_mode: g.account_mode, platform: p.platform,
+                accounts: (accountsByPlatform[p.id] || []).map(function (a) {
+                  return { id: a.id, name: a.account_name, status: a.status };
+                }),
                 platform_game_id: p.platform_game_id, launch_method: p.launch_method,
                 launch_target: p.launch_target, launch_target_override: p.launch_target_override,
                 cafe_launch_target_override: p.cafe_launch_target_override,
@@ -2429,6 +2444,7 @@
             };
           });
           if (api.pushStartOptions) api.pushStartOptions(pcName, games, prices);
+          });
         });
       });
     }

@@ -439,11 +439,11 @@
     },
     /* Self-service start: ask what's available, then ask to begin one. */
     requestStartOptions: function () { if (api.requestStartOptions) api.requestStartOptions(); },
-    requestStartSession: function (game, gamingPriceId, useVenueAccount) {
+    requestStartSession: function (game, gamingPriceId, useVenueAccount, gameAccountId) {
       state.startFailed = null;
       if (api.requestStartSession) {
         api.requestStartSession({
-          game: game, gaming_price_id: gamingPriceId, use_venue_account: !!useVenueAccount
+          game: game, gaming_price_id: gamingPriceId, use_venue_account: !!useVenueAccount, game_account_id: gameAccountId || null
         });
       }
     },

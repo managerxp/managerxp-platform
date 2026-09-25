@@ -386,6 +386,7 @@
        own-login-only has one possible answer, so asking would be a step that
        decides nothing. */
     var useVenue = null;
+    var selectedAccountId = null;   // the licence chosen for a venue-account game
 
     function needsAccountChoice(g) {
       return !!g && g.account_mode === "CUSTOMER_OR_VENUE";
@@ -455,6 +456,7 @@
           "</span>";
         el.addEventListener("click", function () {
           selectedGame = g;
+          selectedAccountId = null;
           useVenue = null;   // a new game asks its own account question
           render();
         });
@@ -492,8 +494,22 @@
       } else if (selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT") {
         var venueNote = UI.el("div", { class: "notice", dataset: { status: "idle" } });
         venueNote.innerHTML = Icon("info", 16) +
-          "<div>The café provides the account for this game — just pick how long you want to play.</div>";
+          "<div>The café provides the account for this game — choose a licence and how long you want to play.</div>";
         host.appendChild(venueNote);
+        (selectedGame.accounts || []).forEach(function (acc) {
+          var free = acc.status === "AVAILABLE";
+          var b = UI.el("button", {
+            class: "card card-pad row gap-4",
+            style: { alignItems: "center", textAlign: "left", cursor: free ? "pointer" : "not-allowed", opacity: free ? "1" : "0.5", width: "100%" },
+            dataset: selectedAccountId === acc.id ? { status: "accent" } : {}
+          });
+          b.disabled = !free;
+          b.innerHTML = '<span class="grow" style="font-weight:700">' + UI.esc(acc.name) + "</span>" +
+            '<span class="chip" data-status="' + (free ? "online" : "idle") + '">' + (free ? "Available" : "In use") + "</span>" +
+            (selectedAccountId === acc.id ? '<span class="tx-icon" data-status="online">' + Icon("check", 14) + "</span>" : "");
+          b.addEventListener("click", function () { selectedAccountId = acc.id; render(); });
+          host.appendChild(b);
+        });
       }
 
       host.appendChild(UI.el("div", { class: "shelf-title", text: step + ". Choose how long" }));
@@ -547,7 +563,8 @@
         html: Icon("play", 17) + '<span class="btn-label">' + (starting ? "Starting…" : "Start session") + "</span>"
       });
       // A game that offers both account routes cannot start until one is picked.
-      var accountAnswered = !needsAccountChoice(selectedGame) || useVenue !== null;
+      var accountAnswered = (!needsAccountChoice(selectedGame) || useVenue !== null)
+        && !(selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT" && (selectedGame.accounts || []).length && !selectedAccountId);
       // Can't afford it and no credit room to cover the gap either — the
       // notice above already says so in words; the button itself must not
       // be pressable for a doomed attempt (a regular within their credit
@@ -557,7 +574,8 @@
       startBtn.addEventListener("click", function () {
         starting = true;
         render();
-        Session.requestStartSession(selectedGame, selectedPriceId, resolvedUseVenue(selectedGame));
+        Session.requestStartSession(selectedGame, selectedPriceId, resolvedUseVenue(selectedGame),
+          selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT" ? selectedAccountId : null);
       });
       host.appendChild(startBtn);
     }

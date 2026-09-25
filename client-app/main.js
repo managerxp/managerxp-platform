@@ -1617,7 +1617,7 @@ function waitForSteamAuth(steamExePath, expectedUsername, { timeoutMs = 15000, i
 }
 
 function ensureSteamSignedIn(credential) {
-  if (!credential || !credential.username || !credential.password) return Promise.resolve({ ok: true });
+  if (!credential || !credential.username) return Promise.resolve({ ok: true });
   return detectLaunchers().then((launchers) => {
     const steam = launchers.Steam;
     if (!steam || !steam.installed) {
@@ -1646,7 +1646,23 @@ function ensureSteamSignedIn(credential) {
       const restart = running
         ? killProcess('steam.exe').then(() => killProcess('steamwebhelper.exe'))
         : Promise.resolve();
-      return restart.then(() => new Promise((resolve) => {
+      /* Preferred: switch to the account already saved on this station (its
+         login is remembered by Steam, so no password and no Steam Guard
+         code). Only if that doesn't land do we fall back to a password login. */
+      const savedLogin = () => new Promise((resolve) => {
+        const regAdd = (name, type, data) => new Promise((r) =>
+          execFile('reg', ['add', 'HKCU\Software\Valve\Steam', '/v', name, '/t', type, '/d', data, '/f'],
+            { windowsHide: true }, () => r()));
+        regAdd('AutoLoginUser', 'REG_SZ', credential.username)
+          .then(() => regAdd('RememberPassword', 'REG_DWORD', '1'))
+          .then(() => {
+            log(`[Steam] Switching to saved login ${maskAccount(credential.username)}`);
+            sendSteamAuthStatus('AUTHENTICATING', credential.username);
+            execFile(steam.path, [], { windowsHide: true }, () => {});
+            resolve(waitForSteamAuth(steam.path, credential.username, { timeoutMs: 25000 }));
+          });
+      });
+      const passwordLogin = () => new Promise((resolve) => {
         setTimeout(() => {
           log('[Steam] Starting authentication');
           log(`[Steam] PC: ${SIM_ID}`);
@@ -1665,8 +1681,24 @@ function ensureSteamSignedIn(credential) {
             if (!result.ok) log(`[Steam] Reason: ${result.detail}`);
             return result;
           }));
-        }, running ? 700 : 0);   // a moment for file handles to release after the kill
-      }));
+        }, 700);   // a moment for file handles to release after the kill
+      });
+      return restart
+        .then(() => new Promise((r) => setTimeout(r, running ? 700 : 0)))
+        .then(savedLogin)
+        .then((saved) => {
+          if (saved && saved.ok) {
+            sendSteamAuthStatus('AUTHENTICATED', credential.username);
+            return saved;
+          }
+          if (!credential.password) {
+            log('[Steam] Saved login did not take and no password is stored for this account');
+            sendSteamAuthStatus('FAILED', credential.username);
+            return { ok: false, reason: 'GUARD_OR_TIMEOUT',
+              detail: 'This Steam account is not saved on this station. Ask staff to sign it in once.' };
+          }
+          return killProcess('steam.exe').then(() => killProcess('steamwebhelper.exe')).then(passwordLogin);
+        });
     });
   }).catch((e) => {
     log(`Steam auto sign-in error: ${e.message}`);
@@ -1778,10 +1810,9 @@ const SIGNOUT_RECIPES = {
     processes: ['steam.exe', 'steamwebhelper.exe'],
     // loginusers.vdf holds the remembered accounts; the ssfn* files are the
     // saved second-factor tokens that let a machine skip Steam Guard.
-    files: (installPath) => {
-      const root = installPath ? path.dirname(installPath) : path.join(PROGRAM_FILES_X86, 'Steam');
-      return [path.join(root, 'config', 'loginusers.vdf')];
-    },
+    // Nothing deleted: venue accounts stay saved on the station so the next
+    // session can switch to them without a password or Steam Guard code.
+    files: () => [],
     registry: [{ key: 'HKCU\\Software\\Valve\\Steam', value: 'AutoLoginUser' }]
   },
   Riot: {
@@ -2218,7 +2249,7 @@ function createWindow() {
    * server-app's `station:start-request`), the same hand-off the Extend
    * button already relies on.
    */
-  ipcMain.on('request-start-session', (event, { game, gaming_price_id, use_venue_account } = {}) => {
+  ipcMain.on('request-start-session', (event, { game, gaming_price_id, use_venue_account, game_account_id } = {}) => {
     if (serverConnection && serverConnection.readyState === WebSocket.OPEN) {
       // Remembered whole, not just its id, so it can be launched directly the
       // moment the session goes active — no extra round trip to look it up.
@@ -2230,7 +2261,8 @@ function createWindow() {
         game_id: (game && game.game_id) || null,
         // Which store's copy of the game — this station may have more than one.
         game_platform_id: (game && game.game_platform_id) || null,
-        use_venue_account: !!use_venue_account
+        use_venue_account: !!use_venue_account,
+        game_account_id: game_account_id || null
       }));
       log("Sent START_SESSION_REQUEST to console");
     } else {

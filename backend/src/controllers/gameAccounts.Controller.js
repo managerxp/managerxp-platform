@@ -189,9 +189,11 @@ export const revealCredential = async (req, res) => {
     )).rows[0];
     if (!account) return res.status(404).json({ success: false, message: 'Not found' });
 
+    /* No stored password is fine — the station may already have this account
+       saved and only needs the username to switch to it. */
     const password = account.credentials_encrypted ? decryptSecret(account.credentials_encrypted) : null;
-    if (!password) {
-      return res.status(404).json({ success: false, message: 'No password saved for this account' });
+    if (!password && !account.username) {
+      return res.status(404).json({ success: false, message: 'No username or password saved for this account' });
     }
 
     res.json({ success: true, data: { username: account.username || null, password } });
