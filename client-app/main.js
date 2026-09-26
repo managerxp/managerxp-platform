@@ -4176,6 +4176,8 @@ function pollRunningProcesses() {
 setInterval(pollRunningProcesses, 8000);
 
 app.whenReady().then(() => {
+  // Start with Windows for whoever signs in — a station must come back up after a reboot.
+  if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: true });
   // Get local IP on startup
   LOCAL_IP = getLocalIPAddress();
 

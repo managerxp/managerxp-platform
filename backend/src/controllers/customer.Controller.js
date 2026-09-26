@@ -455,7 +455,10 @@ export const createCustomer = async (req, res) => {
     if (!phone || phone.length < 10) {
       return res.status(400).json({ success: false, message: 'A mobile number of at least 10 digits is required' });
     }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'An email address is required' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ success: false, message: 'That email address is not valid' });
     }
     // A password is only needed if they will sign in on a station themselves.
