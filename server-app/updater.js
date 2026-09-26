@@ -88,6 +88,9 @@ async function download({ feedUrl, targetVersion } = {}) {
 
   try {
     autoUpdater.setFeedURL({ provider: "generic", url: feedUrl });
+    // downloadUpdate() throws "Please check update first" unless the feed was read in this run.
+    const found = await autoUpdater.checkForUpdates();
+    if (!found || !found.isUpdateAvailable) throw new Error("No newer version found at the update feed");
     await autoUpdater.downloadUpdate();
     return { ok: true, message: "Update downloaded and staged" };
   } catch (err) {

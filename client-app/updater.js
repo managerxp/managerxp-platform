@@ -99,6 +99,9 @@ async function download({ feedUrl, targetVersion }) {
      * no interruption, which is why this step is deliberately not deferred to
      * an idle window.
      */
+    // downloadUpdate() throws "Please check update first" unless the feed was read in this run.
+    const found = await autoUpdater.checkForUpdates();
+    if (!found || !found.isUpdateAvailable) throw new Error("No newer version found at the update feed");
     await autoUpdater.downloadUpdate();
     return { ok: true, message: "Update downloaded and staged" };
   } catch (err) {
