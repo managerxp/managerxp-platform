@@ -262,7 +262,7 @@ export const login = async (req, res) => {
     const findUserQuery = `
       SELECT customer_id, customer_name, email, phone_number, password, address, created_at, updated_at, email_verified
       FROM customers
-      WHERE cafe_id = $2 AND (LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1))
+      WHERE cafe_id = $2 AND (LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1) OR phone_number = $1)
     `;
 
     const result = await pool.query(findUserQuery, [loginEmail, cafeId]);
@@ -448,6 +448,7 @@ export const createCustomer = async (req, res) => {
     const password = req.body?.password || '';
     const address = normalizeAddress(req.body?.address);
     const openingBalance = Number(req.body?.opening_balance || 0);
+    const username = String(req.body?.username || '').trim();
 
     if (!name) {
       return res.status(400).json({ success: false, message: 'A name is required' });
@@ -455,11 +456,25 @@ export const createCustomer = async (req, res) => {
     if (!phone || phone.length < 10) {
       return res.status(400).json({ success: false, message: 'A mobile number of at least 10 digits is required' });
     }
-    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    if (!email) {
+      return res.status(400).json({ success: false, message: 'An email address is required' });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       return res.status(400).json({ success: false, message: 'That email address is not valid' });
     }
-    // A password is only needed if they will sign in on a station themselves.
-    if (password && password.length < 6) {
+    if (username) {
+      if (!USERNAME_REGEX.test(username)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Username must be 3-20 characters, start with a letter, and use only letters, numbers and underscores.'
+        });
+      }
+      if (await usernameTaken(cafeId, username)) {
+        return res.status(409).json({ success: false, message: 'That username is already taken.' });
+      }
+    }
+    // Required: without one the customer could never sign in at a station.
+    if (!password || password.length < 6) {
       return res.status(400).json({ success: false, message: 'Password must be at least 6 characters long' });
     }
     if (!Number.isFinite(openingBalance) || openingBalance < 0) {
@@ -496,10 +511,10 @@ export const createCustomer = async (req, res) => {
      * already lets "Sign in with Google" skip it for café owners.
      */
     const inserted = await client.query(
-      `INSERT INTO customers (customer_name, email, phone_number, password, address, cafe_id, email_verified)
-       VALUES ($1,$2,$3,$4,$5,$6,TRUE)
+      `INSERT INTO customers (customer_name, email, phone_number, password, address, cafe_id, email_verified, username)
+       VALUES ($1,$2,$3,$4,$5,$6,TRUE,$7)
        RETURNING ${CUSTOMER_FIELDS.replace(/c\./g, '')}`,
-      [name, loginEmail, phone, hashed, address, cafeId]
+      [name, loginEmail, phone, hashed, address, cafeId, username || null]
     );
     const customer = inserted.rows[0];
 

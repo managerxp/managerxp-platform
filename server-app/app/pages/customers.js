@@ -663,13 +663,15 @@
         '<div class="field"><label class="field-label field-req" for="ncPhone">Mobile</label>' +
           '<input class="input mono" id="ncPhone" inputmode="tel" placeholder="9876543210"></div>' +
       "</div>" +
-      '<div class="field"><label class="field-label" for="ncEmail">Email</label>' +
-        '<input class="input" id="ncEmail" type="email" placeholder="Optional">' +
-        '<div class="field-hint">Leave blank and we key the account to their mobile number.</div></div>' +
+      '<div class="field"><label class="field-label" for="ncEmail">Email *</label>' +
+        '<input class="input" id="ncEmail" type="email" placeholder="name@example.com" required></div>' +
       '<div class="grid grid-2" style="gap:var(--s-3)">' +
-        '<div class="field"><label class="field-label" for="ncPassword">Password</label>' +
-          '<input class="input" id="ncPassword" type="password" placeholder="Optional — 6+ characters">' +
-          '<div class="field-hint">Only needed if they sign in on a station themselves.</div></div>' +
+        '<div class="field"><label class="field-label" for="ncPassword">Password *</label>' +
+          '<input class="input" id="ncPassword" type="password" placeholder="6+ characters">' +
+          '<div class="field-hint">They sign in on a station with this.</div></div>' +
+        '<div class="field"><label class="field-label" for="ncUsername">Username</label>' +
+          '<input class="input" id="ncUsername" maxlength="20" placeholder="Optional">' +
+          '<div class="field-hint">Letters, numbers, underscore. Cannot be changed later.</div></div>' +
         '<div class="field"><label class="field-label" for="ncOpening">Opening XP Coins</label>' +
           '<input class="input" id="ncOpening" type="number" min="0" step="1" value="0">' +
           '<div class="field-hint">Credited to their new wallet and logged.</div></div>' +
@@ -746,7 +748,13 @@
               UI.toast.warn("A 10-digit mobile number is required");
               return false;
             }
-            if (password && password.length < 6) {
+            var emailVal = ctx.body.querySelector("#ncEmail").value.trim();
+            if (emailVal.indexOf("@") < 1 || emailVal.indexOf(".", emailVal.indexOf("@")) < 0) {
+              Motion.shake(ctx.body.querySelector("#ncEmail"));
+              UI.toast.warn("A valid email is required");
+              return false;
+            }
+            if (!password || password.length < 6) {
               Motion.shake(ctx.body.querySelector("#ncPassword"));
               UI.toast.warn("Password must be at least 6 characters");
               return false;
@@ -755,8 +763,9 @@
             return Store.createCustomer({
               customer_name: name,
               phone_number: phone,
-              email: ctx.body.querySelector("#ncEmail").value.trim() || null,
-              password: password || null,
+              email: emailVal,
+              password: password,
+              username: ctx.body.querySelector("#ncUsername").value.trim() || undefined,
               opening_balance: Number(ctx.body.querySelector("#ncOpening").value || 0)
             })
               .then(function (r) {

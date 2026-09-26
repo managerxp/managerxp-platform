@@ -1196,7 +1196,7 @@
               game_platform_id: p.id,
               name: g.name,
               category: g.category,
-              icon_url: g.icon_url,
+              icon_url: g.icon_url, banner_url: g.banner_url,
               account_mode: g.account_mode,
               accounts: (accountsByPlatform[p.id] || []).map(function (a) {
                 return { id: a.id, name: a.account_name, status: a.status };
@@ -2415,7 +2415,7 @@
               if (!p.installed) return;
               games.push({
                 cafe_game_id: g.cafe_game_id, game_id: g.game_id, game_platform_id: p.id,
-                name: g.name, category: g.category, icon_url: g.icon_url,
+                name: g.name, category: g.category, icon_url: g.icon_url, banner_url: g.banner_url,
                 account_mode: g.account_mode, platform: p.platform,
                 accounts: (accountsByPlatform[p.id] || []).map(function (a) {
                   return { id: a.id, name: a.account_name, status: a.status };
