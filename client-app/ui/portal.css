@@ -2030,3 +2030,6 @@
   margin-left: auto;
   margin-right: auto;
 }
+
+/* A message placed inside the game grid (empty / no match) spans every column. */
+#gameGrid > :not(.game-tile) { grid-column: 1 / -1; }

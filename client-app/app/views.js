@@ -436,7 +436,7 @@
            two stores is two separate things to launch, and picking "F1 25"
            without saying which copy would leave the launcher guessing. */
         var chosen = selectedGame && selectedGame.game_platform_id === g.game_platform_id;
-        var art = imageSrc(g.icon_url);
+        var art = imageSrc(g.banner_url || g.icon_url);
         var el = UI.el("button", {
           class: "game-tile",
           dataset: chosen ? { status: "accent" } : {}
@@ -637,31 +637,31 @@
       }
 
       /* -------- mid-session: plain launch grid (unchanged) -------- */
-      var grid = UI.el("div", { class: "col gap-3", id: "gameGrid" });
+      var grid = UI.el("div", { class: "game-tile-grid", id: "gameGrid" });
       view.appendChild(grid);
 
       var filter = "";
 
       function card(g) {
-        var el = UI.el("button", {
-          class: "card card-pad row gap-4",
-          style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%", padding: "14px 18px", gap: "18px" }
-        });
-        var art = imageSrc(g.icon_url);
-        var tile = "flex:0 0 auto;width:56px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;" +
-          "font-size:16px;font-weight:800;background:var(--surface-2,#1a1d27);background-size:cover;background-position:center;";
+        var el = UI.el("button", { class: "game-tile" });
+        var cover = imageSrc(g.banner_url || g.icon_url);
+        var logo = g.banner_url ? imageSrc(g.icon_url) : null;   // logo badge only when the cover is a different image
         el.innerHTML =
-          (art
-            ? '<span style="' + tile + "background-image:url('" + UI.esc(art) + "')\"></span>"
-            : '<span style="' + tile + '">' +
-                UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) + "</span>") +
-          '<span class="grow" style="min-width:0">' +
-            '<span style="display:block;font-size:15px;font-weight:700">' + UI.esc(g.name) + "</span>" +
-            '<span class="faint" style="font-size:12px">' +
-              UI.esc([g.category, g.platform].filter(Boolean).join(" · ")) + "</span>" +
-          "</span>" +
-          '<span class="btn btn-primary btn-sm" style="flex:0 0 auto">' + Icon("play", 14) +
-            '<span class="btn-label">Play</span></span>';
+          (cover
+            ? '<span class="game-tile-art" style="background-image:url(\'' + UI.esc(cover) + "')\"></span>"
+            : '<span class="game-tile-art game-tile-art-fallback">' +
+                '<span class="avatar" style="width:56px;height:56px;font-size:18px">' +
+                  UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) +
+                "</span></span>") +
+          '<span class="game-tile-shade"></span>' +
+          (logo ? '<span style="position:absolute;top:10px;left:10px;width:40px;height:40px;border-radius:10px;' +
+            "background:#000 url('" + UI.esc(logo) + "') center/cover;box-shadow:0 2px 8px rgba(0,0,0,.5)\"></span>" : "") +
+          '<span class="game-tile-label">' +
+            '<span class="game-tile-name">' + UI.esc(g.name) + "</span>" +
+            '<span class="game-tile-meta">' + UI.esc([g.category, g.platform].filter(Boolean).join(" · ")) + "</span>" +
+            '<span class="btn btn-primary btn-sm" style="margin-top:8px;align-self:flex-start">' + Icon("play", 13) +
+              '<span class="btn-label">Play</span></span>' +
+          "</span>";
         el.addEventListener("click", function () {
           /* A venue-account game: the customer picks which licence to play on
              (free ones only) and the station signs that account in. */
