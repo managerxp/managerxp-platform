@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("api", {
   // Web app navigation
   openWebApp: () => ipcRenderer.send("auth:open-web-app"),
   openWebAppSignup: () => ipcRenderer.send("auth:open-web-app-signup"),
+  openWebPage: (page) => ipcRenderer.send("auth:open-web-page", page),
   
   // Logging
   onLog: (cb) => ipcRenderer.on("log", (_, msg) => cb(msg)),

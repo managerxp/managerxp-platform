@@ -2024,6 +2024,12 @@ function registerIPCHandlers() {
     shell.openExternal(`${WEB_APP_URL}/cafexp-login`);
   });
 
+  // Only these pages, so a renderer can never open an arbitrary URL.
+  ipcMain.on("auth:open-web-page", (event, page) => {
+    const pages = { subscription: "/dashboard/subscription", contact: "/contact", pricing: "/products" };
+    if (pages[page]) shell.openExternal(`${WEB_APP_URL}${pages[page]}`);
+  });
+
   ipcMain.on("auth:open-web-app-signup", (event) => {
     shell.openExternal(`${WEB_APP_URL}/signup`);
   });

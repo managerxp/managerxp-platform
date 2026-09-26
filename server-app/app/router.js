@@ -282,7 +282,34 @@
    * working café's navigation on the strength of an answer nobody gave would
    * be the worst possible failure mode.
    */
+  /* An ended trial or lapsed subscription: the console cannot be used until
+     they subscribe. Shown as a full-screen wall (not a toast) with the way to
+     buy, and the only other exit is signing out. */
+  function showSubscriptionWall(sub) {
+    if (document.getElementById("subWall")) return;
+    var trial = !!sub.is_trial;
+    var wall = document.createElement("div");
+    wall.id = "subWall";
+    wall.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:var(--bg,#0b0d12);padding:24px";
+    wall.innerHTML =
+      '<div class="card" style="max-width:460px;width:100%"><div class="card-body col gap-4" style="text-align:center">' +
+      '<h2 style="margin:0">' + (trial ? "Your free trial has ended" : "Your subscription is not active") + "</h2>" +
+      '<div class="faint">Choose a ManagerXP package to keep using CafeXP. Buy one on our website, ' +
+      "or contact us and we will activate a subscription for you.</div>" +
+      '<button class="btn btn-primary btn-lg btn-block" id="subWallBuy">View plans &amp; subscribe</button>' +
+      '<button class="btn btn-block" id="subWallContact">Contact us</button>' +
+      '<button class="btn btn-block" id="subWallOut">Sign out</button></div></div>';
+    document.body.appendChild(wall);
+    var api = window.desktop || window.api || {};
+    wall.querySelector("#subWallBuy").onclick = function () { if (api.openWebPage) api.openWebPage("subscription"); };
+    wall.querySelector("#subWallContact").onclick = function () { if (api.openWebPage) api.openWebPage("contact"); };
+    wall.querySelector("#subWallOut").onclick = function () { wall.remove(); Store.logout(); };
+  }
+
   function applyEntitlements(payload) {
+    var sub = payload && payload.subscription;
+    if (sub && ["EXPIRED", "SUSPENDED", "CANCELLED"].indexOf(sub.status) !== -1) showSubscriptionWall(sub);
+    else { var w = document.getElementById("subWall"); if (w) w.remove(); }
     var wasAllowed = current && flat[current] ? featureAllowed(flat[current]) : null;
 
     if (!payload || payload.resolved === false || !payload.features) {
