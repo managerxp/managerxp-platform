@@ -193,129 +193,6 @@
     return wrap;
   }
 
-  function logoField() {
-    var wrap = UI.el("div", { class: "field" });
-    wrap.innerHTML =
-      '<label class="field-label" for="rtLogo">Logo</label>' +
-      '<div class="rt-logo-row">' +
-        '<div class="rt-logo-box" id="rtLogoBox"></div>' +
-        '<div class="col gap-2">' +
-          '<input type="file" id="rtLogo" accept="image/png,image/jpeg,image/svg+xml" class="hidden">' +
-          '<button class="btn btn-outline btn-sm" type="button" id="rtLogoPick">Choose image</button>' +
-          '<button class="btn btn-ghost btn-sm" type="button" id="rtLogoClear">Remove</button>' +
-        "</div>" +
-      "</div>" +
-      '<div class="field-hint">PNG, JPEG or SVG. Kept small — a thermal printer renders about 200px wide.</div>';
-
-    function paintBox() {
-      var box = wrap.querySelector("#rtLogoBox");
-      var current = val("billing.logo", "");
-      box.innerHTML = current
-        ? '<img src="' + UI.esc(current) + '" alt="Current logo">'
-        : '<span class="faint">No logo</span>';
-    }
-    paintBox();
-
-    var file = wrap.querySelector("#rtLogo");
-    wrap.querySelector("#rtLogoPick").addEventListener("click", function () { file.click(); });
-    wrap.querySelector("#rtLogoClear").addEventListener("click", function () {
-      set("billing.logo", "");
-      paintBox();
-    });
-
-    file.addEventListener("change", function () {
-      var f = file.files && file.files[0];
-      if (!f) return;
-
-      /* Stored as a data URI in a settings row, so it has to stay small. A
-         2 MB photo would bloat every settings read for every page in the
-         console, and no thermal printer can use the detail anyway. */
-      if (f.size > 400 * 1024) {
-        UI.toast.warn("That image is too large", "Use one under 400 KB — a receipt logo needs very little.");
-        file.value = "";
-        return;
-      }
-
-      var reader = new FileReader();
-      reader.onload = function () {
-        set("billing.logo", String(reader.result));
-        paintBox();
-      };
-      reader.readAsDataURL(f);
-    });
-
-    return wrap;
-  }
-
-  /*
-   * The kiosk welcome screen's background — an image or a short video, up to
-   * 30 MB. Unlike the logo above, this is never stored as a data URI in a
-   * settings row (it would bloat every settings read for every page in the
-   * console, this app's own included, for something only the welcome screen
-   * needs) — Choose uploads the real file (Store.uploadCafeWallpaper) and
-   * only the short URL it comes back with is saved as a setting.
-   */
-  function wallpaperField() {
-    var wrap = UI.el("div", { class: "field" });
-    wrap.innerHTML =
-      '<label class="field-label" for="rtWallpaper">Kiosk wallpaper</label>' +
-      '<div class="rt-logo-row">' +
-        '<div class="rt-logo-box" id="rtWallpaperBox"></div>' +
-        '<div class="col gap-2">' +
-          '<input type="file" id="rtWallpaper" accept="image/*,video/*" class="hidden">' +
-          '<button class="btn btn-outline btn-sm" type="button" id="rtWallpaperPick">Choose image or video</button>' +
-          '<button class="btn btn-ghost btn-sm" type="button" id="rtWallpaperClear">Remove</button>' +
-        "</div>" +
-      "</div>" +
-      '<div class="field-hint">Shown full-screen behind the welcome/sign-in screen on every station. Up to 30 MB.</div>';
-
-    function paintBox() {
-      var box = wrap.querySelector("#rtWallpaperBox");
-      var url = val("billing.wallpaper_url", "");
-      var type = val("billing.wallpaper_type", "");
-      if (!url) { box.innerHTML = '<span class="faint">No wallpaper</span>'; return; }
-      box.innerHTML = type === "video"
-        ? '<video src="' + UI.esc(url) + '" muted loop autoplay playsinline></video>'
-        : '<img src="' + UI.esc(url) + '" alt="Current wallpaper">';
-    }
-    paintBox();
-
-    var pickBtn = wrap.querySelector("#rtWallpaperPick");
-    var file = wrap.querySelector("#rtWallpaper");
-    pickBtn.addEventListener("click", function () { file.click(); });
-    wrap.querySelector("#rtWallpaperClear").addEventListener("click", function () {
-      set("billing.wallpaper_url", "");
-      set("billing.wallpaper_type", "");
-      paintBox();
-    });
-
-    file.addEventListener("change", function () {
-      var f = file.files && file.files[0];
-      if (!f) return;
-
-      if (f.size > 30 * 1024 * 1024) {
-        UI.toast.warn("That file is too large", "Use an image or video under 30 MB.");
-        file.value = "";
-        return;
-      }
-
-      UI.withBusy(pickBtn, function () {
-        return Store.uploadCafeWallpaper(f)
-          .then(function (data) {
-            set("billing.wallpaper_url", data.url);
-            set("billing.wallpaper_type", data.type);
-            paintBox();
-          })
-          .catch(function (e) {
-            UI.toast.error("Could not upload that file", e.message);
-          })
-          .finally(function () { file.value = ""; });
-      });
-    });
-
-    return wrap;
-  }
-
   function toggle(key, label, hint) {
     var row = UI.el("label", { class: "check-row" });
     row.innerHTML =
@@ -401,7 +278,6 @@
 
     var identity = UI.el("section", { class: "card card-pad col gap-4" });
     identity.innerHTML = '<div class="card-head"><h3 class="card-title">Your café</h3></div>';
-    identity.appendChild(logoField());
     identity.appendChild(field("billing.business_name", "Trading name",
       { placeholder: "Riverside Gaming Café",
         hint: "Printed at the top. Blank falls back to the name on your subscription." }));
@@ -412,12 +288,15 @@
     identity.appendChild(field("billing.email", "Email", { type: "email" }));
     editor.appendChild(identity);
 
-    var kiosk = UI.el("section", { class: "card card-pad col gap-4" });
-    kiosk.innerHTML = '<div class="card-head"><h3 class="card-title">Kiosk screen</h3></div>' +
-      '<div class="faint" style="font-size:12px">Not printed — shown on the station itself, ' +
-      "before a customer signs in.</div>";
-    kiosk.appendChild(wallpaperField());
-    editor.appendChild(kiosk);
+    var moved = UI.el("section", { class: "card card-pad col gap-3" });
+    moved.innerHTML = '<div class="card-head"><h3 class="card-title">Logos &amp; kiosk screen</h3></div>' +
+      '<div class="faint" style="font-size:12px">The receipt logo, kiosk front-screen logo and kiosk wallpaper are now ' +
+      "uploaded from Settings.</div>";
+    var goBtn = UI.el("button", { class: "btn btn-outline btn-sm", type: "button" });
+    goBtn.textContent = "Open Settings → Branding & print";
+    goBtn.addEventListener("click", function () { global.CXRouter.go("settings-branding"); });
+    moved.appendChild(goBtn);
+    editor.appendChild(moved);
 
     var tax = UI.el("section", { class: "card card-pad col gap-4" });
     tax.innerHTML = '<div class="card-head"><h3 class="card-title">Tax</h3></div>' +

@@ -6,11 +6,11 @@ import { verifyEmail, resendVerification } from '../controllers/emailVerificatio
 import { requirePlatformAdmin } from '../middleware/authGuards.js';
 import { registerValidation, loginValidation } from '../utils/validation.js';
 import { validate } from '../middleware/validationMiddleware.js';
-import { loginLimiter, resetLimiter } from '../middleware/rateLimit.js';
+import { loginLimiter, resetLimiter, registerLimiter } from '../middleware/rateLimit.js';
 
 const AuthRouter = express.Router();
 
-AuthRouter.post('/register', registerValidation, validate, register);
+AuthRouter.post('/register', registerLimiter, registerValidation, validate, register);
 AuthRouter.post('/login', loginLimiter, loginValidation, validate, login);
 /*
  * The single door: administrators and café owners sign in here and the server

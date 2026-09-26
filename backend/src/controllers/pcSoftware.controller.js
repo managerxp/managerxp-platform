@@ -20,7 +20,7 @@ export const getAllPcSoftware = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch pc_software records',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -53,7 +53,7 @@ export const getPcSoftwareById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch pc_software record',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -100,7 +100,7 @@ export const getSoftwareByPcId = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch software for this PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -188,7 +188,7 @@ export const createPcSoftware = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to create pc_software record',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -278,7 +278,7 @@ export const updatePcSoftware = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update pc_software record',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -316,7 +316,7 @@ export const deletePcSoftware = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to delete pc_software record',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -352,7 +352,7 @@ export const togglePcSoftwareStatus = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to toggle pc_software status',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };

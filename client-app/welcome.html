@@ -33,13 +33,13 @@
       <div class="kiosk-word" id="kioskWord">Cafe<span>XP</span></div>
       <p class="powered-by">Powered by <strong>ManagerXP</strong></p>
 
-      <h1 class="kiosk-head">This station is ready</h1>
-      <p class="kiosk-text">
+      <h1 class="kiosk-head" id="kioskHead">This station is ready</h1>
+      <p class="kiosk-text" id="kioskText">
         Sign in to see your games, order food and track your session.<br />
         New here? Create an account — it takes a few seconds.
       </p>
 
-      <div class="kiosk-actions">
+      <div class="kiosk-actions" id="kioskActions">
         <button class="btn btn-primary btn-hero" id="loginBtn">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -49,6 +49,15 @@
           <span>Sign in</span>
         </button>
         <button class="btn btn-outline btn-hero" id="registerBtn">Create account</button>
+      </div>
+
+      <!-- Shown instead of the actions above while this station's own PC
+           status (pushed by the console, see onStationStatus) is
+           MAINTENANCE — same page, same layout, just nothing to sign in to. -->
+      <div class="kiosk-actions hidden" id="kioskMaintenanceBadge">
+        <span class="badge badge-lg" data-status="maintenance">
+          <span class="dot"></span>Under maintenance
+        </span>
       </div>
 
       <div class="kiosk-pc">
@@ -74,6 +83,11 @@
       var kioskWordEl = document.getElementById("kioskWord");
       var kioskLogoEl = document.getElementById("kioskLogo");
       var kioskInner = document.getElementById("kioskInner");
+      var kioskHeadEl = document.getElementById("kioskHead");
+      var kioskTextEl = document.getElementById("kioskText");
+      var kioskActionsEl = document.getElementById("kioskActions");
+      var kioskMaintenanceBadgeEl = document.getElementById("kioskMaintenanceBadge");
+      var READY_HEAD = kioskHeadEl.textContent;
       var backdropEl = document.querySelector(".backdrop");
       var wallpaperImgEl = document.getElementById("kioskWallpaperImg");
       var wallpaperVideoEl = document.getElementById("kioskWallpaperVideo");
@@ -141,6 +155,19 @@
         statusDot.setAttribute("data-status", online ? "online" : "offline");
         statusDot.classList.toggle("dot-live", online);
       }
+
+      /* Same page, same layout — under maintenance just swaps the heading
+         and replaces "Sign in / Create account" with a plain status badge,
+         so a customer at this station sees why rather than a dead end. */
+      function applyStationStatus(status) {
+        var underMaintenance = status === "MAINTENANCE";
+        kioskHeadEl.textContent = underMaintenance ? "Under maintenance" : READY_HEAD;
+        kioskTextEl.classList.toggle("hidden", underMaintenance);
+        kioskActionsEl.classList.toggle("hidden", underMaintenance);
+        kioskMaintenanceBadgeEl.classList.toggle("hidden", !underMaintenance);
+      }
+      if (window.api.getStationStatus) window.api.getStationStatus(applyStationStatus);
+      if (window.api.onStationStatus) window.api.onStationStatus(applyStationStatus);
 
       document.getElementById("loginBtn").addEventListener("click", function () {
         window.api.navigateTo("login");

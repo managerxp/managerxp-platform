@@ -41,47 +41,64 @@
         { id: "floor",     label: "Floor",     icon: "floor",     feature: "FLOOR",             permission: "floor.view" },
         { id: "sessions",  label: "Sessions",  icon: "sessions",  feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
         { id: "customers", label: "Customers", icon: "customers", feature: "CUSTOMERS",          permission: "customers.view" },
-        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING",            permission: "billing.counter" }
+        { id: "billing",   label: "Billing",   icon: "billing",   feature: "BILLING",            permission: "billing.counter" },
+        { id: "reservations",label: "Reservations",icon: "reservations", feature: "RESERVATIONS", permission: "sessions.view" }
       ]
     },
     {
       group: "Catalogue",
       items: [
-        { id: "games",       label: "Games",       icon: "games",     feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
-        { id: "game-library", label: "Game Library", icon: "games",   feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
-        { id: "credentials", label: "Game Credentials", icon: "settings", feature: "SESSION_MANAGEMENT", permission: "games.credentials" },
-        { id: "fnb",         label: "F&B",         icon: "fnb",       feature: "FNB",       permission: "products.view" },
-        { id: "inventory",   label: "Inventory",   icon: "inventory", feature: "INVENTORY", permission: "inventory.adjust" },
+        /* One entry, three existing pages as tabs — see makeHub. Each tab
+           keeps its own permission and plan feature, so folding the pages
+           together drops no gate: the entry shows for anyone who could open
+           any one tab, and inside it a tab shows only what they may use. */
+        { id: "hub-games", label: "Games", icon: "games", tabs: [
+          { id: "games",         label: "Station software", feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
+          { id: "game-library",  label: "Game library",     feature: "SESSION_MANAGEMENT", permission: "sessions.view" },
+          { id: "credentials",   label: "Credentials",      feature: "SESSION_MANAGEMENT", permission: "games.credentials" }
+        ] },
+        { id: "hub-fnb", label: "F&B", icon: "fnb", tabs: [
+          { id: "fnb",       label: "Menu",  feature: "FNB",       permission: "products.view" },
+          { id: "inventory", label: "Stock", feature: "INVENTORY", permission: "inventory.adjust" }
+        ] },
         /* Session Master used to be its own page; it's now the "Durations"
-           tab on this one — a price needs a duration to exist, so splitting
-           them across two menu items was two stops for one errand. Either
-           permission still opens it, so nobody who could reach one half
-           loses access now that they're the same page. */
-        { id: "gaming-prices", label: "Gaming Prices", icon: "billing", feature: "SESSION_MANAGEMENT", permission: ["pricing.manage", "sessions.manage"] },
-        { id: "pricing-windows", label: "Peak & Happy Hours", icon: "clock", feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
-        { id: "memberships", label: "Memberships", icon: "membership", feature: "MEMBERSHIP",  permission: "packages.manage" },
-        { id: "discounts",   label: "Discount Codes", icon: "sparkle", feature: "BILLING",      permission: "discounts.manage" },
-        { id: "reservations",label: "Reservations",icon: "reservations", feature: "RESERVATIONS", permission: "sessions.view" }
+           tab inside Prices & durations — a price needs a duration to exist,
+           so splitting them across two menu items was two stops for one
+           errand. Either permission still opens it. Peak & Happy Hours,
+           Memberships and Discount Codes are all pricing too, so they sit
+           beside it as tabs rather than as three more menu entries. */
+        { id: "hub-pricing", label: "Pricing", icon: "billing", tabs: [
+          { id: "gaming-prices",   label: "Prices & durations",  feature: "SESSION_MANAGEMENT", permission: ["pricing.manage", "sessions.manage"] },
+          { id: "pricing-windows", label: "Peak & Happy Hours",  feature: "SESSION_MANAGEMENT", permission: "pricing.manage" },
+          { id: "memberships",     label: "Memberships",         feature: "MEMBERSHIP",         permission: "packages.manage" },
+          { id: "discounts",       label: "Discount Codes",      feature: "BILLING",            permission: "discounts.manage" }
+        ] }
       ]
     },
     {
       group: "Infrastructure",
       items: [
-        { id: "devices",   label: "Devices",   icon: "devices",   feature: "PC_CONTROL", permission: "station.power" },
-        { id: "discovery", label: "Discovery", icon: "radar",                            permission: "floor.discovery" },
-        { id: "telemetry", label: "Telemetry", icon: "telemetry", feature: "PC_CONTROL", permission: "telemetry.view" },
-        { id: "logs",      label: "Server Log", icon: "logs",                            permission: "system.logs" }
+        { id: "hub-stations", label: "Stations", icon: "devices", tabs: [
+          { id: "devices",   label: "Devices",   feature: "PC_CONTROL", permission: "station.power" },
+          { id: "discovery", label: "Discovery",                        permission: "floor.discovery" },
+          { id: "telemetry", label: "Telemetry", feature: "PC_CONTROL", permission: "telemetry.view" }
+        ] },
       ]
     },
     {
       group: "Business",
       items: [
         { id: "ai",       label: "CafeXP AI", icon: "sparkle",  feature: "AI",      permission: "ai.ask" },
-        { id: "reports",  label: "Reports",  icon: "reports",   feature: "REPORTS", permission: "reports.view" },
-        { id: "payments", label: "Payments", icon: "billing",   feature: "BILLING", permission: ["payments.gateway.view", "payments.topup.view"] },
-        { id: "expenses", label: "Expenses", icon: "billing",                       permission: "expenses.view" },
+        { id: "hub-finance", label: "Finance", icon: "reports", tabs: [
+          { id: "reports",  label: "Reports",  feature: "REPORTS", permission: "reports.view" },
+          { id: "payments", label: "Payments", feature: "BILLING", permission: ["payments.gateway.view", "payments.topup.view"] },
+          { id: "expenses", label: "Expenses",                     permission: "expenses.view" }
+        ] },
         { id: "staff",    label: "Staff",    icon: "staff",     feature: "STAFF",   permission: "staff.view" },
-        { id: "audit",    label: "Audit Log", icon: "audit",                        permission: "audit.view" }
+        { id: "hub-activity", label: "Activity", icon: "audit", tabs: [
+          { id: "audit", label: "Audit log",  permission: "audit.view" },
+          { id: "logs",  label: "Server log", permission: "system.logs" }
+        ] },
       ]
     },
     {
@@ -100,16 +117,40 @@
          for it. */
       group: "Settings",
       items: [
-        { id: "settings", label: "Settings", icon: "settings",                    permission: "settings.view" },
-        { id: "receipt-template", label: "Receipt Template", icon: "edit", feature: "BILLING", permission: "settings.manage" },
-        { id: "plan",     label: "Subscription", icon: "plan",                    permission: "settings.view" },
-        { id: "updates",  label: "Updates", icon: "refresh",                      permission: "settings.view" }
+        /* Receipt Template, Subscription and Updates used to sit beside
+           Settings as their own entries, kept separate because Receipt
+           Template is gated on BILLING while Settings and Updates are
+           deliberately ungated (they must survive a lapsed plan — they are
+           how a café reads why and fixes it). As tabs of one hub each still
+           carries its own gate, so nothing is dropped: Receipts alone shows
+           the upsell on a plan without Billing, and the rest never do. */
+        { id: "hub-settings", label: "Settings", icon: "settings", tabs: [
+          { id: "settings",          label: "General",          permission: "settings.view" },
+          { id: "settings-branding", label: "Branding & print", permission: "settings.view" },
+          { id: "settings-sessions", label: "Sessions & kiosk", permission: "settings.view" },
+          { id: "receipt-template",  label: "Receipts",         feature: "BILLING", permission: "settings.manage" },
+          { id: "plan",              label: "Subscription",     permission: "settings.view" },
+          { id: "updates",           label: "Updates",          permission: "settings.view" }
+        ] }
       ]
     }
   ];
 
   var flat = {};
   NAV.forEach(function (g) { g.items.forEach(function (it) { flat[it.id] = it; }); });
+
+  /* Which hub a page id now lives in, so every existing CXRouter.go("games")
+     and the like keeps working: go() sends it to the hub, on that tab. */
+  var tabOwner = {};
+  NAV.forEach(function (g) {
+    g.items.forEach(function (it) {
+      if (!it.tabs) return;
+      it.tabs.forEach(function (t) { tabOwner[t.id] = it.id; });
+      if (it.tabs.every(function (t) { return t.permission; })) {
+        it.permission = [].concat.apply([], it.tabs.map(function (t) { return t.permission; }));
+      }
+    });
+  });
 
   /* Effective entitlements, as last fetched.
      `null` means "not yet known", which is deliberately different from "known
@@ -241,7 +282,34 @@
    * working café's navigation on the strength of an answer nobody gave would
    * be the worst possible failure mode.
    */
+  /* An ended trial or lapsed subscription: the console cannot be used until
+     they subscribe. Shown as a full-screen wall (not a toast) with the way to
+     buy, and the only other exit is signing out. */
+  function showSubscriptionWall(sub) {
+    if (document.getElementById("subWall")) return;
+    var trial = !!sub.is_trial;
+    var wall = document.createElement("div");
+    wall.id = "subWall";
+    wall.style.cssText = "position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:var(--bg,#0b0d12);padding:24px";
+    wall.innerHTML =
+      '<div class="card" style="max-width:460px;width:100%"><div class="card-body col gap-4" style="text-align:center">' +
+      '<h2 style="margin:0">' + (trial ? "Your free trial has ended" : "Your subscription is not active") + "</h2>" +
+      '<div class="faint">Choose a ManagerXP package to keep using CafeXP. Buy one on our website, ' +
+      "or contact us and we will activate a subscription for you.</div>" +
+      '<button class="btn btn-primary btn-lg btn-block" id="subWallBuy">View plans &amp; subscribe</button>' +
+      '<button class="btn btn-block" id="subWallContact">Contact us</button>' +
+      '<button class="btn btn-block" id="subWallOut">Sign out</button></div></div>';
+    document.body.appendChild(wall);
+    var api = window.desktop || window.api || {};
+    wall.querySelector("#subWallBuy").onclick = function () { if (api.openWebPage) api.openWebPage("subscription"); };
+    wall.querySelector("#subWallContact").onclick = function () { if (api.openWebPage) api.openWebPage("contact"); };
+    wall.querySelector("#subWallOut").onclick = function () { wall.remove(); Store.logout(); };
+  }
+
   function applyEntitlements(payload) {
+    var sub = payload && payload.subscription;
+    if (sub && ["EXPIRED", "SUSPENDED", "CANCELLED"].indexOf(sub.status) !== -1) showSubscriptionWall(sub);
+    else { var w = document.getElementById("subWall"); if (w) w.remove(); }
     var wasAllowed = current && flat[current] ? featureAllowed(flat[current]) : null;
 
     if (!payload || payload.resolved === false || !payload.features) {
@@ -365,9 +433,111 @@
   /* ==========================================================================
      VIEW SWAP
      ========================================================================== */
-  function go(id) {
+  /*
+   * A hub is a sidebar entry whose body is a row of tabs, each tab one of the
+   * existing page modules mounted unchanged — so merging pages means no page
+   * is rewritten. A tab is shown only if this role may use it, and shows the
+   * plan upsell instead of the page if its feature is not in the plan, the
+   * same two checks the sidebar applied to each page before they were merged.
+   * The last tab used is kept for as long as the console is open.
+   */
+  function makeHub(hub) {
+    var st = { tab: null, pending: null, mounted: null, body: null, bar: null, tools: null };
+
+    function allowedTabs() { return hub.tabs.filter(permissionAllowed); }
+
+    function teardown() {
+      var m = st.mounted && global.CXPages[st.mounted];
+      if (m && m.unmount) { try { m.unmount(); } catch (e) { console.error(e); } }
+      st.mounted = null;
+    }
+
+    function show(tab) {
+      teardown();
+      st.tab = tab.id;
+      Array.prototype.forEach.call(st.bar.querySelectorAll("button"), function (b) {
+        b.setAttribute("aria-selected", String(b.getAttribute("data-tab") === tab.id));
+      });
+      UI.clear(st.body);
+      if (st.tools) UI.clear(st.tools);
+
+      var page = global.CXPages[tab.id];
+      var crumb = document.getElementById("topbarCrumb");
+      if (crumb) crumb.textContent = (page && page.subtitle) || "";
+
+      if (!featureAllowed(tab)) { renderLockedFeature(st.body, tab); return; }
+      if (!page) { st.body.appendChild(UI.errorState("This page is not available.")); return; }
+
+      var incoming = UI.el("div", { class: "page-view" });
+      st.body.appendChild(incoming);
+      try {
+        page.mount(incoming, { tools: st.tools });
+        st.mounted = tab.id;
+      } catch (e) {
+        console.error("[router] mount failed for " + tab.id, e);
+        UI.clear(incoming);
+        incoming.appendChild(UI.errorState("This page failed to render: " + e.message));
+      }
+    }
+
+    function pick(id) {
+      var tabs = allowedTabs();
+      return tabs.filter(function (t) { return t.id === id; })[0] || tabs[0] || null;
+    }
+
+    return {
+      title: hub.label,
+      subtitle: "",
+
+      /* Called by go() before mount (to pick the opening tab) or while the
+         hub is already on screen (to switch tab in place). */
+      select: function (id) {
+        if (!st.bar || !st.bar.isConnected) { st.pending = id; return; }
+        var t = pick(id);
+        if (t && t.id !== st.tab) show(t);
+      },
+
+      mount: function (root, ctx) {
+        st.tools = ctx && ctx.tools;
+        var tabs = allowedTabs();
+
+        var barWrap = UI.el("div", { class: "page", style: { paddingBottom: "0" } });
+        st.bar = UI.el("div", { class: "tabs" });
+        tabs.forEach(function (t) {
+          st.bar.appendChild(UI.el("button", {
+            type: "button", "data-tab": t.id, text: t.label, "aria-selected": "false",
+            onClick: function () { if (t.id !== st.tab) show(t); }
+          }));
+        });
+        // One tab is not a choice — no bar.
+        if (tabs.length > 1) barWrap.appendChild(st.bar);
+        st.body = UI.el("div", {});
+        root.appendChild(barWrap);
+        root.appendChild(st.body);
+
+        var first = pick(st.pending || st.tab);
+        st.pending = null;
+        if (first) show(first);
+        else st.body.appendChild(UI.errorState("Nothing here is available to your role."));
+      },
+
+      unmount: function () { teardown(); st.bar = null; }
+    };
+  }
+
+  function registerHubs() {
+    NAV.forEach(function (g) {
+      g.items.forEach(function (it) { if (it.tabs) global.CXPages[it.id] = makeHub(it); });
+    });
+  }
+
+  function go(id, opts) {
+    var owner = tabOwner[id];
+    if (owner) return go(owner, { tab: id });
+
     var page = global.CXPages && global.CXPages[id];
     if (!page) { UI.toast.warn("Unknown page", id); return; }
+    if (opts && opts.tab && page.select) page.select(opts.tab);
     if (current === id) return;
 
     var item = flat[id];
@@ -471,6 +641,7 @@
      ========================================================================== */
   function init(opts) {
     host = opts.host;
+    registerHubs();
     renderSidebar(opts.sidebarNav);
     restoreSidebar();
 

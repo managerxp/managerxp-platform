@@ -401,23 +401,9 @@ export const startSession = async (req, res) => {
           message: 'Self-service start requires a fixed-price plan.'
         });
       }
-      const due = amountForSeconds(
-        { pricing_unit: pricing.pricing_unit, flat_amount: pricing.flat_amount,
-          membership_discount_percent: membership.percent },
-        0
-      );
-      const wallet = await client.query('SELECT balance FROM wallets WHERE customer_id = $1', [customerId]);
-      const balance = wallet.rows[0] ? Number(wallet.rows[0].balance) : 0;
-      if (balance < due) {
-        const shortfall = Number((due - balance).toFixed(2));
-        const credit = await checkCredit(client, customerId, shortfall, station.cafe_id);
-        if (!credit.ok) {
-          return res.status(402).json({
-            success: false,
-            message: `Your wallet holds ₹${balance.toFixed(0)}, and this needs ₹${due.toFixed(0)}. Top up to start.`
-          });
-        }
-      }
+      // The actual balance/duplicate-session check runs inside the same
+      // transaction as the session INSERT itself, just below — see the
+      // comment there for why it has to be that transaction and not this one.
     }
 
     /*
@@ -436,6 +422,54 @@ export const startSession = async (req, res) => {
     const { game_id, game_platform_id, game_account_id, use_venue_account } = req.body || {};
 
     await client.query('BEGIN');
+
+    if (req.body?.require_prepaid) {
+      /*
+       * Locked for the duration, and checked against every other station —
+       * not just this one — inside this same transaction, with no commit
+       * between this check and the session INSERT below. A check run in its
+       * own earlier transaction that committed before this one started would
+       * leave exactly the gap this exists to close: two near-simultaneous
+       * self-service starts for the same customer would each pass before
+       * either had actually inserted a session row for the other to see.
+       * FOR UPDATE means the second request's version of this same query
+       * blocks until the first request's whole transaction — INSERT and
+       * all — has committed or rolled back, not just until this check does.
+       */
+      const wallet = await client.query(
+        'SELECT balance FROM wallets WHERE customer_id = $1 FOR UPDATE', [customerId]);
+      const balance = wallet.rows[0] ? Number(wallet.rows[0].balance) : 0;
+
+      const alreadyOpen = await client.query(
+        `SELECT session_id FROM sessions WHERE customer_id = $1 AND status = ANY($2)`,
+        [customerId, OPEN_STATUSES]
+      );
+      if (alreadyOpen.rows.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          success: false,
+          message: 'You already have a session running — end it before starting another.',
+          data: { session_id: alreadyOpen.rows[0].session_id }
+        });
+      }
+
+      const due = amountForSeconds(
+        { pricing_unit: pricing.pricing_unit, flat_amount: pricing.flat_amount,
+          membership_discount_percent: membership.percent },
+        0
+      );
+      if (balance < due) {
+        const shortfall = Number((due - balance).toFixed(2));
+        const credit = await checkCredit(client, customerId, shortfall, station.cafe_id);
+        if (!credit.ok) {
+          await client.query('ROLLBACK');
+          return res.status(402).json({
+            success: false,
+            message: `Your wallet holds ₹${balance.toFixed(0)}, and this needs ₹${due.toFixed(0)}. Top up to start.`
+          });
+        }
+      }
+    }
 
     if (game_id !== undefined && game_id !== null && game_id !== '') {
       gameId = parseInt(game_id, 10);
@@ -802,10 +836,46 @@ export const updateSessionGame = (req, res) => mutate(req, res, async (client, r
     if (installed.rows[0]) gamePlatformId = requestedPlatformId;
   }
 
+  /* A venue-account game picked mid-session (the customer logged in with
+     their own account, so nothing was reserved at start) needs its shared
+     licence reserved now — otherwise no credential ever reaches the kiosk. */
+  let gameAccountId = row.game_account_id;
+  const mode = (await client.query(
+    `SELECT account_mode FROM cafe_games WHERE game_id = $1 AND cafe_id IS NOT DISTINCT FROM $2`,
+    [gameId, row.cafe_id]
+  )).rows[0]?.account_mode;
+  const wantsVenue = gamePlatformId && (mode === 'VENUE_ACCOUNT'
+    || (mode === 'CUSTOMER_OR_VENUE' && !!request.body?.use_venue_account));
+  if (wantsVenue) {
+    const wantedId = parseInt(request.body?.game_account_id, 10);
+    const held = gameAccountId && (!Number.isInteger(wantedId) || wantedId === gameAccountId) && (await client.query(
+      `SELECT 1 FROM game_accounts WHERE id = $1 AND game_platform_id = $2`, [gameAccountId, gamePlatformId]
+    )).rows[0];
+    if (!held) {
+      if (gameAccountId) {
+        await client.query(
+          `UPDATE game_accounts SET status = 'AVAILABLE', current_session_id = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1 AND status = 'IN_USE'`, [gameAccountId]);
+        gameAccountId = null;
+      }
+      const reserved = (await client.query(
+        `UPDATE game_accounts SET status = 'IN_USE', current_session_id = $3, updated_at = CURRENT_TIMESTAMP
+           WHERE id = (SELECT id FROM game_accounts
+                        WHERE cafe_id = $1 AND game_platform_id = $2 AND status = 'AVAILABLE'
+                          AND ($4::int IS NULL OR id = $4)
+                        ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+         RETURNING id`,
+        [row.cafe_id, gamePlatformId, row.session_id, Number.isInteger(wantedId) ? wantedId : null]
+      )).rows[0];
+      if (!reserved) return { error: 'No venue account is free for this game right now', status: 409 };
+      gameAccountId = reserved.id;
+    }
+  }
+
   await client.query(
-    `UPDATE sessions SET game_id = $2, game_platform_id = $3, updated_at = CURRENT_TIMESTAMP
+    `UPDATE sessions SET game_id = $2, game_platform_id = $3, game_account_id = $4, updated_at = CURRENT_TIMESTAMP
      WHERE session_id = $1`,
-    [row.session_id, gameId, gamePlatformId]
+    [row.session_id, gameId, gamePlatformId, gameAccountId]
   );
 
   return { message: 'Game recorded' };
@@ -1099,7 +1169,14 @@ const closeSession = async (id, { shouldCharge = true, reason = 'staff', actorLa
     /* Duration from the server's own timestamps and the amount from the
        session's own snapshot. Neither is taken from the request: what the
        browser believed the timer said has no bearing on what is charged. */
-    const billableSeconds = gracedSeconds(row, undefined, await graceSecondsForRow(row));
+    /* The console ends a session for a used-up balance from a check that only
+       runs every 15 seconds, so it can never act at the exact moment the
+       start-up buffer ends. The play in that gap is the console's lag, not the
+       customer's, and left billed it turns a zero-balance customer into a
+       ₹10 unpaid debt (hourly play rounds up to the next ₹10). Ends with this
+       reason get a little extra buffer to absorb it. */
+    const graceLag = reason === 'balance_exhausted' ? 30 : 0;
+    const billableSeconds = gracedSeconds(row, undefined, (await graceSecondsForRow(row)) + graceLag);
     const rate = Number(row.rate_per_hour || 0);
     /* Still inside the grace period: whatever this was priced at, the
        customer never really started playing, so it costs nothing — not just

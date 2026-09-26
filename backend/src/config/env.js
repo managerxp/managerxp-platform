@@ -15,6 +15,7 @@ const requiredEnvVars = [
   'DB_PORT',
   'DB_NAME',
   'JWT_SECRET',
+  'JWT_EXPIRE',
   'ADMIN_EMAIL',
   'ADMIN_PASSWORD'
 ];

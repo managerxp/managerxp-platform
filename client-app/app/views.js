@@ -386,6 +386,7 @@
        own-login-only has one possible answer, so asking would be a step that
        decides nothing. */
     var useVenue = null;
+    var selectedAccountId = null;   // the licence chosen for a venue-account game
 
     function needsAccountChoice(g) {
       return !!g && g.account_mode === "CUSTOMER_OR_VENUE";
@@ -455,6 +456,7 @@
           "</span>";
         el.addEventListener("click", function () {
           selectedGame = g;
+          selectedAccountId = null;
           useVenue = null;   // a new game asks its own account question
           render();
         });
@@ -492,8 +494,22 @@
       } else if (selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT") {
         var venueNote = UI.el("div", { class: "notice", dataset: { status: "idle" } });
         venueNote.innerHTML = Icon("info", 16) +
-          "<div>The café provides the account for this game — just pick how long you want to play.</div>";
+          "<div>The café provides the account for this game — choose a licence and how long you want to play.</div>";
         host.appendChild(venueNote);
+        (selectedGame.accounts || []).forEach(function (acc) {
+          var free = acc.status === "AVAILABLE";
+          var b = UI.el("button", {
+            class: "card card-pad row gap-4",
+            style: { alignItems: "center", textAlign: "left", cursor: free ? "pointer" : "not-allowed", opacity: free ? "1" : "0.5", width: "100%" },
+            dataset: selectedAccountId === acc.id ? { status: "accent" } : {}
+          });
+          b.disabled = !free;
+          b.innerHTML = '<span class="grow" style="font-weight:700">' + UI.esc(acc.name) + "</span>" +
+            '<span class="chip" data-status="' + (free ? "online" : "idle") + '">' + (free ? "Available" : "In use") + "</span>" +
+            (selectedAccountId === acc.id ? '<span class="tx-icon" data-status="online">' + Icon("check", 14) + "</span>" : "");
+          b.addEventListener("click", function () { selectedAccountId = acc.id; render(); });
+          host.appendChild(b);
+        });
       }
 
       host.appendChild(UI.el("div", { class: "shelf-title", text: step + ". Choose how long" }));
@@ -547,7 +563,8 @@
         html: Icon("play", 17) + '<span class="btn-label">' + (starting ? "Starting…" : "Start session") + "</span>"
       });
       // A game that offers both account routes cannot start until one is picked.
-      var accountAnswered = !needsAccountChoice(selectedGame) || useVenue !== null;
+      var accountAnswered = (!needsAccountChoice(selectedGame) || useVenue !== null)
+        && !(selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT" && (selectedGame.accounts || []).length && !selectedAccountId);
       // Can't afford it and no credit room to cover the gap either — the
       // notice above already says so in words; the button itself must not
       // be pressable for a doomed attempt (a regular within their credit
@@ -557,7 +574,8 @@
       startBtn.addEventListener("click", function () {
         starting = true;
         render();
-        Session.requestStartSession(selectedGame, selectedPriceId, resolvedUseVenue(selectedGame));
+        Session.requestStartSession(selectedGame, selectedPriceId, resolvedUseVenue(selectedGame),
+          selectedGame && selectedGame.account_mode === "VENUE_ACCOUNT" ? selectedAccountId : null);
       });
       host.appendChild(startBtn);
     }
@@ -640,6 +658,29 @@
           '<span class="btn btn-primary btn-sm" style="flex:0 0 auto">' + Icon("play", 14) +
             '<span class="btn-label">Play</span></span>';
         el.addEventListener("click", function () {
+          /* A venue-account game: the customer picks which licence to play on
+             (free ones only) and the station signs that account in. */
+          if (g.account_mode === "VENUE_ACCOUNT" && g.accounts) {
+            var picker = UI.el("div", { class: "col gap-3" });
+            var modal;
+            if (!g.accounts.length) {
+              picker.innerHTML = '<div class="faint">No licences are set up for this game. Please ask staff.</div>';
+            }
+            g.accounts.forEach(function (acc) {
+              var free = acc.status === "AVAILABLE";
+              var b = UI.el("button", { class: "card card-pad row gap-4", style: { alignItems: "center", textAlign: "left", cursor: free ? "pointer" : "not-allowed", opacity: free ? "1" : "0.5" } });
+              b.disabled = !free;
+              b.innerHTML = '<span class="grow" style="font-weight:700">' + UI.esc(acc.name) + "</span>" +
+                '<span class="chip" data-status="' + (free ? "online" : "idle") + '">' + (free ? "Available" : "In use") + "</span>";
+              b.addEventListener("click", function () {
+                modal.close();
+                Session.launchGame(Object.assign({}, g, { game_account_id: acc.id }));
+              });
+              picker.appendChild(b);
+            });
+            modal = UI.modal({ title: "Choose a licence for " + g.name, body: picker, actions: [{ label: "Cancel" }] });
+            return;
+          }
           Session.launchGame(g);   // portal's global "launching" handler shows the overlay
         });
         return el;
@@ -1851,9 +1892,11 @@
           '<div class="field">' +
             '<label class="field-label" for="acctUsername">Username</label>' +
             '<input class="input" id="acctUsername" maxlength="20" placeholder="Not set" ' +
-              'value="' + UI.esc(user.username || "") + '">' +
-            '<div class="field-hint">3–20 characters, starting with a letter — letters, numbers and ' +
-              'underscore only. Sign in with this instead of your email, once set.</div>' +
+              (user.username ? "readonly " : "") + 'value="' + UI.esc(user.username || "") + '">' +
+            '<div class="field-hint">' + (user.username
+              ? "Your username can’t be changed."
+              : "3–20 characters, starting with a letter — letters, numbers and underscore only. " +
+                "Once set it can’t be changed. Sign in with it instead of your email.") + '</div>' +
             '<div class="field-hint hidden" id="acctUsernameStatus"></div>' +
           "</div>" +
           '<div class="field">' +
@@ -1929,10 +1972,10 @@
         errorBox.classList.add("hidden");
 
         var payload = {
-          username: editCard.querySelector("#acctUsername").value.trim(),
           phone_number: editCard.querySelector("#acctPhone").value.trim(),
           address: editCard.querySelector("#acctAddress").value.trim()
         };
+        if (!user.username) payload.username = editCard.querySelector("#acctUsername").value.trim();
         if (payload.username && !usernameAvailable) {
           errorBox.textContent = "That username is already taken.";
           errorBox.classList.remove("hidden");

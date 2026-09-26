@@ -222,13 +222,10 @@ export const register = async (req, res) => {
 // Login function
 export const login = async (req, res) => {
   try {
-    /* login.html sends `identifier` (its field accepts an email today, and
-       is labelled to eventually accept a username too, per its own
-       comment) — `email` is kept as a fallback for any other caller still
-       using the older shape. There is no username lookup implemented
-       anywhere yet, so identifier is always treated as an email for now;
-       that's a real gap if username login is wanted, but a separate,
-       larger feature from what's broken here. */
+    /* login.html sends `identifier` (its field accepts an email or a
+       username) — `email` is kept as a fallback for any other caller still
+       using the older shape. Matched against either column below, both
+       scoped to this café since a bare username is only unique per café. */
     const { email, identifier, password, pc_name } = req.body;
     const loginEmail = (identifier || email || '').trim();
 
@@ -261,11 +258,11 @@ export const login = async (req, res) => {
       });
     }
 
-    // Find user by email, scoped to this café
+    // Find user by email or username, scoped to this café
     const findUserQuery = `
       SELECT customer_id, customer_name, email, phone_number, password, address, created_at, updated_at, email_verified
       FROM customers
-      WHERE LOWER(email) = LOWER($1) AND cafe_id = $2
+      WHERE cafe_id = $2 AND (LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($1))
     `;
 
     const result = await pool.query(findUserQuery, [loginEmail, cafeId]);
@@ -651,7 +648,9 @@ export const updateMyProfile = async (req, res) => {
     const values = [];
     let n = 1;
 
-    if (username !== undefined) {
+    // A username is permanent once set — the customer signs in with it. Only
+    // a customer who never set one may claim one; after that it is ignored.
+    if (username !== undefined && !own.rows[0].username) {
       const trimmed = String(username || '').trim();
       // Blank clears it back to "not set" — the field's own placeholder
       // already says as much. Unchanged from what this customer already has
@@ -668,7 +667,7 @@ export const updateMyProfile = async (req, res) => {
           return res.status(409).json({ success: false, message: 'That username is already taken.' });
         }
       }
-      updates.push(`username = $${n++}`); values.push(trimmed || null);
+      if (trimmed) { updates.push(`username = $${n++}`); values.push(trimmed); }
     }
     if (phone_number !== undefined) {
       const trimmed = String(phone_number || '').trim();

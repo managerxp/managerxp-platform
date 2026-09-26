@@ -164,7 +164,7 @@ export const createSoftware = async (req, res) => {
     res.status(500).json({ 
       success: false, 
       message: 'Internal server error',
-      error: error.message 
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined 
     });
   }
 };

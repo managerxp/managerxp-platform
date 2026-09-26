@@ -323,6 +323,27 @@ export const initializeDatabase = async () => {
         ON wallet_transactions (customer_id, created_at DESC)
     `);
 
+    /*
+     * This ledger is documented above as append-only, but its foreign keys
+     * were still ON DELETE CASCADE — deleting a wallet or a customer (which
+     * itself cascades from a permanent café delete) silently erased their
+     * entire financial history instead of leaving the append-only record
+     * bills/payments already correctly preserve via SET NULL. Migrated to
+     * match: the row survives, orphaned, rather than vanishing.
+     */
+    await client.query(`ALTER TABLE wallet_transactions ALTER COLUMN wallet_id DROP NOT NULL`);
+    await client.query(`ALTER TABLE wallet_transactions ALTER COLUMN customer_id DROP NOT NULL`);
+    await client.query(`ALTER TABLE wallet_transactions DROP CONSTRAINT IF EXISTS wallet_transactions_wallet_id_fkey`);
+    await client.query(`
+      ALTER TABLE wallet_transactions ADD CONSTRAINT wallet_transactions_wallet_id_fkey
+        FOREIGN KEY (wallet_id) REFERENCES wallets(wallet_id) ON DELETE SET NULL
+    `);
+    await client.query(`ALTER TABLE wallet_transactions DROP CONSTRAINT IF EXISTS wallet_transactions_customer_id_fkey`);
+    await client.query(`
+      ALTER TABLE wallet_transactions ADD CONSTRAINT wallet_transactions_customer_id_fkey
+        FOREIGN KEY (customer_id) REFERENCES customers(customer_id) ON DELETE SET NULL
+    `);
+
     console.log('✅ Wallet tables created/verified');
 
     // session master — the sellable durations (30 Minutes, 1 Hour, Any Time…)
@@ -2372,6 +2393,16 @@ export const initializeDatabase = async () => {
         -- The printed template.
         ('billing.logo',         '',      'string',  'billing',
          'Café logo for the receipt head, stored as a data URI'),
+        ('billing.kiosk_logo',   '',      'string',  'billing',
+         'Logo on the kiosk welcome screen, stored as a data URI. Blank uses billing.logo'),
+
+        -- Printing. Whether receipts print at all, and where they go.
+        ('billing.print_enabled','true',  'boolean', 'billing',
+         'Print receipts from the console. Off leaves the Print button disabled'),
+        ('billing.printer_name', '',      'string',  'billing',
+         'Windows printer receipts go to. Blank uses the system default printer'),
+        ('billing.print_silent', 'false', 'boolean', 'billing',
+         'Print straight to the printer without the Windows print dialog'),
 
         -- The kiosk welcome screen's background — a real uploaded file
         -- (see brandingUpload.js), so only its short /uploads/... URL and

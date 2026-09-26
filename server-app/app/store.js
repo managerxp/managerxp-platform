@@ -418,7 +418,20 @@
   }
 
   function updatePC(pcId, payload) {
-    return request("/api/pcs/" + pcId, { method: "PUT", body: JSON.stringify(payload) });
+    return request("/api/pcs/" + pcId, { method: "PUT", body: JSON.stringify(payload) })
+      .then(function (r) {
+        // Live-push a status change to the kiosk right away — its idle
+        // welcome screen shows "Under maintenance" off this, and a customer
+        // sitting there shouldn't have to wait for a reconnect to see it.
+        if (payload.status && api.pushStationStatus) {
+          var pc = (r && r.data && r.data.name) ? r.data : state.pcs.filter(function (p) {
+            return p.pc_id === pcId;
+          })[0];
+          var pcName = pc && pc.name;
+          if (pcName) api.pushStationStatus(pcName, payload.status).catch(function () {});
+        }
+        return r;
+      });
   }
 
   /** Soft delete — backend sets is_active = false unless ?permanent=true. */
@@ -847,7 +860,7 @@
       });
 
       /*
-       * Balance exhausted on an open-ended (HOUR/occupancy) session: end it
+       * Balance used up on an open-ended (HOUR/occupancy) session: end it
        * the same way a customer's own logout would — no played time is lost,
        * nothing here decides the charge, endSession's existing settle path
        * does exactly what it always does. Scoped tightly: only a signed-in
@@ -859,18 +872,38 @@
        * till already honours at settle time), so this must never end a
        * regular's session just for going into credit they were granted.
        *
-       * TEMPORARILY DISABLED (2026-09-17): this was ending real customer
-       * sessions it should not have — confirmed a regular customer well
-       * within their credit limit got auto-ended. Off while the root cause
-       * is found; nothing here runs until it's back.
+       * Was disabled 2026-09-17 after wrongly auto-ending a regular customer
+       * well within their credit limit — root cause was the floor being
+       * read as a hard-coded zero. Fixed by session.Controller.js's shape()
+       * now computing and exposing the real per-customer wallet_floor (see
+       * its own comment), which floor below reads instead of assuming zero.
        */
-      if (false) Object.keys(sessions).forEach(function (pcName) {
+      Object.keys(sessions).forEach(function (pcName) {
         var s = sessions[pcName];
         if (!s || s.pricing_unit !== "HOUR" || !s.customer_id) return;
         if (s.status !== "active" && s.status !== "paused") return;
         if (s.wallet_balance === null || s.wallet_balance === undefined) return;
+        // Never inside the free start-up buffer — nothing is billed there, so
+        // a customer with no balance still gets the buffer, then is ended.
+        if (s.billing_phase !== "active") return;
+
+        /* End once what they have used reaches what they can still spend: the
+           balance plus, for a regular, their credit limit (floor is 0 or
+           negative). This covers a zero balance (ended as soon as the buffer
+           is over) and a low one (ended as the money runs out) — balance is
+           only debited when the session ends, so the balance itself never
+           drops while they play.
+
+           closeSession rounds an hourly charge up to the next 10, and settles
+           it whole or not at all. So the cut-off is the last multiple of 10
+           they can afford, less one poll's worth of play (this loop runs every
+           15s) — ending a little early keeps the final charge inside what
+           they can pay instead of leaving an unpaid remainder. */
         var floor = Number(s.wallet_floor) || 0;
-        if (Number(s.wallet_balance) > floor) return;
+        var available = Number(s.wallet_balance) - floor;
+        var limit = Math.floor(Math.max(available, 0) / 10) * 10;
+        var pollPlay = (Number(s.rate_per_hour) || 0) * 20 / 3600;
+        if (Number(s.running_amount) < limit - pollPlay) return;
         if (endingForBalance[s.session_id]) return;
         endingForBalance[s.session_id] = true;
         endSession(s, { reason: "balance_exhausted" })
@@ -1133,6 +1166,22 @@
     if (!pcId) return api.pushGames(pcName, []).catch(function () {});
     return getPcGames(pcId)
       .then(function (body) {
+        /* Venue-account games: attach the licences (name + free/in-use only —
+           never a password) so the customer can pick one. */
+        var wanted = [];
+        (body.data.games || []).forEach(function (g) {
+          if (g.enabled && g.account_mode === "VENUE_ACCOUNT") (g.platforms || []).forEach(function (p) {
+            if (p.installed) wanted.push(p.id);
+          });
+        });
+        return Promise.all(wanted.map(function (id) {
+          return request("/api/games/platforms/" + id + "/accounts")
+            .then(function (r) { return [id, (r.data || []).filter(function (a) { return a.status !== "DISABLED"; })]; })
+            .catch(function () { return [id, []]; });
+        })).then(function (pairs) { return [body, pairs.reduce(function (m, p) { m[p[0]] = p[1]; return m; }, {})]; });
+      })
+      .then(function (bp) {
+        var body = bp[0], accountsByPlatform = bp[1];
         /* One entry per (game, platform installed here) — the same game on
            both Steam and EA is two launchable things on this station, and
            the station has to know which one it is starting. */
@@ -1149,6 +1198,9 @@
               category: g.category,
               icon_url: g.icon_url,
               account_mode: g.account_mode,
+              accounts: (accountsByPlatform[p.id] || []).map(function (a) {
+                return { id: a.id, name: a.account_name, status: a.status };
+              }),
               platform: p.platform,
               platform_game_id: p.platform_game_id,
               launch_method: p.launch_method,
@@ -1277,9 +1329,9 @@
    * caller's point of view: a failed report loses a display detail, not
    * money or play time, so it is never worth surfacing as an error toast.
    */
-  function reportGameLaunched(session, gameId, gamePlatformId) {
+  function reportGameLaunched(session, gameId, gamePlatformId, gameAccountId) {
     return sessionAction(session.session_id, "game", {
-      game_id: gameId, game_platform_id: gamePlatformId
+      game_id: gameId, game_platform_id: gamePlatformId, game_account_id: gameAccountId || undefined
     }).then(function (r) {
       return afterSessionChange(r.data, session.pc_name);
     });
@@ -1793,6 +1845,13 @@
         // A station that just (re)connected needs its session pushed again,
         // otherwise a client restart would lose the customer's countdown.
         pushSessionToStation(n, state.sessions[n] || null);
+        // Same reasoning for status — a station that reconnects (or one the
+        // console only just noticed) needs to know right away whether it's
+        // under maintenance, not wait for the next edit to tell it.
+        var pc = getPC(n);
+        if (pc && api.pushStationStatus) {
+          api.pushStationStatus(n, pc.status || "AVAILABLE").catch(function () {});
+        }
       }
     });
     before.forEach(function (n) {
@@ -2161,7 +2220,7 @@
         var pcName = data && data.pcName;
         var session = pcName && state.sessions[pcName];
         if (!session || !data || !data.gameId) return;
-        reportGameLaunched(session, data.gameId, data.gamePlatformId)
+        reportGameLaunched(session, data.gameId, data.gamePlatformId, data.gameAccountId)
           .catch(function (e) { console.warn("[store] game-launch report failed", e.message); });
       });
     }
@@ -2338,6 +2397,18 @@
              same shape pushGamesToStation sends, so the customer's picker and
              the launcher read the same fields either way. */
           var games = [];
+          var venuePlatforms = [];
+          (results[0].data.games || []).forEach(function (g) {
+            if (g.enabled && g.account_mode === "VENUE_ACCOUNT") (g.platforms || []).forEach(function (p) {
+              if (p.installed) venuePlatforms.push(p.id);
+            });
+          });
+          return Promise.all(venuePlatforms.map(function (id) {
+            return request("/api/games/platforms/" + id + "/accounts")
+              .then(function (r) { return [id, (r.data || []).filter(function (a) { return a.status !== "DISABLED"; })]; })
+              .catch(function () { return [id, []]; });
+          })).then(function (pairs) {
+          var accountsByPlatform = pairs.reduce(function (m, x) { m[x[0]] = x[1]; return m; }, {});
           (results[0].data.games || []).forEach(function (g) {
             if (!g.enabled) return;
             (g.platforms || []).forEach(function (p) {
@@ -2346,6 +2417,9 @@
                 cafe_game_id: g.cafe_game_id, game_id: g.game_id, game_platform_id: p.id,
                 name: g.name, category: g.category, icon_url: g.icon_url,
                 account_mode: g.account_mode, platform: p.platform,
+                accounts: (accountsByPlatform[p.id] || []).map(function (a) {
+                  return { id: a.id, name: a.account_name, status: a.status };
+                }),
                 platform_game_id: p.platform_game_id, launch_method: p.launch_method,
                 launch_target: p.launch_target, launch_target_override: p.launch_target_override,
                 cafe_launch_target_override: p.cafe_launch_target_override,
@@ -2370,6 +2444,7 @@
             };
           });
           if (api.pushStartOptions) api.pushStartOptions(pcName, games, prices);
+          });
         });
       });
     }

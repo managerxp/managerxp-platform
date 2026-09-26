@@ -896,9 +896,7 @@
         {
           label: "Print", variant: "primary", icon: "download",
           onClick: function () {
-            document.body.classList.add("printing-receipt");
-            global.print();
-            setTimeout(function () { document.body.classList.remove("printing-receipt"); }, 500);
+            CXReceipt.print();
             return false;
           }
         }

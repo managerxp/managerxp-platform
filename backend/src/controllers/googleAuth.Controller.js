@@ -49,17 +49,49 @@ const fail = (res, reason) =>
 /* ==========================================================================
    GET /api/auth/google
    ========================================================================== */
-/* Accept the frontend's own origin as where the browser started from, so the
-   post-login redirect lands back on whichever host/IP actually served the
-   login page — the LAN IP of a second machine, not just whatever single
-   address happens to be in .env. Only a bare http(s) origin is trusted
-   (scheme+host+port, no path); anything else falls back to .env's default. */
+/* Extra origins allowed on top of the checks below — a real production
+   domain that genuinely isn't PUBLIC_BASE_URL/FRONTEND, if one is ever
+   needed. Comma-separated exact origins (scheme+host+port). Empty by
+   default: FRONTEND and private-network hosts already cover the documented
+   use case (see isTrustedOrigin below) without this being set at all. */
+const EXTRA_ALLOWED_ORIGINS = (process.env.GOOGLE_ALLOWED_ORIGINS || '')
+  .split(',').map((s) => s.trim()).filter(Boolean);
+
+/* A private/loopback IPv4 literal — 127.0.0.1, 10.x, 172.16-31.x, 192.168.x,
+   169.254.x (link-local) — or "localhost". A café's own frontend reachable
+   at a LAN IP is exactly this; a public attacker domain never is, because
+   the attacker cannot make their own domain literally BE a private address. */
+const isPrivateOrLoopbackHost = (hostname) => {
+  if (hostname === 'localhost') return true;
+  const m = hostname.match(/^(\d{1,3})\.(\d{1,3})\.\d{1,3}\.\d{1,3}$/);
+  if (!m) return false;
+  const a = Number(m[1]), b = Number(m[2]);
+  return a === 127 || a === 10 || (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) || (a === 169 && b === 254);
+};
+
+/*
+ * Accept the frontend's own origin as where the browser started from, so the
+ * post-login redirect lands back on whichever host/IP actually served the
+ * login page — the LAN IP of a second machine, not just whatever single
+ * address happens to be in .env.
+ *
+ * That flexibility must not extend to an arbitrary public domain: this
+ * origin ends up carrying a live session token in the final redirect (see
+ * googleCallback), so accepting anything here was a way to steer a victim's
+ * token to an attacker's own site. Trusted origins are FRONTEND itself,
+ * anything in GOOGLE_ALLOWED_ORIGINS, or a private/loopback host — every
+ * other origin is refused and the caller falls back to POST_LOGIN.
+ */
 const parseOrigin = (raw) => {
   if (!raw) return null;
   try {
     const u = new URL(String(raw));
     if (u.protocol !== 'http:' && u.protocol !== 'https:') return null;
-    return u.origin;
+    if (u.origin === new URL(FRONTEND).origin) return u.origin;
+    if (EXTRA_ALLOWED_ORIGINS.includes(u.origin)) return u.origin;
+    if (isPrivateOrLoopbackHost(u.hostname)) return u.origin;
+    return null;
   } catch { return null; }
 };
 

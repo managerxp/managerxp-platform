@@ -117,12 +117,6 @@ export const requireStaff = (message) => (req, res, next) => {
 };
 
 /**
- * Moving money: staff only. A customer must never be able to credit their own
- * wallet, so the customer app is deliberately read-only here.
- */
-export const canMoveMoney = requireStaff('Only café staff can adjust a wallet');
-
-/**
  * The ManagerXP platform administrator — the vendor, not a café.
  *
  * This is a different axis of authority to everything else in this file. A

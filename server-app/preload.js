@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("api", {
   // Web app navigation
   openWebApp: () => ipcRenderer.send("auth:open-web-app"),
   openWebAppSignup: () => ipcRenderer.send("auth:open-web-app-signup"),
+  openWebPage: (page) => ipcRenderer.send("auth:open-web-page", page),
   
   // Logging
   onLog: (cb) => ipcRenderer.on("log", (_, msg) => cb(msg)),
@@ -43,6 +44,10 @@ contextBridge.exposeInMainWorld("api", {
   pushExtendTimer: (pcName, minutes) => ipcRenderer.invoke("session:push-extend-timer", { pcName, minutes }),
   // Tell one connected station a newer client build is available.
   pushUpdateAvailable: (pcName, payload) => ipcRenderer.invoke("update:push-available", { pcName, payload }),
+  // Tell one connected station its current PC status (maintenance, etc).
+  pushStationStatus: (pcName, status) => ipcRenderer.invoke("station:push-status", { pcName, status }),
+  listPrinters: () => ipcRenderer.invoke("printer:list"),
+  printReceipt: (opts) => ipcRenderer.invoke("printer:print", opts),
   // Send a station the games its customer may choose from (installed + enabled).
   pushGames: (pcName, games) => ipcRenderer.invoke("session:push-games", { pcName, games }),
   // End-of-session cleanup on a station (close game, sign launchers out, free PC).

@@ -17,6 +17,10 @@
  */
 import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
+import { pruneOldInstallers } from '../middleware/releaseUpload.js';
+
+// Installers kept on disk per channel: the latest, plus the previous one for a rollback. Set to 1 to keep only the latest.
+const KEEP_INSTALLERS = 2;
 import { resolveOrganizationForCafe, getSubscription } from '../modules/entitlements/entitlements.service.js';
 
 const LIVE_STATUSES = new Set(['TRIAL', 'ACTIVE', 'PAST_DUE', 'GRACE_PERIOD']);
@@ -479,6 +483,34 @@ export const createRelease = async (req, res) => {
       summary: `${publish ? 'Published' : 'Drafted'} ${product} ${component} ${version} (${channel})`,
       meta: { product, component, version, channel, mandatory: rows[0].is_mandatory }
     });
+
+    /* Keep the newest published installers per channel (the latest plus the
+       one before it, for a rollback) and delete the rest — see
+       pruneOldInstallers. Names are taken from both file_name and the
+       download URL so a mismatch between the two can never make this delete
+       the very installer that was just published. Best-effort: a failure
+       here must not fail a release that is already saved. */
+    if (publish) {
+      try {
+        const latest = await client.query(`
+          SELECT file_name, download_url FROM (
+            SELECT file_name, download_url,
+                   ROW_NUMBER() OVER (PARTITION BY product, channel ORDER BY version_sort DESC) AS rank
+            FROM client_releases
+            WHERE component = $1 AND is_published
+          ) r WHERE rank <= $2
+        `, [component, KEEP_INSTALLERS]);
+        const keep = [];
+        latest.rows.forEach((r) => {
+          keep.push(r.file_name);
+          if (r.download_url) keep.push(decodeURIComponent(String(r.download_url).split('?')[0].split('/').pop()));
+        });
+        const removed = await pruneOldInstallers(component, keep);
+        if (removed) console.log(`[releases] removed ${removed} old ${component} installer(s)`);
+      } catch (e) {
+        console.warn('[releases] could not prune old installers:', e.message);
+      }
+    }
 
     res.status(201).json({
       success: true,

@@ -38,10 +38,13 @@ billingRouter.get('/:id', requireAuth, feature, getBill);
 
 billingRouter.post('/:id/items', staff, feature, addItem);
 billingRouter.delete('/:id/items/:itemId', staff, feature, removeItem);
-billingRouter.patch('/:id/discount', staff, feature, applyAdjustment);
-billingRouter.post('/:id/discount-code', staff, feature, applyDiscountCode);
+// Discounting, taking payment and voiding all have their own permission key,
+// assigned per role (see database.js's permission seed) — "is any staff" let
+// a role with no finance access still discount, mark paid, or void a bill.
+billingRouter.patch('/:id/discount', requirePermission('billing.discount'), feature, applyAdjustment);
+billingRouter.post('/:id/discount-code', requirePermission('billing.discount'), feature, applyDiscountCode);
 billingRouter.delete('/:id/discount-code', staff, feature, removeDiscountCode);
-billingRouter.post('/:id/payments', staff, feature, recordPayment);
+billingRouter.post('/:id/payments', requirePermission('billing.payment'), feature, recordPayment);
 // Returning money is at least as sensitive as voiding, so it has its own key.
 /*
  * Refunds.
@@ -59,6 +62,6 @@ billingRouter.post('/:id/refund', requirePermission('billing.refund'), feature, 
 billingRouter.get('/:billId/refundable', requirePermission('billing.view'), feature, getRefundable);
 billingRouter.get('/:billId/refunds', requirePermission('billing.view'), feature, listBillRefunds);
 billingRouter.patch('/:id/customer', staff, feature, claimBill);
-billingRouter.post('/:id/void', staff, feature, voidBill);
+billingRouter.post('/:id/void', requirePermission('billing.void'), feature, voidBill);
 
 export default billingRouter;

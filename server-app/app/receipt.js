@@ -119,5 +119,39 @@
       "</div>";
   }
 
-  global.CXReceipt = { buildHtml: buildHtml, widthClass: widthClass, money: money };
+  /*
+   * Every Print button goes through here, so whether receipts print at all
+   * and which printer they go to are the café's choice (Settings → Branding
+   * & print) rather than whatever the Windows dialog offers. Read fresh each
+   * time: printing is rare, and a change in Settings must apply to the very
+   * next receipt.
+   */
+  function print() {
+    var UI = global.CXUI, Store = global.CXStore;
+    return Store.getSettings("billing").catch(function () { return []; }).then(function (rows) {
+      var s = {};
+      (rows || []).forEach(function (r) { s[r.setting_key] = r.setting_value; });
+
+      if (String(s["billing.print_enabled"]) === "false") {
+        UI.toast.warn("Printing is turned off", "Turn it on in Settings → Branding & print.");
+        return;
+      }
+
+      document.body.classList.add("printing-receipt");
+      var done = function () { document.body.classList.remove("printing-receipt"); };
+
+      if (String(s["billing.print_silent"]) === "true" && global.api && global.api.printReceipt) {
+        return global.api.printReceipt({ silent: true, deviceName: s["billing.printer_name"] || "" })
+          .then(function (r) {
+            if (!r.success) UI.toast.error("Could not print", r.reason || "The printer did not accept the job.");
+          })
+          .then(done, done);
+      }
+
+      global.print();
+      setTimeout(done, 500);
+    });
+  }
+
+  global.CXReceipt = { buildHtml: buildHtml, widthClass: widthClass, money: money, print: print };
 })(window);

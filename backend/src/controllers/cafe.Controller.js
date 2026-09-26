@@ -1,4 +1,5 @@
-import pool from '../config/database.js'; 
+import pool from '../config/database.js';
+import { recordAudit } from '../config/audit.js';
 
 // Create cafe with branches
 export const createCafe = async (req, res) => {
@@ -49,7 +50,7 @@ export const createCafe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error creating cafe',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   } finally {
     client.release();
@@ -169,7 +170,7 @@ export const updateCafe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error updating cafe',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   } finally {
     client.release();
@@ -185,19 +186,54 @@ export const deleteCafe = async (req, res) => {
     const { permanent } = req.query; // If permanent=true, hard delete
     
     if (permanent === 'true') {
+      /*
+       * Irreversible: customers, wallets, orders, products and packages all
+       * cascade from this row (see schema.cafeScoping.js). What actually
+       * happened here can't be reconstructed from the database afterward —
+       * the ledger itself (wallet_transactions) now survives as an orphaned
+       * record rather than cascading away too, but this snapshot is the only
+       * place the café's name and what it had at the moment of deletion are
+       * recorded together. Taken before the delete, in the same connection,
+       * so it reflects exactly what is about to be destroyed.
+       */
+      const before = await client.query(
+        `SELECT c.name,
+                (SELECT COUNT(*) FROM customers WHERE cafe_id = c.cafe_id) AS customer_count,
+                (SELECT COALESCE(SUM(w.balance), 0) FROM wallets w
+                   JOIN customers cu ON cu.customer_id = w.customer_id
+                  WHERE cu.cafe_id = c.cafe_id) AS total_wallet_balance
+           FROM cafes c WHERE c.cafe_id = $1`,
+        [cafe_id]
+      );
+
       // Hard delete - will cascade to branches due to ON DELETE CASCADE
       const result = await client.query(
         'DELETE FROM cafes WHERE cafe_id = $1 RETURNING *',
         [cafe_id]
       );
-      
+
       if (result.rows.length === 0) {
         return res.status(404).json({
           success: false,
           message: 'Cafe not found'
         });
       }
-      
+
+      const snapshot = before.rows[0] || {};
+      await recordAudit(req, {
+        action: 'cafe.permanent_delete',
+        category: 'admin',
+        entity: 'cafe',
+        entity_id: cafe_id,
+        sensitive: true,
+        summary: `Permanently deleted café "${snapshot.name || result.rows[0].name}" — ` +
+          `${snapshot.customer_count || 0} customer(s), ${snapshot.total_wallet_balance || 0} in wallet balances`,
+        meta: {
+          customer_count: snapshot.customer_count || 0,
+          total_wallet_balance: snapshot.total_wallet_balance || 0
+        }
+      });
+
       res.status(200).json({
         success: true,
         message: 'Cafe permanently deleted successfully',
@@ -239,7 +275,7 @@ export const deleteCafe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting cafe',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   } finally {
     client.release();
@@ -356,7 +392,7 @@ export const getAllCafes = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching cafes',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -417,7 +453,7 @@ export const getCafeById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching cafe',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -458,7 +494,7 @@ export const getCafeById = async (req, res) => {
 //     res.status(500).json({
 //       success: false,
 //       message: 'Error adding branch',
-//       error: error.message
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
 //     });
 //   }
 // };
@@ -534,7 +570,7 @@ export const getCafeById = async (req, res) => {
 //     res.status(500).json({
 //       success: false,
 //       message: 'Error updating branch',
-//       error: error.message
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
 //     });
 //   }
 // };
@@ -590,7 +626,7 @@ export const getCafeById = async (req, res) => {
 //     res.status(500).json({
 //       success: false,
 //       message: 'Error deleting branch',
-//       error: error.message
+//       error: process.env.NODE_ENV === 'development' ? error.message : undefined
 //     });
 //   }
 // };

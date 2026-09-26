@@ -117,7 +117,7 @@ export const getAllPCs = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching PCs',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -157,7 +157,7 @@ export const getPCById = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -332,7 +332,7 @@ export const createPC = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error creating PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -536,7 +536,7 @@ export const updatePC = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error updating PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -625,7 +625,7 @@ export const deletePC = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error deleting PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -674,7 +674,7 @@ export const restorePC = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error restoring PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -708,7 +708,7 @@ export const getPCsByBranch = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching PCs by branch',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -758,7 +758,7 @@ export const getActivePCs = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching active PCs',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -795,7 +795,7 @@ export const getPCsByCafe = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error fetching PCs by cafe',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -889,7 +889,7 @@ export const checkPCExists = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error checking PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };
@@ -1002,7 +1002,7 @@ export const registerDiscoveredPC = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Error registering PC',
-      error: error.message
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 };

@@ -43,8 +43,10 @@
     dot.setAttribute("data-status", state);
     dot.classList.toggle("dot-live", c.online > 0);
 
-    Router.setBadge("discovery", c.discovered, "accent");
-    Router.setBadge("devices", c.failing, "muted");
+    // One entry now holds Devices and Discovery — new PCs waiting to be
+    // registered matter more than failing ones, so they win the badge.
+    if (c.discovered) Router.setBadge("hub-stations", c.discovered, "accent");
+    else Router.setBadge("hub-stations", c.failing, "muted");
   }
 
   /* ---------- User chip / account menu ---------- */

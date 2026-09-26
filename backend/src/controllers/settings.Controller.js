@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import pool from '../config/database.js';
 import { recordAudit } from '../config/audit.js';
 import { invalidate, getAllSettings, setSetting } from '../config/settings.js';
+import { optimizeWallpaper } from '../middleware/brandingUpload.js';
 
 /*
  * Settings — the values that used to be constants in the controllers.
@@ -286,7 +287,21 @@ export const uploadWallpaper = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file was uploaded' });
     const type = req.file.mimetype.startsWith('video/') ? 'video' : 'image';
-    res.json({ success: true, data: { url: `/uploads/${req.file.filename}`, type } });
+
+    let filename = req.file.filename;
+    if (type === 'image') {
+      try {
+        // Re-encoded — see optimizeWallpaper's own comment. A file that
+        // isn't actually a decodable image, whatever it claimed to be,
+        // throws here instead of getting stored.
+        filename = await optimizeWallpaper(req.file.path);
+      } catch (e) {
+        await fs.unlink(req.file.path).catch(() => {});
+        return res.status(400).json({ success: false, message: 'That file is not a valid image' });
+      }
+    }
+
+    res.json({ success: true, data: { url: `/uploads/${filename}`, type } });
   } catch (error) {
     if (req.file) await fs.unlink(req.file.path).catch(() => {});
     console.error('Wallpaper upload failed:', error);

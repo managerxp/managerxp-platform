@@ -1,24 +1,14 @@
 /* ==========================================================================
    CafeXP — Settings
-   Organised into the sections from the admin spec. Only settings that map to
-   something real are editable; the rest state plainly where they will live.
+   The General, Branding & print and Sessions & kiosk tabs of the Settings hub
+   (router.js adds Receipts, Subscription and Updates beside them). Only
+   settings that map to something real are editable.
    ========================================================================== */
 (function (global) {
   "use strict";
 
   var UI = global.CXUI, Store = global.CXStore, Icon = global.CXIcon, Motion = global.CXMotion;
   global.CXPages = global.CXPages || {};
-
-  var offs = [];
-  var rootEl = null;
-  var tab = "business";
-
-  var TABS = [
-    { id: "business", label: "Business" },
-    { id: "stations", label: "Stations" },
-    { id: "gaming",   label: "Gaming" },
-    { id: "system",   label: "System" }
-  ];
 
   /* ==========================================================================
      BUSINESS
@@ -41,145 +31,18 @@
         "Cafe details are managed in the CafeXP web account, not in this desktop console." +
       "</div>";
 
-    var missing = UI.el("div", { class: "card" });
-    missing.innerHTML =
-      '<div class="card-head"><h2>Invoicing &amp; tax</h2>' +
-        '<span class="badge" data-status="warning">Not built yet</span></div>' +
-      '<div class="card-body col gap-3">' +
-        '<div class="faint" style="font-size:13px;line-height:1.6">Invoice numbering, tax rates and receipt footers belong here. They need the billing system, which does not exist yet.</div>' +
-        '<div class="notice" data-status="info">' + Icon("info", 16) +
-          "<div>See the <strong>Billing</strong> section for what is required.</div></div>" +
-      "</div>";
-
     pane.appendChild(card);
-    pane.appendChild(missing);
-    return pane;
-  }
-
-  /* ==========================================================================
-     STATIONS
-     ========================================================================== */
-  function stationsPane() {
-    var pane = UI.el("div", { class: "col gap-4" });
-
-    var card = UI.el("div", { class: "card" });
-    card.innerHTML =
-      '<div class="card-head"><h2>Station registry</h2>' +
-        '<button class="btn btn-primary btn-sm" id="setAddStation">' + Icon("plus", 14) +
-        '<span class="btn-label">Add station</span></button></div>';
-
-    var body = UI.el("div", { class: "card-body-flush" });
-    if (!Store.state.pcs.length) {
-      body.appendChild(UI.emptyState({
-        icon: "floor", title: "No stations registered",
-        text: "Add a station manually or register one from Discovery."
-      }));
-    } else {
-      var wrap = UI.el("div", { class: "table-wrap" });
-      var table = UI.el("table", { class: "tbl" });
-      table.innerHTML = "<thead><tr><th>Name</th><th>IP address</th><th>Port</th><th>State</th><th></th></tr></thead>";
-      var tbody = UI.el("tbody");
-
-      Store.state.pcs.forEach(function (pc) {
-        var tr = UI.el("tr");
-        tr.innerHTML =
-          "<td><strong>" + UI.esc(pc.name) + "</strong></td>" +
-          '<td class="mono faint" style="font-size:12px">' + UI.esc(pc.ip_address || "—") + "</td>" +
-          '<td class="mono faint" style="font-size:12px">' + UI.esc(pc.port || "—") + "</td>" +
-          '<td><span class="badge" data-status="' + (pc.is_active === false ? "idle" : "online") + '">' +
-            (pc.is_active === false ? "Inactive" : "Active") + "</span></td>" +
-          '<td class="td-actions"></td>';
-
-        var edit = UI.el("button", { class: "btn btn-outline btn-sm btn-icon", html: Icon("edit", 13), "data-tip": "Edit station" });
-        edit.addEventListener("click", function () {
-          global.CXStationPanel.editStation(pc, function () { render(); });
-        });
-        tr.querySelector(".td-actions").appendChild(edit);
-        tbody.appendChild(tr);
-      });
-      table.appendChild(tbody);
-      wrap.appendChild(table);
-      body.appendChild(wrap);
-    }
-    card.appendChild(body);
-    pane.appendChild(card);
-
-    var zones = UI.el("div", { class: "card" });
-    zones.innerHTML =
-      '<div class="card-head"><h2>Zones</h2><span class="badge" data-status="warning">Not built yet</span></div>' +
-      '<div class="card-body faint" style="font-size:13px;line-height:1.6">' +
-        "Main floor, VIP and other groupings need a zone column on the stations table. Every station currently belongs to one flat floor." +
-      "</div>";
-    pane.appendChild(zones);
-
-    setTimeout(function () {
-      var addBtn = pane.querySelector("#setAddStation");
-      if (addBtn) addBtn.addEventListener("click", function () { global.CXPages.floor.addStationDialog(); });
-    }, 0);
-
-    return pane;
-  }
-
-  /* ==========================================================================
-     GAMING
-     ========================================================================== */
-  function gamingPane() {
-    var pane = UI.el("div", { class: "grid grid-split" });
-
-    var card = UI.el("div", { class: "card" });
-    card.innerHTML =
-      '<div class="card-head"><h2>Software catalogue</h2></div>' +
-      '<div class="card-body col gap-3">' +
-        '<div class="faint" style="font-size:13px;line-height:1.6">' +
-          "Applications are configured per station: which executables exist and where they live on that machine." +
-        "</div>" +
-        '<div class="col" id="swSummary"></div>' +
-      "</div>" +
-      '<div class="card-foot"><button class="btn btn-outline btn-sm" id="goGames">' + Icon("games", 14) +
-        '<span class="btn-label">Open games &amp; software</span></button></div>';
-
-    var launcher = UI.el("div", { class: "card" });
-    launcher.innerHTML =
-      '<div class="card-head"><h2>Launcher</h2><span class="badge badge-plain">Client-side</span></div>' +
-      '<div class="card-body col gap-3">' +
-        '<div class="faint" style="font-size:13px;line-height:1.6">' +
-          "Launching is handled by the client agent on each station over the existing WebSocket connection. The admin sends the executable path and a duration; the client starts the process and closes it when time runs out." +
-        "</div>" +
-        '<div class="notice" data-status="info">' + Icon("info", 16) +
-          "<div>Kiosk lock, staff PIN unlock (<strong>Ctrl+Alt+Shift+Q</strong> at the station) and " +
-          "remote restart are all live — see <strong>Station unlock PIN</strong> below and " +
-          "<strong>Minimise client</strong> on a station's own panel.</div></div>" +
-      "</div>";
-
-    pane.appendChild(card);
-    pane.appendChild(launcher);
-
-    setTimeout(function () {
-      var goBtn = pane.querySelector("#goGames");
-      if (goBtn) goBtn.addEventListener("click", function () { global.CXRouter.go("games"); });
-
-      var summary = pane.querySelector("#swSummary");
-      if (!summary) return;
-      summary.innerHTML = '<div class="kv"><span class="kv-key">Stations</span><span class="kv-val num">' +
-        Store.state.pcs.length + "</span></div>";
-      Store.getSoftwareMaster()
-        .then(function (list) {
-          summary.innerHTML += '<div class="kv"><span class="kv-key">Catalogue entries</span><span class="kv-val num">' +
-            list.length + "</span></div>";
-        })
-        .catch(function () {
-          summary.innerHTML += '<div class="kv"><span class="kv-key">Catalogue</span><span class="kv-val faint">Unavailable</span></div>';
-        });
-    }, 0);
-
     return pane;
   }
 
   /* ==========================================================================
      SYSTEM
      ========================================================================== */
-  function systemPane() {
-    var pane = UI.el("div", { class: "grid grid-split" });
+  /* part: "general" draws Connection and Console, "sessions" draws the session
+     buffer, cleanup and station unlock PIN; omitted draws all of them. target
+     lets the caller supply the pane (so General can put the café card first). */
+  function systemPane(part, target) {
+    var pane = target || UI.el("div", { class: "grid grid-split" });
 
     var card = UI.el("div", { class: "card" });
     card.innerHTML =
@@ -300,13 +163,11 @@
           Icon("check", 14) + '<span class="btn-label">Save cleanup settings</span></button></div>' +
       "</div>";
 
-    pane.appendChild(card);
-    pane.appendChild(prefs);
-    pane.appendChild(buffer);
-    pane.appendChild(cleanup);
-    pane.appendChild(kiosk);
+    if (part !== "sessions") { pane.appendChild(card); pane.appendChild(prefs); }
+    if (part !== "general") { pane.appendChild(buffer); pane.appendChild(cleanup); pane.appendChild(kiosk); }
 
     setTimeout(function () {
+      if (!document.body.contains(buffer)) return;
       var graceInput = buffer.querySelector("#setGraceMinutes");
       var graceSave = buffer.querySelector("#setGraceSave");
       if (!graceInput) return;
@@ -338,6 +199,7 @@
     }, 0);
 
     setTimeout(function () {
+      if (!document.body.contains(cleanup)) return;
       var saveBtn = cleanup.querySelector("#clSave");
       if (!saveBtn) return;
 
@@ -474,103 +336,307 @@
     return pane;
   }
 
-  var PANES = {
-    business: businessPane, stations: stationsPane, gaming: gamingPane,
-    system: systemPane
-  };
+  /* ==========================================================================
+     BRANDING & PRINT
+     Logos and the kiosk wallpaper, and whether — and where — receipts print.
+     Each control saves the moment it changes (an upload is its own action),
+     so there is no half-saved state for a pane rebuild to throw away.
+     ========================================================================== */
+  function saveSetting(key, value, okMessage) {
+    return Store.setSetting(key, value)
+      .then(function () { if (okMessage) UI.toast.ok(okMessage); })
+      .catch(function (e) { UI.toast.error("Could not save", e.message); throw e; });
+  }
+
+  /* A small image kept as a data URI in the setting itself — fine for a logo,
+     which is why it is capped; the wallpaper is a real upload instead. */
+  function logoRow(vals, key, label, hint, fallbackKey) {
+    var id = "brand" + key.replace(/\W/g, "");
+    var wrap = UI.el("div", { class: "field" });
+    wrap.innerHTML =
+      '<label class="field-label">' + UI.esc(label) + "</label>" +
+      '<div class="rt-logo-row">' +
+        '<div class="rt-logo-box"></div>' +
+        '<div class="col gap-2">' +
+          '<input type="file" id="' + id + '" accept="image/png,image/jpeg,image/svg+xml" class="hidden">' +
+          '<button class="btn btn-outline btn-sm" type="button" data-act="pick">Choose image</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-act="clear">Remove</button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="field-hint">' + UI.esc(hint) + "</div>";
+
+    var box = wrap.querySelector(".rt-logo-box");
+    function paint() {
+      var own = vals[key] || "";
+      var shown = own || (fallbackKey && vals[fallbackKey]) || "";
+      box.innerHTML = shown
+        ? '<img src="' + UI.esc(shown) + '" alt="' + UI.esc(label) + '">'
+        : '<span class="faint">No logo</span>';
+      box.title = own || !shown ? "" : "Using the receipt logo";
+    }
+    paint();
+
+    var file = wrap.querySelector("#" + id);
+    wrap.querySelector('[data-act="pick"]').addEventListener("click", function () { file.click(); });
+    wrap.querySelector('[data-act="clear"]').addEventListener("click", function () {
+      saveSetting(key, "", label + " removed").then(function () { vals[key] = ""; paint(); }, function () {});
+    });
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      if (f.size > 400 * 1024) {
+        UI.toast.warn("That image is too large", "Use one under 400 KB.");
+        file.value = "";
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var uri = String(reader.result);
+        saveSetting(key, uri, label + " saved").then(function () { vals[key] = uri; paint(); }, function () {})
+          .then(function () { file.value = ""; });
+      };
+      reader.readAsDataURL(f);
+    });
+    return wrap;
+  }
+
+  function wallpaperRow(vals) {
+    var wrap = UI.el("div", { class: "field" });
+    wrap.innerHTML =
+      '<label class="field-label">Kiosk wallpaper</label>' +
+      '<div class="rt-logo-row">' +
+        '<div class="rt-logo-box"></div>' +
+        '<div class="col gap-2">' +
+          '<input type="file" id="brandWallpaper" accept="image/*,video/*" class="hidden">' +
+          '<button class="btn btn-outline btn-sm" type="button" data-act="pick">Choose image or video</button>' +
+          '<button class="btn btn-ghost btn-sm" type="button" data-act="clear">Remove</button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="field-hint">Shown full-screen behind the welcome/sign-in screen on every station. Up to 30 MB.</div>';
+
+    var box = wrap.querySelector(".rt-logo-box");
+    function paint() {
+      var url = vals["billing.wallpaper_url"] || "";
+      if (!url) { box.innerHTML = '<span class="faint">No wallpaper</span>'; return; }
+      box.innerHTML = vals["billing.wallpaper_type"] === "video"
+        ? '<video src="' + UI.esc(url) + '" muted loop autoplay playsinline></video>'
+        : '<img src="' + UI.esc(url) + '" alt="Current wallpaper">';
+    }
+    paint();
+
+    var pickBtn = wrap.querySelector('[data-act="pick"]');
+    var file = wrap.querySelector("#brandWallpaper");
+    pickBtn.addEventListener("click", function () { file.click(); });
+    wrap.querySelector('[data-act="clear"]').addEventListener("click", function () {
+      saveSetting("billing.wallpaper_url", "")
+        .then(function () { return saveSetting("billing.wallpaper_type", "", "Wallpaper removed"); })
+        .then(function () { vals["billing.wallpaper_url"] = ""; vals["billing.wallpaper_type"] = ""; paint(); }, function () {});
+    });
+    file.addEventListener("change", function () {
+      var f = file.files && file.files[0];
+      if (!f) return;
+      if (f.size > 30 * 1024 * 1024) {
+        UI.toast.warn("That file is too large", "Use an image or video under 30 MB.");
+        file.value = "";
+        return;
+      }
+      UI.withBusy(pickBtn, function () {
+        return Store.uploadCafeWallpaper(f)
+          .then(function (data) {
+            return saveSetting("billing.wallpaper_url", data.url)
+              .then(function () { return saveSetting("billing.wallpaper_type", data.type, "Wallpaper saved"); })
+              .then(function () { vals["billing.wallpaper_url"] = data.url; vals["billing.wallpaper_type"] = data.type; paint(); });
+          })
+          .catch(function (e) { UI.toast.error("Could not upload that file", e.message); })
+          .finally(function () { file.value = ""; });
+      });
+    });
+    return wrap;
+  }
+
+  function printingCard(vals) {
+    var card = UI.el("div", { class: "card" });
+    card.innerHTML =
+      '<div class="card-head"><h2>Printing</h2></div>' +
+      '<div class="card-body col gap-4">' +
+        '<label class="check-row"><input type="checkbox" class="check" id="prEnabled">' +
+          "<span><strong>Print receipts</strong>" +
+          '<span class="faint block">Off disables every Print button. Bills are still saved and can be viewed on screen.</span></span></label>' +
+        '<div class="field"><label class="field-label" for="prPrinter">Printer</label>' +
+          '<div class="row gap-2" style="align-items:center">' +
+            '<select class="input" id="prPrinter"></select>' +
+            '<button class="btn btn-outline btn-sm" type="button" id="prRefresh">Refresh</button>' +
+          "</div>" +
+          '<div class="field-hint" id="prHint"></div></div>' +
+        '<label class="check-row"><input type="checkbox" class="check" id="prSilent">' +
+          "<span><strong>Print without asking</strong>" +
+          '<span class="faint block">Sends the receipt straight to the printer above with no Windows print dialog — ' +
+          "what a thermal printer at the counter wants.</span></span></label>" +
+        '<div><button class="btn btn-outline btn-sm" type="button" id="prTest">Test print</button></div>' +
+      "</div>";
+
+    var enabled = card.querySelector("#prEnabled");
+    var silent = card.querySelector("#prSilent");
+    var select = card.querySelector("#prPrinter");
+    var hint = card.querySelector("#prHint");
+    enabled.checked = String(vals["billing.print_enabled"]) !== "false";
+    silent.checked = String(vals["billing.print_silent"]) === "true";
+
+    enabled.addEventListener("change", function () {
+      saveSetting("billing.print_enabled", String(enabled.checked),
+        enabled.checked ? "Receipt printing on" : "Receipt printing off");
+    });
+    silent.addEventListener("change", function () { saveSetting("billing.print_silent", String(silent.checked)); });
+    select.addEventListener("change", function () { saveSetting("billing.printer_name", select.value, "Printer saved"); });
+
+    function loadPrinters() {
+      var list = global.api && global.api.listPrinters ? global.api.listPrinters() : Promise.resolve([]);
+      return list.catch(function () { return []; }).then(function (printers) {
+        var chosen = vals["billing.printer_name"] || "";
+        select.innerHTML = '<option value="">System default printer</option>' + printers.map(function (p) {
+          return '<option value="' + UI.esc(p.name) + '">' + UI.esc(p.displayName) + (p.isDefault ? " (default)" : "") + "</option>";
+        }).join("");
+        // A saved printer that is no longer installed stays listed, so the
+        // choice is not silently swapped for the default.
+        if (chosen && !printers.some(function (p) { return p.name === chosen; })) {
+          select.insertAdjacentHTML("beforeend", '<option value="' + UI.esc(chosen) + '">' + UI.esc(chosen) + " (not found)</option>");
+        }
+        select.value = chosen;
+        hint.textContent = printers.length
+          ? printers.length + " printer" + (printers.length === 1 ? "" : "s") + " found on this computer."
+          : "No printer found. Connect it and install its driver in Windows, then press Refresh.";
+      });
+    }
+    loadPrinters();
+    card.querySelector("#prRefresh").addEventListener("click", loadPrinters);
+
+    card.querySelector("#prTest").addEventListener("click", function () {
+      var body = UI.el("div", { class: "col gap-3" });
+      body.innerHTML = global.CXReceipt.buildHtml({
+        bill_number: "TEST-PRINT", created_at: new Date(), customer_name: "Test",
+        items: [{ description: "Test line", quantity: 1, amount: 100 }],
+        subtotal: 100, total: 100, payments: [], balance_due: 0
+      }, vals);
+      UI.modal({
+        title: "Test print", description: "Sends a sample receipt to the printer.", body: body,
+        actions: [
+          { label: "Close", variant: "ghost" },
+          { label: "Print", variant: "primary", icon: "download",
+            onClick: function () { global.CXReceipt.print(); return false; } }
+        ]
+      });
+    });
+    return card;
+  }
+
+  function brandingPane() {
+    var pane = UI.el("div", { class: "grid grid-split" });
+    pane.appendChild(UI.el("div", { class: "faint", text: "Loading…" }));
+
+    Store.getSettings("billing").then(function (rows) {
+      var vals = {};
+      (rows || []).forEach(function (r) { vals[r.setting_key] = r.setting_value; });
+
+      var logos = UI.el("div", { class: "card" });
+      logos.innerHTML =
+        '<div class="card-head"><h2>Logos</h2></div>' +
+        '<div class="card-body col gap-4"></div>';
+      var body = logos.querySelector(".card-body");
+      body.appendChild(logoRow(vals, "billing.logo", "Receipt logo",
+        "Printed at the top of every bill. PNG, JPEG or SVG under 400 KB — a thermal printer renders about 200px wide."));
+      body.appendChild(logoRow(vals, "billing.kiosk_logo", "Kiosk front-screen logo",
+        "Shown on the welcome and sign-in screen at every station. Leave empty to use the receipt logo.",
+        "billing.logo"));
+      body.appendChild(wallpaperRow(vals));
+
+      UI.clear(pane);
+      pane.appendChild(logos);
+      pane.appendChild(printingCard(vals));
+    }).catch(function (e) {
+      UI.clear(pane);
+      pane.appendChild(UI.errorState(e.message));
+    });
+    return pane;
+  }
+
+  function generalPane() { return systemPane("general", businessPane()); }
+  function sessionsPane() { return systemPane("sessions"); }
 
   /*
-   * What the visible pane is drawn from.
+   * Each Settings tab is its own page module. The Settings entry in the
+   * sidebar is a hub (see router.js) whose tabs are these three plus Receipts,
+   * Subscription and Updates, which used to be separate menu entries — so the
+   * tab bar is the router's now, not this file's.
    *
-   * render() rebuilt the whole pane and re-ran its entrance animation on
-   * every `pcs` and `user` event — and those fire whenever a session starts
-   * or ends or an application is launched anywhere on the floor. Two
-   * consequences, one cosmetic and one not: the page flickered, and any form
-   * being filled in was thrown away and rebuilt mid-keystroke.
-   *
-   * The panes genuinely do read live station data, so the subscriptions stay
-   * — they are just no longer allowed to redraw when nothing they show has
-   * changed.
+   * A pane is not rebuilt while the operator is working in it, or when nothing
+   * it shows has changed: render() used to rebuild on every `pcs` and `user`
+   * event, and those fire whenever a session starts or ends anywhere on the
+   * floor — which flickered the page and threw away a form mid-keystroke. The
+   * panes do read live station data, so the subscriptions stay; they just may
+   * not redraw when nothing has changed.
    */
-  var lastPaneSig = "";
+  function settingsTab(paneFn, subtitle) {
+    var offs = [];
+    var rootEl = null;
+    var lastPaneSig = "";
 
-  function paneSignature() {
-    return [
-      tab,
-      (Store.state.pcs || []).map(function (p) {
-        return [p.pc_id, p.name, p.ip_address || "", p.category || "", Store.pcStatus(p), p.client_version || ""].join(":");
-      }).join(";"),
-      Store.state.user ? [Store.state.user.id || "", Store.state.user.email || ""].join(":") : ""
-    ].join("|");
-  }
-
-  function render() {
-    if (!rootEl) return;
-    var host = rootEl.querySelector("#settingsPane");
-    if (!host) return;
-
-    /*
-     * Never rebuild a pane the operator is working in. The signature is
-     * deliberately not stamped here, so the pending change is simply applied
-     * the next time round — once they have moved on — rather than lost.
-     */
-    if (host.childElementCount && host.contains(document.activeElement)) return;
-
-    var sig = paneSignature();
-    if (sig === lastPaneSig && host.childElementCount) return;
-    lastPaneSig = sig;
-
-    UI.clear(host);
-    var pane = PANES[tab]();
-    host.appendChild(pane);
-    Motion.enter(pane, { y: 8 });
-  }
-
-  global.CXPages.settings = {
-    title: "Settings",
-    subtitle: "Console and cafe configuration",
-
-    mount: function (root) {
-      rootEl = root;
-      var page = UI.el("div", { class: "page" });
-      page.innerHTML =
-        '<div class="page-head">' +
-          "<div>" +
-            '<div class="page-title">Settings</div>' +
-            '<div class="page-sub">Configuration for this cafe and this console.</div>' +
-          "</div>" +
-        "</div>" +
-        '<div class="tabs" id="settingsTabs" style="margin-bottom:var(--s-5)">' +
-          TABS.map(function (t) {
-            return '<button data-tab="' + t.id + '" aria-selected="' + (t.id === tab) + '">' + UI.esc(t.label) + "</button>";
-          }).join("") +
-        "</div>" +
-        '<div id="settingsPane"></div>';
-      root.appendChild(page);
-
-      Array.prototype.forEach.call(page.querySelectorAll("#settingsTabs button"), function (btn) {
-        btn.addEventListener("click", function () {
-          tab = btn.dataset.tab;
-          Array.prototype.forEach.call(page.querySelectorAll("#settingsTabs button"), function (b) {
-            b.setAttribute("aria-selected", String(b === btn));
-          });
-          render();
-        });
-      });
-
-      offs.push(Store.on("pcs", render));
-      offs.push(Store.on("user", render));
-      lastPaneSig = "";
-      render();
-    },
-
-    unmount: function () {
-      offs.forEach(function (f) { f(); });
-      offs = [];
-      rootEl = null;
-      // The pane goes with the page, so the next mount must draw rather than
-      // recognise its own signature and skip.
-      lastPaneSig = "";
+    function paneSignature() {
+      return [
+        (Store.state.pcs || []).map(function (p) {
+          return [p.pc_id, p.name, p.ip_address || "", p.category || "", Store.pcStatus(p), p.client_version || ""].join(":");
+        }).join(";"),
+        Store.state.user ? [Store.state.user.id || "", Store.state.user.email || ""].join(":") : ""
+      ].join("|");
     }
-  };
+
+    function render() {
+      if (!rootEl) return;
+      var host = rootEl.querySelector("#settingsPane");
+      if (!host) return;
+
+      // The signature is deliberately not stamped when this returns early, so
+      // the pending change is simply applied the next time round.
+      if (host.childElementCount && host.contains(document.activeElement)) return;
+
+      var sig = paneSignature();
+      if (sig === lastPaneSig && host.childElementCount) return;
+      lastPaneSig = sig;
+
+      UI.clear(host);
+      var pane = paneFn();
+      host.appendChild(pane);
+      Motion.enter(pane, { y: 8 });
+    }
+
+    return {
+      title: "Settings",
+      subtitle: subtitle,
+
+      mount: function (root) {
+        rootEl = root;
+        var page = UI.el("div", { class: "page" });
+        page.innerHTML = '<div id="settingsPane"></div>';
+        root.appendChild(page);
+
+        offs.push(Store.on("pcs", render));
+        offs.push(Store.on("user", render));
+        lastPaneSig = "";
+        render();
+      },
+
+      unmount: function () {
+        offs.forEach(function (f) { f(); });
+        offs = [];
+        rootEl = null;
+        // The pane goes with the page, so the next mount must draw rather than
+        // recognise its own signature and skip.
+        lastPaneSig = "";
+      }
+    };
+  }
+
+  // "settings" stays the General tab's id, so every existing go("settings") lands there.
+  global.CXPages.settings = settingsTab(generalPane, "Cafe, connection and console");
+  global.CXPages["settings-branding"] = settingsTab(brandingPane, "Logos, kiosk wallpaper and receipt printing");
+  global.CXPages["settings-sessions"] = settingsTab(sessionsPane, "What happens when a session starts and ends, and the station unlock PIN");
 })(window);
