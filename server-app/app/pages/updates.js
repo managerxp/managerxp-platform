@@ -97,7 +97,7 @@
     }
     // idle — nothing staged yet.
     return '<button class="btn btn-primary btn-sm" id="updInstallBtn" data-action="download">' + Icon("download", 13) +
-      '<span class="btn-label">Install update</span></button>';
+      '<span class="btn-label">Update now</span></button>';
   }
 
   function paintConsole() {
@@ -162,7 +162,11 @@
     }).length;
   }
 
+  // One click: once a download the user started finishes staging, install straight away.
+  var installWhenStaged = false;
+
   function onDownloadClick() {
+    installWhenStaged = true;
     var feedUrl = feedUrlFor(updConsole && updConsole.download && updConsole.download.url);
     if (!feedUrl) {
       UI.toast.error("Could not start the download", "No download URL was published with this release.");
@@ -171,10 +175,11 @@
     global.api.downloadConsoleUpdate(feedUrl, updConsole.latest_version)
       .then(function (r) {
         if (!r || r.ok === false) {
+          installWhenStaged = false;
           UI.toast.error("Could not download the update", (r && r.message) || "Try again shortly.");
         }
       })
-      .catch(function (e) { UI.toast.error("Could not download the update", e.message); });
+      .catch(function (e) { installWhenStaged = false; UI.toast.error("Could not download the update", e.message); });
   }
 
   function onInstallClick() {
@@ -338,7 +343,11 @@
       // Live progress for the "Install update" button — Store owns the one
       // ipcRenderer subscription (registered once at app start, not per
       // mount) and just re-emits; see store.js's consoleUpdate wiring.
-      offs.push(Store.on("console-update", function (s) { installState = s; paintConsole(); }));
+      offs.push(Store.on("console-update", function (s) {
+        installState = s; paintConsole();
+        if (installWhenStaged && s && s.phase === "staged") { installWhenStaged = false; onInstallClick(); }
+        else if (s && s.phase === "error") installWhenStaged = false;
+      }));
       installState = Store.state.consoleUpdate;
       paintStationCount();
       paintConsole();
