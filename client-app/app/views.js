@@ -645,11 +645,16 @@
       function card(g) {
         var el = UI.el("button", {
           class: "card card-pad row gap-4",
-          style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%" }
+          style: { alignItems: "center", textAlign: "left", cursor: "pointer", width: "100%", padding: "14px 18px", gap: "18px" }
         });
+        var art = imageSrc(g.icon_url);
+        var tile = "flex:0 0 auto;width:56px;height:56px;border-radius:12px;display:flex;align-items:center;justify-content:center;" +
+          "font-size:16px;font-weight:800;background:var(--surface-2,#1a1d27);background-size:cover;background-position:center;";
         el.innerHTML =
-          '<span class="avatar" style="width:44px;height:44px;font-size:15px;flex:0 0 auto">' +
-            UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) + "</span>" +
+          (art
+            ? '<span style="' + tile + "background-image:url('" + UI.esc(art) + "')\"></span>"
+            : '<span style="' + tile + '">' +
+                UI.esc(UI.initials ? UI.initials(g.name) : g.name.slice(0, 2).toUpperCase()) + "</span>") +
           '<span class="grow" style="min-width:0">' +
             '<span style="display:block;font-size:15px;font-weight:700">' + UI.esc(g.name) + "</span>" +
             '<span class="faint" style="font-size:12px">' +
