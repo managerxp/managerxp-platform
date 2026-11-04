@@ -32,21 +32,16 @@ const CookieConsent = () => {
 
   return (
     <div role="dialog" aria-label="Cookie notice" className="fixed inset-x-0 bottom-0 z-[60]">
-      {/* Racer streak, same motif as the footer's top glow. */}
-      <div aria-hidden="true" className="relative h-[1px] w-full overflow-hidden">
-        <div className="absolute inset-y-0 left-0 w-1/3 animate-racer-drift bg-gradient-to-r from-transparent via-red-600/60 to-transparent blur-[1px]" />
-      </div>
-
-      <div className="border-t border-white/10 bg-neutral-950/95 px-5 py-4 shadow-[0_-20px_50px_-20px_rgba(220,38,38,0.25)] backdrop-blur-xl sm:px-8">
+      <div className="border-t border-rule bg-ink-2 px-5 py-4 sm:px-8">
         <div className="mx-auto flex max-w-6xl flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-red-500/30 bg-red-500/10 text-red-500">
+            <span className="mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-full border border-rule text-mute">
               <Cookie className="h-4 w-4" />
             </span>
-            <p className="text-sm text-neutral-300">
+            <p className="text-sm text-mute">
               We use cookies to keep you signed in and to remember your preferences. By continuing
-              to use ManagerXP, you agree to this — see our{' '}
-              <Link to="/privacy-policy" className="text-red-400 underline hover:text-red-300">
+              to use ManagerXP, you agree to this. See our{' '}
+              <Link to="/privacy-policy" className="text-paper underline underline-offset-4 hover:text-white">
                 Privacy Policy
               </Link>
               .
@@ -56,14 +51,14 @@ const CookieConsent = () => {
             <button
               type="button"
               onClick={() => respond('declined')}
-              className="rounded-full border border-white/15 px-4 py-2 text-xs font-medium text-neutral-300 transition-colors hover:border-white/30 hover:text-white"
+              className="rounded-full border border-rule px-4 py-2 text-xs font-medium text-paper transition-colors hover:border-paper"
             >
               Decline
             </button>
             <button
               type="button"
               onClick={() => respond('accepted')}
-              className="rounded-full bg-white px-4 py-2 text-xs font-semibold text-black transition-colors hover:bg-neutral-100"
+              className="rounded-full bg-paper px-4 py-2 text-xs font-semibold text-ink transition-colors hover:bg-white"
             >
               Accept
             </button>

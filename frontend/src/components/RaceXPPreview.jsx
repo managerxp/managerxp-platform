@@ -37,7 +37,7 @@ const plannedStandalone = [
   'Remote operations'
 ];
 
-const RaceXPPreview = () => {
+const RaceXPPreview = ({ intro = true }) => {
   const [board, setBoard] = useState(leaderboardSeed);
 
   // Occasional position swap so the board reads as a running session.
@@ -57,8 +57,8 @@ const RaceXPPreview = () => {
   return (
     <div className="space-y-10">
 
-      {/* Phase 2 header */}
-      <Reveal>
+      {/* Phase 2 header — the RaceXP page carries its own, so it can opt out. */}
+      {intro && <Reveal>
         <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-8 backdrop-blur-sm">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-red-400">
@@ -82,7 +82,7 @@ const RaceXPPreview = () => {
             can buy today.
           </p>
         </div>
-      </Reveal>
+      </Reveal>}
 
       {/* Live telemetry */}
       <Reveal>

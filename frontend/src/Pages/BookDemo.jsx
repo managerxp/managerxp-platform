@@ -1,30 +1,14 @@
 import React, { useRef, useState } from 'react';
-import { Calendar, User, Building2, Mail, Phone, Gamepad2, Monitor, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { ArrowRight, Loader2 } from 'lucide-react';
 import { sendDemoRequest } from '../lib/contactEmail';
-import PageBackground from '../components/PageBackground';
+import { fieldClass as fieldClasses, labelClass as labelClasses } from '../lib/formStyles';
+import Seo from '../components/site/Seo';
 import SectionHeading from '../components/SectionHeading';
-import Reveal from '../components/Reveal';
-
-const fieldClasses =
-  'w-full bg-white/[0.03] border border-white/10 text-white px-4 py-3 rounded-lg ' +
-  'focus:outline-none focus:border-red-500/60 focus:ring-2 focus:ring-red-500/20 focus:bg-white/[0.05] ' +
-  'transition-colors placeholder-neutral-700 text-sm';
-
-const labelClasses = 'flex items-center gap-2 text-neutral-500 mb-2 text-xs uppercase tracking-wider';
+import FormStatus from '../components/site/FormStatus';
 
 const softwareOptions = [
-  {
-    value: 'GamingXP',
-    label: 'GamingXP',
-    description: 'Gaming Café Solution',
-    icon: <Gamepad2 className="w-5 h-5 text-red-500" />
-  },
-  {
-    value: 'CafeXP',
-    label: 'CafeXP',
-    description: 'Internet Café Solution',
-    icon: <Monitor className="w-5 h-5 text-red-400" />
-  }
+  { value: 'CafeXP (gaming café)', label: 'Gaming café', description: 'CafeXP for gaming lounges and esports floors' },
+  { value: 'CafeXP (internet café)', label: 'Internet café', description: 'CafeXP for internet and browsing centres' }
 ];
 
 const BookDemoPage = () => {
@@ -42,13 +26,13 @@ const BookDemoPage = () => {
 
     sendDemoRequest(formRef.current)
       .then(() => {
-          setStatus({ type: 'success', message: 'Demo request transmitted successfully!' });
+          setStatus({ type: 'success', message: 'Request received. We will email you to schedule a time.' });
           formRef.current.reset();
           setSelectedSoftware('');
       }, (error) => {
           setStatus({
             type: error.status === 503 ? 'warn' : 'error',
-            message: error.message || 'Transmission failed. Please try again.'
+            message: error.message || 'Your request could not be sent. Please try again, or email managerxp2026@gmail.com.'
           });
       })
       .finally(() => {
@@ -57,68 +41,30 @@ const BookDemoPage = () => {
   };
 
   return (
-    <div className="relative min-h-screen bg-black overflow-hidden antialiased font-sans text-white">
+    <div className="bg-ink font-sans text-paper antialiased">
+      <Seo
+        title="Book a CafeXP Demo | ManagerXP"
+        description="Schedule a live CafeXP walkthrough against your own café floor plan: sessions, billing, stock, staff and analytics."
+        path="/demo"
+      />
 
-      <PageBackground streakTop="top-1/3" streakBottom="bottom-1/4" />
-
-      {/* --- Main Content --- */}
-      <div className="relative z-10 max-w-4xl mx-auto px-5 sm:px-6 section-y">
-
+      <div className="wrap max-w-4xl pb-20 pt-12 sm:pb-28 sm:pt-16">
         <SectionHeading
           as="h1"
-          eyebrow="Initialize Session"
-          title="BOOK A"
-          highlight="DEMO"
-          description="Schedule a live demonstration of our ecosystem."
+          title="Book a CafeXP demo."
+          description="A live walkthrough with the team, run against your own floor plan. Tell us a little about your café and we will schedule a time."
           className="mb-12"
         />
 
-        {/* Form Container */}
-        <Reveal className="block">
-          <div className="relative">
-            {/* Decorative background glow */}
-            <div aria-hidden="true" className="absolute -inset-1 bg-gradient-to-r from-red-500/20 to-black rounded-xl blur-xl opacity-30" />
+        <div className="border-t border-white/[0.08] pt-10">
+              <form ref={formRef} onSubmit={sendEmail} className="space-y-6">
 
-            <div className="relative bg-white/[0.02] border border-white/10 rounded-xl backdrop-blur-md font-mono text-xs overflow-hidden shadow-[0_0_50px_-20px_rgba(220,38,38,0.1)]">
-
-              {/* Window Controls */}
-              <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-                <div className="flex gap-1.5 shrink-0">
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-                  <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-                </div>
-                <span className="text-neutral-600 text-xs truncate">demo_protocol.exe</span>
-                <div className="text-neutral-500 text-xs shrink-0">ACTIVE</div>
-              </div>
-
-              <form ref={formRef} onSubmit={sendEmail} className="p-5 sm:p-6 md:p-10 space-y-7 sm:space-y-8 relative z-10">
-
-                {/* Status Notification */}
-                <div aria-live="polite">
-                  {status.message && (
-                    <div
-                      className={`flex items-center gap-2 p-3 rounded-lg text-sm font-mono ${
-                        status.type === 'success'
-                          ? 'bg-green-500/10 text-green-400 border border-green-500/20'
-                          : status.type === 'warn'
-                          ? 'bg-amber-500/10 text-amber-300 border border-amber-500/20'
-                          : 'bg-red-500/10 text-red-400 border border-red-500/20'
-                      }`}
-                    >
-                      {status.type === 'success'
-                        ? <CheckCircle className="w-4 h-4 shrink-0" />
-                        : <AlertCircle className="w-4 h-4 shrink-0" />}
-                      {status.message}
-                    </div>
-                  )}
-                </div>
+                <FormStatus status={status} />
 
                 {/* Row 1: Name & Organization */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
                   <div>
-                    <label htmlFor="user_name" className={labelClasses}>
-                      <User className="w-3 h-3" /> Your Name
+                    <label htmlFor="user_name" className={labelClasses}> Your Name
                     </label>
                     <input
                       id="user_name"
@@ -127,12 +73,11 @@ const BookDemoPage = () => {
                       required
                       autoComplete="name"
                       className={fieldClasses}
-                      placeholder="John Doe"
+                     
                     />
                   </div>
                   <div>
-                    <label htmlFor="organization_name" className={labelClasses}>
-                      <Building2 className="w-3 h-3" /> Organization
+                    <label htmlFor="organization_name" className={labelClasses}> Organization
                     </label>
                     <input
                       id="organization_name"
@@ -141,7 +86,7 @@ const BookDemoPage = () => {
                       required
                       autoComplete="organization"
                       className={fieldClasses}
-                      placeholder="Cafe Name / Company"
+                      placeholder="Café or company name"
                     />
                   </div>
                 </div>
@@ -149,8 +94,7 @@ const BookDemoPage = () => {
                 {/* Row 2: Email & Phone */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 sm:gap-6">
                   <div>
-                    <label htmlFor="user_email" className={labelClasses}>
-                      <Mail className="w-3 h-3" /> Email Address
+                    <label htmlFor="user_email" className={labelClasses}> Email Address
                     </label>
                     <input
                       id="user_email"
@@ -163,8 +107,7 @@ const BookDemoPage = () => {
                     />
                   </div>
                   <div>
-                    <label htmlFor="phone_number" className={labelClasses}>
-                      <Phone className="w-3 h-3" /> Phone Number
+                    <label htmlFor="phone_number" className={labelClasses}> Phone Number
                     </label>
                     <input
                       id="phone_number"
@@ -173,27 +116,22 @@ const BookDemoPage = () => {
                       required
                       autoComplete="tel"
                       className={fieldClasses}
-                      placeholder="+1 (555) 123-4567"
+                      placeholder="+91"
                     />
                   </div>
                 </div>
 
                 {/* Row 3: Software Selection */}
                 <fieldset>
-                  <legend className="text-neutral-500 mb-3 text-xs uppercase tracking-wider">
-                    Select Software
-                  </legend>
+                  <legend className={labelClasses}>Your café</legend>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {softwareOptions.map((option) => {
                       const isSelected = selectedSoftware === option.value;
                       return (
                         <label
                           key={option.value}
-                          className={`relative flex items-center gap-4 p-4 rounded-lg border cursor-pointer transition-all
-                                      focus-within:ring-2 focus-within:ring-red-500/40
-                                      ${isSelected
-                                        ? 'border-red-500/50 bg-red-500/10'
-                                        : 'border-white/10 bg-white/[0.02] hover:border-white/20'}`}
+                          className={`relative flex items-center gap-4 rounded-xl border p-4 focus-within:outline focus-within:outline-2 focus-within:outline-signal
+                                      ${isSelected ? 'border-paper' : 'border-white/[0.08] hover:border-mute'}`}
                         >
                           <input
                             type="radio"
@@ -204,18 +142,11 @@ const BookDemoPage = () => {
                             onChange={(e) => setSelectedSoftware(e.target.value)}
                             required
                           />
-                          <div className={`p-2 rounded-lg border transition-colors shrink-0 ${
-                            isSelected ? 'bg-red-500/20 border-red-500/30' : 'bg-white/5 border-white/10'
-                          }`}>
-                            {option.icon}
-                          </div>
+                          <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[3px] ${isSelected ? 'border-signal' : 'border-mute'}`} />
                           <div className="min-w-0">
-                            <span className="text-white font-medium text-sm block">{option.label}</span>
-                            <span className="text-neutral-500 text-xs">{option.description}</span>
+                            <span className="block text-[15px] font-medium text-paper">{option.label}</span>
+                            <span className="text-[13px] text-mute">{option.description}</span>
                           </div>
-                          {isSelected && (
-                            <div className="absolute right-4 top-4 w-2 h-2 rounded-full bg-red-500 shadow-[0_0_10px_rgba(220,38,38,0.5)]" />
-                          )}
                         </label>
                       );
                     })}
@@ -250,39 +181,22 @@ const BookDemoPage = () => {
 
                 {/* Submit Button */}
                 <div className="pt-2 sm:pt-4">
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="group relative flex items-center justify-center gap-3 w-full px-8 py-4
-                             text-sm font-semibold rounded-full text-white
-                             transition-all duration-300
-                             bg-gradient-to-br from-red-700 to-red-900
-                             border border-white/10
-                             hover:scale-[1.01] active:scale-[0.98] motion-reduce:hover:scale-100
-                             hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.55)]
-                             shadow-[0_0_25px_-5px_rgba(220,38,38,0.4)]
-                             disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 overflow-hidden"
-                  >
-                    {/* Shine Animation */}
-                    <div aria-hidden="true" className="absolute inset-0 -translate-x-full group-hover:translate-x-full transition-transform duration-700 bg-gradient-to-r from-transparent via-white/10 to-transparent skew-x-12" />
-
+                  <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
                     {isSubmitting ? (
                       <>
-                        <Loader2 className="w-5 h-5 animate-spin relative z-10" />
-                        <span className="relative z-10">TRANSMITTING...</span>
+                        <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
+                        Sending…
                       </>
                     ) : (
                       <>
-                        <Calendar className="w-5 h-5 relative z-10" />
-                        <span className="relative z-10">SCHEDULE DEMO</span>
+                        Request a demo
+                        <ArrowRight aria-hidden="true" className="h-4 w-4" />
                       </>
                     )}
                   </button>
                 </div>
               </form>
-            </div>
-          </div>
-        </Reveal>
+        </div>
       </div>
     </div>
   );

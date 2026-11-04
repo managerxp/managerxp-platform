@@ -21,5 +21,6 @@
  * Anime.js/IntersectionObserver setup), so the element itself has to stay
  * each component's own — only the class value is shared.
  */
+// Network Map redesign: a solid raised panel on the ink ground, no glass or glow.
 export const glassPanel =
-  'overflow-hidden rounded-2xl border border-white/10 bg-neutral-950/70 backdrop-blur-xl shadow-glow-lg';
+  'overflow-hidden rounded-lg border border-rule bg-ink-2';

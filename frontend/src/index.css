@@ -12,6 +12,110 @@
 @theme {
   --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  --font-display: 'Geist', ui-sans-serif, system-ui, sans-serif;
+
+  /* Marketing palette: off-black ground, raised charcoal surfaces, one red
+     accent reserved for primary actions and live states. */
+  --color-ink: #0a0a0b;
+  --color-ink-2: #121214;
+  --color-rule: #26262a;
+  --color-mute: #8b8b93;
+  --color-paper: #f2f2f3;
+  --color-signal: #e5322d;
+  --color-signal-hover: #f04a44;
+}
+
+/* Display type: Geist, tight. */
+.font-display {
+  letter-spacing: -0.035em;
+}
+
+/* Browser surfaces carry the palette too. */
+::selection {
+  background: var(--color-signal);
+  color: #fff;
+}
+html {
+  caret-color: var(--color-signal);
+}
+
+/* Marketing buttons. Primary is the one place red fills a shape. */
+@layer components {
+  .btn-primary,
+  .btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    min-height: 3rem;
+    padding: 0 1.4rem;
+    border-radius: 999px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: var(--color-signal);
+    color: #fff;
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.18), 0 8px 24px -12px rgb(229 50 45 / 0.7);
+  }
+  .btn-primary:active,
+  .btn-secondary:active { transform: scale(0.98); }
+  .btn-primary:hover { background: var(--color-signal-hover); }
+  .btn-secondary {
+    border: 1px solid rgb(255 255 255 / 0.14);
+    background: rgb(255 255 255 / 0.04);
+    color: var(--color-paper);
+  }
+  .btn-secondary:hover {
+    border-color: rgb(255 255 255 / 0.28);
+    background: rgb(255 255 255 / 0.08);
+  }
+
+  /* Raised surface: the one card language on the marketing site. */
+  .surface {
+    border-radius: 1rem;
+    border: 1px solid rgb(255 255 255 / 0.08);
+    background: var(--color-ink-2);
+  }
+  .btn-primary svg,
+  .btn-secondary svg { transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .btn-primary:hover svg,
+  .btn-secondary:hover svg { transform: translateX(3px); }
+
+  /* Underlined text link on the dark ground. */
+  .link-quiet {
+    color: var(--color-mute);
+    text-decoration: underline;
+    text-decoration-color: var(--color-rule);
+    text-underline-offset: 0.3em;
+  }
+  .link-quiet:hover {
+    color: var(--color-paper);
+    text-decoration-color: var(--color-paper);
+  }
+
+  .wrap {
+    width: 100%;
+    max-width: 84rem;
+    margin-inline: auto;
+    padding-inline: 1.25rem;
+  }
+  @media (min-width: 640px) { .wrap { padding-inline: 2rem; } }
+
+  .band { padding-block: clamp(5rem, 10vw, 8.5rem); }
+}
+
+/* Industries marquee: one per page, pauses on hover, static under reduced motion. */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.marquee-track { animation: marquee 40s linear infinite; }
+.marquee:hover .marquee-track { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track { animation: none; }
 }
 
 /*

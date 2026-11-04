@@ -1,5 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import Seo from '../site/Seo';
 import { ArrowLeft } from 'lucide-react';
 import logo from '../../assets/whitelogo-sm.png';
 import PageBackground from '../PageBackground';
@@ -10,8 +11,11 @@ import PageBackground from '../PageBackground';
  * vertically centered like the auth card, since a 15-section document needs
  * to scroll, not sit in one viewport.
  */
-export const LegalPage = ({ title, hudLabel, lastUpdated, effectiveDate, children }) => (
+export const LegalPage = ({ title, hudLabel, lastUpdated, effectiveDate, children }) => {
+  const { pathname } = useLocation();
+  return (
   <section className="relative bg-black text-white overflow-hidden antialiased font-sans min-h-screen px-4 py-10 sm:py-14">
+    <Seo title={`${title} | ManagerXP`} description={`${title} for ManagerXP Private Limited and its products CafeXP, RaceXP and FlowXP.`} path={pathname} />
     <PageBackground streakTop="top-1/4" streakBottom="bottom-1/3" />
 
     <div className="relative z-10 mx-auto w-full max-w-3xl">
@@ -64,7 +68,8 @@ export const LegalPage = ({ title, hudLabel, lastUpdated, effectiveDate, childre
       </div>
     </div>
   </section>
-);
+  );
+};
 
 export const Section = ({ id, title, children }) => (
   <section id={id} className="scroll-mt-24">

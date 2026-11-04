@@ -1,4 +1,4 @@
-import React, { useEffect, lazy, Suspense } from 'react'
+import React, { useEffect, useLayoutEffect, lazy, Suspense } from 'react'
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet, useLocation } from 'react-router-dom'
 import { MotionConfig } from 'framer-motion'
 import Navbar from './components/Navbar'
@@ -12,6 +12,9 @@ import { AuthProvider } from './context/AuthContext'
 import Home from './Pages/Home'
 
 const Products = lazy(() => import('./Pages/Products'))
+const Solutions = lazy(() => import('./Pages/Solutions'))
+const CafeXP = lazy(() => import('./Pages/CafeXP'))
+const RaceXP = lazy(() => import('./Pages/RaceXP'))
 const About = lazy(() => import('./Pages/About'))
 const Contact = lazy(() => import('./Pages/Contact'))
 const PrivacyPolicy = lazy(() => import('./Pages/PrivacyPolicy'))
@@ -99,7 +102,7 @@ const PortalProfile = fromSimple('Profile')
 const PortalSecurity = fromSimple('Security')
 
 const RouteFallback = () => (
-  <div className="flex min-h-[60vh] items-center justify-center bg-black">
+  <div className="flex min-h-[60vh] items-center justify-center bg-ink">
     <span className="h-6 w-6 animate-spin rounded-full border-2 border-neutral-700 border-t-red-500" />
   </div>
 )
@@ -113,13 +116,43 @@ const PortalRedirect = () => {
 
 // Router keeps the previous scroll offset across navigations; reset it so each
 // page starts at the top.
+// A hash (/solutions#custom) scrolls to its section instead; the target may
+// sit in a lazy chunk, so it is retried for a moment until it mounts.
 const ScrollToTop = () => {
-  const { pathname } = useLocation()
+  const { pathname, hash } = useLocation()
 
   useEffect(() => {
-    window.scrollTo(0, 0)
-  }, [pathname])
+    if (!hash) {
+      window.scrollTo(0, 0)
+      return undefined
+    }
+    let tries = 0
+    const id = setInterval(() => {
+      const el = document.getElementById(hash.slice(1))
+      if (el || ++tries > 20) {
+        clearInterval(id)
+        el?.scrollIntoView({ block: 'start' })
+      }
+    }, 50)
+    return () => clearInterval(id)
+  }, [pathname, hash])
 
+  return null
+}
+
+// Resets title/description/canonical to the site defaults on every route
+// change. Layout effects run before any page's <Seo> effect, so pages that set
+// their own metadata still win and pages that don't never inherit a stale one.
+const DEFAULT_TITLE = 'ManagerXP | AI-Powered Software Products & Custom Technology'
+const DEFAULT_DESCRIPTION = 'ManagerXP builds intelligent software products and custom technology solutions that simplify complex operations, automate workflows and help businesses scale. Makers of CafeXP, RaceXP and FlowXP.'
+const RouteMetaReset = () => {
+  const { pathname } = useLocation()
+  useLayoutEffect(() => {
+    document.title = DEFAULT_TITLE
+    document.head.querySelector('meta[name="description"]')?.setAttribute('content', DEFAULT_DESCRIPTION)
+    const canonical = document.head.querySelector('link[rel="canonical"]')
+    if (canonical) canonical.href = 'https://managerxp.com' + pathname
+  }, [pathname])
   return null
 }
 
@@ -141,7 +174,7 @@ const AppLayout = () => {
   const hideFooter = hideNavAndFooter
 
   return (
-    <div className="flex flex-col min-h-screen bg-black">
+    <div className="flex flex-col min-h-screen bg-ink">
       {/* First focusable element on every page, so a keyboard user is never
           forced through the nav (and, on marketing pages, past the whole
           hero) just to reach the actual content. */}
@@ -152,15 +185,19 @@ const AppLayout = () => {
         Skip to content
       </a>
       <ScrollToTop />
+      <RouteMetaReset />
       {!hideNavAndFooter && <Navbar />}
       {/* The nav is now a floating inset pill (its own top padding + height),
           taller than the old flush bar, so the clearance below it grows to
           match rather than letting page content sit under its edge. */}
-      <main id="main-content" tabIndex={-1} className={`flex-grow ${hideNavAndFooter ? '' : 'mt-24'}`}>
+      <main id="main-content" tabIndex={-1} className={`flex-grow ${hideNavAndFooter ? '' : 'mt-16'}`}>
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Home />} />
+          <Route path="/solutions" element={<Solutions />} />
           <Route path="/products" element={<Products />} />
+          <Route path="/products/cafexp" element={<CafeXP />} />
+          <Route path="/products/racexp" element={<RaceXP />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
