@@ -120,9 +120,9 @@ const PricingPlans = () => {
                 whileTap={{ scale: 0.99 }}
                 transition={SPRING}
                 className={`group relative flex h-full w-full flex-col rounded-2xl border p-6 text-left
-                            transition-colors duration-300 backdrop-blur-sm
+                            transition-colors duration-300
                             ${isSelected
-                              ? 'border-red-500/50 bg-red-500/[0.06] shadow-[0_0_50px_-20px_rgba(220,38,38,0.8)]'
+                              ? 'border-red-500/50 bg-red-500/[0.06]'
                               : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}
               >
                 {plan.recommended && (
@@ -152,7 +152,7 @@ const PricingPlans = () => {
                 <span
                   className={`mt-6 inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300
                               ${isSelected
-                                ? 'bg-gradient-to-br from-red-700 to-red-900 text-white border border-white/10'
+                                ? 'bg-[#e5322d] text-white border border-white/10'
                                 : 'bg-white/[0.05] text-neutral-200 border border-white/10 group-hover:bg-white/[0.08]'}`}
                 >
                   Talk to ManagerXP
@@ -166,7 +166,7 @@ const PricingPlans = () => {
 
       {/* Comparison */}
       <Reveal>
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
           <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3">
             <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
               Package comparison

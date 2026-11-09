@@ -37,7 +37,7 @@ const plannedStandalone = [
   'Remote operations'
 ];
 
-const RaceXPPreview = () => {
+const RaceXPPreview = ({ intro = true }) => {
   const [board, setBoard] = useState(leaderboardSeed);
 
   // Occasional position swap so the board reads as a running session.
@@ -57,9 +57,9 @@ const RaceXPPreview = () => {
   return (
     <div className="space-y-10">
 
-      {/* Phase 2 header */}
-      <Reveal>
-        <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.04] to-transparent p-6 sm:p-8 backdrop-blur-sm">
+      {/* Phase 2 header — the RaceXP page carries its own, so it can opt out. */}
+      {intro && <Reveal>
+        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-red-400">
               <Flag className="h-3 w-3" aria-hidden="true" />
@@ -72,7 +72,7 @@ const RaceXPPreview = () => {
 
           <h3 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white text-balance">
             RaceXP — the next generation of{' '}
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-red-700">
+            <span className="text-white">
               racing centre management.
             </span>
           </h3>
@@ -82,7 +82,7 @@ const RaceXPPreview = () => {
             can buy today.
           </p>
         </div>
-      </Reveal>
+      </Reveal>}
 
       {/* Live telemetry */}
       <Reveal>
@@ -92,7 +92,7 @@ const RaceXPPreview = () => {
       {/* Two future forms */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         <Reveal className="h-full">
-          <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm transition-colors duration-300 hover:border-red-500/30">
+          <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-6 transition-colors duration-300 hover:border-red-500/30">
             <div className="mb-3 flex items-center gap-2">
               <span className="rounded-lg border border-white/10 bg-white/5 p-2 text-red-500">
                 <Plus className="h-4 w-4" aria-hidden="true" />
@@ -116,7 +116,7 @@ const RaceXPPreview = () => {
         </Reveal>
 
         <Reveal delay={110} className="h-full">
-          <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-6 backdrop-blur-sm transition-colors duration-300 hover:border-red-500/30">
+          <div className="h-full rounded-2xl border border-white/10 bg-white/[0.02] p-6 transition-colors duration-300 hover:border-red-500/30">
             <div className="mb-3 flex items-center gap-2">
               <span className="rounded-lg border border-white/10 bg-white/5 p-2 text-red-500">
                 <Layers className="h-4 w-4" aria-hidden="true" />
@@ -142,7 +142,7 @@ const RaceXPPreview = () => {
 
       {/* Leaderboard */}
       <Reveal>
-        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] backdrop-blur-sm">
+        <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
           <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3">
             <span className="flex items-center gap-2 text-xs font-semibold text-white">
               <Trophy className="h-4 w-4 text-red-500" aria-hidden="true" />

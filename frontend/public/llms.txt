@@ -1,24 +1,33 @@
 # ManagerXP
 
-> ManagerXP builds management software for gaming cafes, internet cafes, and
-> similar walk-in digital businesses. Its flagship product, CafeXP, tracks PC
-> sessions, automates billing from that session time, and gives an owner a
-> single live view of every station across one or many branches.
+> ManagerXP Private Limited is an AI-powered business technology company in
+> Hyderabad, India. It builds intelligent software products and custom
+> technology solutions that simplify operations, automate complex workflows
+> and help businesses scale.
 
-ManagerXP Private Limited is the company; CafeXP is the current product.
-RaceXP (sim-racing venue management) is announced but not yet generally
-available. Pricing, onboarding, and support are handled through the pages
-below - this file is a guide for AI assistants and crawlers, not an API.
+Products: CafeXP (gaming café management, available), RaceXP (sim racing
+technology, in development, not yet available) and FlowXP (AI-powered
+business management and billing, available at https://flowxp.in). ManagerXP
+also takes on custom software development, automation and system
+integration projects.
 
-## Product
+## Solutions
 
-- [Products](https://managerxp.com/products): What CafeXP does - session
-  tracking, automated billing, live floor monitoring, and the AI-assisted
-  features layered on top of them.
-- [Book a demo](https://managerxp.com/demo): Request a walkthrough of CafeXP
-  with a real member of the team.
-- [Sign up](https://managerxp.com/signup): Start a 15-day CafeXP trial on up
-  to 5 PCs, no credit card required.
+- [Solutions](https://managerxp.com/solutions): Capabilities, custom
+  development, how an engagement runs, and the sectors ManagerXP targets.
+- [Contact](https://managerxp.com/contact): Start a project conversation.
+
+## Products
+
+- [Products](https://managerxp.com/products): All product lines.
+- [CafeXP](https://managerxp.com/products/cafexp): Session tracking,
+  automated billing, live floor monitoring, stock, staff and AI analytics
+  for gaming and internet cafés. 15-day trial on up to 5 PCs via
+  [Sign up](https://managerxp.com/signup); [book a demo](https://managerxp.com/demo).
+- [RaceXP](https://managerxp.com/products/racexp): Planned sim racing
+  platform (telemetry, race sessions, lap timing, venue operations).
+- [FlowXP](https://flowxp.in): Billing, stock, GST and AI insights for
+  Indian businesses. Separate website.
 
 ## Company
 

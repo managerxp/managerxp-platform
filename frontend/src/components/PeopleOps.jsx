@@ -67,7 +67,7 @@ const PeopleOps = () => {
               }`}
             >
               {view === v.id && (
-                <Motion.span layoutId="people-pill" transition={SPRING} className="absolute inset-0 -z-10 rounded-full bg-gradient-to-br from-red-700 to-red-900" />
+                <Motion.span layoutId="people-pill" transition={SPRING} className="absolute inset-0 -z-10 rounded-full bg-[#e5322d]" />
               )}
               {v.label}
             </button>

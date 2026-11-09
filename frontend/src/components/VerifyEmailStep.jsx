@@ -50,7 +50,7 @@ const VerifyEmailStep = ({ email, verify, resend, onVerified, sent = true }) => 
 
   return (
     <div className="mt-5 space-y-4">
-      <div className="flex items-start gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-neutral-300">
+      <div className="flex items-start gap-3 border border-white/10 bg-white/[0.03] px-3 py-3 text-sm text-neutral-300">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
         <span>
           Enter the six-digit code sent to <strong className="text-white">{email}</strong> to finish
@@ -60,13 +60,13 @@ const VerifyEmailStep = ({ email, verify, resend, onVerified, sent = true }) => 
 
       <div aria-live="polite">
         {notice && (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          <div className="flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             {notice}
           </div>
         )}
         {error && (
-          <div className="mt-2 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          <div className="mt-2 flex items-center gap-2 border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {error}
           </div>
@@ -94,11 +94,10 @@ const VerifyEmailStep = ({ email, verify, resend, onVerified, sent = true }) => 
         <button
           type="submit"
           disabled={verifying}
-          className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
-                     bg-gradient-to-br from-red-700 to-red-900 border border-white/10
-                     py-2.5 text-sm font-semibold text-white
-                     shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
-                     transition-all duration-300 active:scale-[0.99]
+          className="group relative flex w-full items-center justify-center gap-2 overflow-hidden
+                     bg-signal-deep hover:bg-signal-press
+                     py-3.5 text-[15px] font-semibold text-white
+                     transition-colors duration-150 active:translate-y-px
                      disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {verifying ? (
@@ -116,7 +115,7 @@ const VerifyEmailStep = ({ email, verify, resend, onVerified, sent = true }) => 
         type="button"
         onClick={onResend}
         disabled={resending}
-        className="w-full text-center text-xs text-neutral-500 hover:text-red-400 underline underline-offset-4 transition-colors disabled:opacity-60"
+        className="w-full text-center text-xs text-neutral-400 hover:text-red-400 underline underline-offset-4 transition-colors disabled:opacity-60"
       >
         {resending ? 'Sending...' : "Didn't get a code? Resend"}
       </button>

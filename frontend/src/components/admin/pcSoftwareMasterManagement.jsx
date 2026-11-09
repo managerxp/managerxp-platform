@@ -199,9 +199,9 @@ const SoftwareMasterManagement = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-black via-gray-900 to-black">
+    <div className="min-h-screen bg-[#0e0e0e]">
       {/* Header Section */}
-      <div className="bg-gradient-to-r from-red-600 to-red-800 shadow-2xl">
+      <div className="bg-[#e5322d] shadow-2xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="flex justify-between items-center">
             <div>
@@ -254,10 +254,10 @@ const SoftwareMasterManagement = () => {
               {filteredSoftware.map((item) => (
                 <div
                   key={item.software_id}
-                  className="bg-gray-900/50 backdrop-blur-sm border border-red-500/20 rounded-xl overflow-hidden hover:border-red-500/40 transition-all hover:transform hover:scale-105 group"
+                  className="bg-gray-900/50 border border-red-500/20 rounded-xl overflow-hidden hover:border-red-500/40 transition-all hover:transform hover:scale-105 group"
                 >
                   {/* Icon Section */}
-                  <div className="relative h-48 bg-gradient-to-br from-gray-800 to-gray-900 flex items-center justify-center">
+                  <div className="relative h-48 bg-white/[0.03] flex items-center justify-center">
                     {item.software_icon ? (
                       <img
                         src={`${BASE_URL}${item.software_icon}`}
@@ -346,7 +346,7 @@ const SoftwareMasterManagement = () => {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4">
           <div className="bg-gray-900 rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto border border-red-500/20">
             <div className="sticky top-0 bg-gray-900 border-b border-red-500/20 p-6 flex justify-between items-center">
               <h2 className="text-2xl font-bold text-white">
@@ -467,7 +467,7 @@ const SoftwareMasterManagement = () => {
                 <div className="flex gap-3 pt-4">
                   <button
                     type="submit"
-                    className="flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white py-3 rounded-lg font-semibold hover:from-red-700 hover:to-red-800 transition-all transform hover:scale-105"
+                    className="flex-1 bg-[#e5322d] text-white py-3 rounded-lg font-semibold hover:from-red-700 hover:to-red-800 transition-all transform hover:scale-105"
                   >
                     {modalMode === 'create' ? 'Create Software' : 'Update Software'}
                   </button>

@@ -1,9 +1,7 @@
 import React, { useState } from 'react';
 import { motion as Motion, AnimatePresence } from 'framer-motion';
 import { Plus } from 'lucide-react';
-import PageBackground from './PageBackground';
 import SectionHeading from './SectionHeading';
-import Reveal from './Reveal';
 import { EASE_MOTION } from '../lib/motion';
 
 /**
@@ -15,12 +13,12 @@ import { EASE_MOTION } from '../lib/motion';
  */
 const faqs = [
   {
-    q: 'What does ManagerXP actually do?',
+    q: 'What does CafeXP actually do?',
     a: 'It is management software for gaming and internet cafes. You register each PC in the system, control and time customer sessions, bill from those sessions, and see the state of the floor from one dashboard.'
   },
   {
     q: 'How do ManagerXP, CafeXP and RaceXP relate?',
-    a: 'ManagerXP is the platform. CafeXP is the product you can run today for gaming and internet cafes, and it comes in three packages — Basic, Pro and Elite. RaceXP is a Phase 2 expansion into sim racing that is still in development.'
+    a: 'ManagerXP is the technology company that builds them. CafeXP is the product you can run today for gaming and internet cafes, in three packages: Basic, Pro and Elite. RaceXP is a sim racing platform still in development. FlowXP, our billing and business management product, lives at flowxp.in.'
   },
   {
     q: 'Which CafeXP package should I pick?',
@@ -44,7 +42,7 @@ const faqs = [
   },
   {
     q: 'Is there a free trial?',
-    a: 'Yes, there is a free trial plan. The exact length and PC limit are shown on the trial banner on this page, since they come from the current plan.'
+    a: 'Yes. Start a free trial from this page; the length and PC limit come from the current trial plan and are shown when you sign up.'
   },
   {
     q: 'Can you build something specific for my setup?',
@@ -52,34 +50,22 @@ const faqs = [
   }
 ];
 
-const FAQ = () => {
+const FAQ = ({ dark = false }) => {
   const [openIndex, setOpenIndex] = useState(0);
 
   return (
-    <section className="section-seam relative bg-black overflow-hidden antialiased font-sans text-white">
-      <PageBackground streakTop="top-1/4" streakBottom="bottom-1/3" />
+    <section className={dark ? 'text-sheet' : 'text-carbon'}>
+      <div className="grid gap-10 lg:grid-cols-12">
+        <SectionHeading title="Before you get started." tone={dark ? 'dark' : 'light'} className="lg:col-span-4" />
 
-      <div className="relative z-10 max-w-3xl mx-auto px-5 sm:px-6 section-y">
-        <SectionHeading
-          eyebrow="Questions"
-          title="Before you"
-          highlight="get started."
-          className="mb-12"
-        />
-
-        <div className="space-y-3">
+        <div className={`border-b ${dark ? 'border-sheet/20' : 'border-carbon'} lg:col-span-8`}>
           {faqs.map((faq, index) => {
             const isOpen = openIndex === index;
             const panelId = `faq-panel-${index}`;
             const buttonId = `faq-button-${index}`;
 
             return (
-              <Reveal key={faq.q} delay={index * 50}>
-                <div
-                  className={`rounded-xl border bg-white/[0.02] backdrop-blur-sm transition-colors duration-300 ${
-                    isOpen ? 'border-red-500/30' : 'border-white/10 hover:border-white/20'
-                  }`}
-                >
+              <div key={faq.q} className={`border-t ${dark ? 'border-sheet/20' : 'border-carbon'}`}>
                   <h3>
                     <button
                       type="button"
@@ -87,16 +73,16 @@ const FAQ = () => {
                       aria-expanded={isOpen}
                       aria-controls={panelId}
                       onClick={() => setOpenIndex(isOpen ? -1 : index)}
-                      className="flex w-full items-center justify-between gap-4 p-5 text-left"
+                      className="flex w-full items-center justify-between gap-4 py-5 text-left"
                     >
-                      <span className={`text-sm sm:text-base font-medium transition-colors ${isOpen ? 'text-white' : 'text-neutral-300'}`}>
+                      <span className={`text-[19px] font-semibold tracking-[-0.01em] transition-colors ${isOpen ? '' : 'opacity-80 hover:opacity-100'}`}>
                         {faq.q}
                       </span>
                       <Motion.span
                         aria-hidden="true"
                         animate={{ rotate: isOpen ? 45 : 0 }}
                         transition={{ duration: 0.3, ease: EASE_MOTION }}
-                        className={`shrink-0 ${isOpen ? 'text-red-500' : 'text-neutral-500'}`}
+                        className={`shrink-0 ${isOpen ? 'text-signal' : ''}`}
                       >
                         <Plus className="w-4 h-4" />
                       </Motion.span>
@@ -116,14 +102,13 @@ const FAQ = () => {
                         transition={{ duration: 0.32, ease: EASE_MOTION }}
                         className="overflow-hidden"
                       >
-                        <p className="px-5 pb-5 -mt-1 text-sm text-neutral-400 leading-relaxed text-pretty">
+                        <p className={`max-w-[64ch] pb-6 text-[17px] leading-relaxed text-pretty ${dark ? 'text-sheet/65' : 'text-graphite'}`}>
                           {faq.a}
                         </p>
                       </Motion.div>
                     )}
                   </AnimatePresence>
-                </div>
-              </Reveal>
+              </div>
             );
           })}
         </div>

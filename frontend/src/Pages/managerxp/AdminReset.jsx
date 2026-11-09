@@ -65,6 +65,7 @@ const AdminReset = () => {
 
   return (
     <AuthLayout
+      brand="managerxp"
       title={copy.title}
       subtitle={copy.subtitle}
       footer={

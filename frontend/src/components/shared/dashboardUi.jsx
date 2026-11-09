@@ -18,15 +18,13 @@ import { authFieldClasses, authLabelClasses } from '../AuthLayout';
  */
 
 /** Glass panel surface — the login card's treatment, reusable. */
-export const surface =
-  'rounded-2xl border border-white/10 bg-neutral-950/70 backdrop-blur-xl ' +
-  'shadow-[0_0_50px_-20px_rgba(220,38,38,0.25)]';
+export const surface = 'rounded-lg border border-white/10 bg-[#121214]';
 
 /** The gradient action button's own classes, for anything hand-rolled that isn't <Button>. */
 export const primaryButtonClass =
   'inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/10 ' +
-  'bg-gradient-to-br from-red-700 to-red-900 px-4 py-2 text-sm font-semibold text-white ' +
-  'shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)] ' +
+  'bg-[#e5322d] px-4 py-2 text-sm font-semibold text-white ' +
+  ' hover: ' +
   'transition-all duration-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60';
 
 export const Page = ({ title, lede, actions, children }) => (
@@ -43,22 +41,12 @@ export const Page = ({ title, lede, actions, children }) => (
 );
 
 /*
- * A panel. `hud` adds the terminal strip from the login card — worth it on
- * a page's primary panel, noise if every panel on the page wears one.
+ * A panel. `hud` is accepted for older call sites; the fake terminal strip
+ * it used to draw is gone.
  * Portal's pages call this `Card`; admin's call it `Panel` — same component.
  */
-export const Card = ({ title, description, actions, hud, className = '', children }) => (
+export const Card = ({ title, description, actions, className = '', children }) => (
   <section className={`${surface} overflow-hidden ${className}`}>
-    {hud && (
-      <div className="flex items-center gap-1.5 border-b border-white/5 bg-white/[0.02] px-4 py-3">
-        <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-        <div className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-        <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-        <span className="ml-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
-          {typeof hud === 'string' ? hud : 'panel'}
-        </span>
-      </div>
-    )}
     {(title || actions) && (
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-white/10 px-5 py-4">
         <div>
@@ -76,8 +64,8 @@ export const Button = ({ variant = 'primary', size = 'md', className = '', child
   const sizes = { sm: 'px-2.5 py-1 text-xs', md: 'px-4 py-2 text-sm' };
   const variants = {
     primary:
-      'border border-white/10 bg-gradient-to-br from-red-700 to-red-900 text-white ' +
-      'shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)] ' +
+      'border border-white/10 bg-[#e5322d] text-white ' +
+      ' hover: ' +
       'active:scale-[0.99] disabled:opacity-60',
     ghost: 'border border-white/10 bg-white/[0.03] text-neutral-300 hover:border-white/20 hover:text-white disabled:opacity-50',
     danger: 'border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50',
@@ -141,7 +129,7 @@ export const Empty = ({ title, text, action }) => (
 export const Skeleton = ({ rows = 3, height = 'h-24' }) => (
   <div className="space-y-3">
     {Array.from({ length: rows }).map((_, i) => (
-      <div key={i} className={`${height} animate-pulse rounded-2xl border border-white/10 bg-white/[0.03]`} />
+      <div key={i} className={`${height} rounded-2xl border border-white/10 bg-white/[0.03]`} />
     ))}
   </div>
 );
@@ -212,7 +200,7 @@ export const Stat = ({ label, value, sub, tone = 'default' }) => {
     bad: 'border-red-500/30'
   };
   return (
-    <div className={`rounded-2xl border ${rings[tone]} bg-white/[0.03] p-4 backdrop-blur-xl`}>
+    <div className={`rounded-2xl border ${rings[tone]} bg-white/[0.03] p-4`}>
       <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
       <div className="mt-1.5 text-2xl font-bold tracking-tight text-white">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-neutral-500">{sub}</div>}

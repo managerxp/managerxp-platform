@@ -232,7 +232,7 @@ const TelemetryPanel = () => {
             </div>
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-red-300">
-                <span className={`h-1.5 w-1.5 rounded-full bg-red-500 ${running ? 'animate-pulse' : ''}`} />
+                <span className={`h-1.5 w-1.5 rounded-full bg-red-500 `} />
                 Lap {lapNumber}
               </span>
             </div>
@@ -372,7 +372,7 @@ const TelemetryPanel = () => {
 
             <div ref={railRef} className="relative h-9 flex-1 rounded-full border border-white/10 bg-white/[0.03]">
               <div
-                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-red-900/45 to-red-600/35"
+                className="absolute inset-y-0 left-0 rounded-full bg-[#e5322d]/30"
                 style={{ width: `${reading.position * 100}%` }}
                 aria-hidden="true"
               />
@@ -396,7 +396,7 @@ const TelemetryPanel = () => {
                 aria-valuenow={Math.round(reading.position * 100)}
                 aria-valuetext={`${reading.corner.name}, ${formatLap(reading.elapsed)}`}
                 onKeyDown={onKey}
-                className="absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border border-red-400/60 bg-black shadow-[0_0_18px_-2px_rgba(239,68,68,0.9)] active:cursor-grabbing"
+                className="absolute top-1/2 h-7 w-7 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border border-red-400/60 bg-black active:cursor-grabbing"
                 style={prefersReducedMotion() ? { left: `${reading.position * 100}%` } : { left: 0 }}
               >
                 <span aria-hidden="true" className="absolute inset-[6px] rounded-full bg-red-500" />

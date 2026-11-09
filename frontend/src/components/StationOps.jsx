@@ -11,7 +11,7 @@ import { glassPanel } from '../lib/ui';
  */
 
 const STATE = {
-  gaming: { label: 'Gaming', dot: 'bg-red-500', text: 'text-red-400', ring: 'border-red-500/45', glow: 'shadow-[0_0_18px_-5px_rgba(220,38,38,0.8)]' },
+  gaming: { label: 'Gaming', dot: 'bg-red-500', text: 'text-red-400', ring: 'border-red-500/45', glow: '' },
   available: { label: 'Available', dot: 'bg-emerald-400', text: 'text-emerald-400/90', ring: 'border-emerald-400/25', glow: '' },
   maintenance: { label: 'Maintenance', dot: 'bg-amber-400', text: 'text-amber-400/90', ring: 'border-amber-400/25', glow: '' },
   offline: { label: 'Offline', dot: 'bg-neutral-600', text: 'text-neutral-500', ring: 'border-white/10', glow: '' }
@@ -181,7 +181,7 @@ const StationOps = () => {
                 </div>
                 <div className="h-1 overflow-hidden rounded-full bg-white/10">
                   <Motion.div
-                    className="h-full rounded-full bg-gradient-to-r from-red-600 to-red-400"
+                    className="h-full rounded-full bg-[#e5322d]"
                     animate={{ width: `${m.value}%` }}
                     transition={{ duration: 0.6, ease: EASE_MOTION }}
                   />

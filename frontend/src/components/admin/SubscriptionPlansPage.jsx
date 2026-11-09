@@ -176,7 +176,7 @@ const SubscriptionPlansPage = () => {
         {/* Header Section */}
         <div className="mb-8 flex items-center justify-between border-b border-red-500/30 pb-4">
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-red-500 to-red-700 bg-clip-text text-transparent">
+            <h1 className="text-3xl font-bold bg-[#e5322d] bg-clip-text text-transparent">
               Subscription Plans
             </h1>
             <p className="text-gray-400 mt-1 text-sm">Manage your subscription plans and configurations</p>
@@ -199,7 +199,7 @@ const SubscriptionPlansPage = () => {
         </div>
 
         {/* Form Section */}
-        <form onSubmit={onSubmit} className="mb-8 bg-gradient-to-br from-neutral-900 to-black border border-red-500/20 rounded-xl p-6 shadow-xl">
+        <form onSubmit={onSubmit} className="mb-8 bg-white/[0.03] border border-red-500/20 rounded-xl p-6 shadow-xl">
           <h2 className="text-xl font-semibold mb-4 text-red-400">
             {editingId ? 'Edit Subscription Plan' : 'Create New Subscription Plan'}
           </h2>
@@ -434,7 +434,7 @@ const SubscriptionPlansPage = () => {
 
         {/* Plans Table */}
         {!loadingPlans && !plansError && (
-          <div className="overflow-x-auto rounded-xl border border-red-500/20 bg-gradient-to-br from-neutral-900 to-black">
+          <div className="overflow-x-auto rounded-xl border border-red-500/20 bg-white/[0.03]">
             <table className="min-w-full">
               <thead className="bg-red-500/5 border-b border-red-500/20">
                 <tr>

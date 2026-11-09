@@ -102,8 +102,20 @@ const PrivacyPolicy = () => (
         ]}
       />
       <p>
-        You can control or disable cookies through your browser settings, although some features may
-        not function correctly as a result.
+        On your first visit we ask before using anything beyond what the site needs to work. You can
+        accept all categories, keep only the strictly necessary ones, or choose per category
+        (Preferences, Analytics, Marketing). Strictly necessary cookies keep you signed in and the
+        Service secure, and cannot be switched off.
+      </p>
+      <p>
+        You can change or withdraw your choice at any time from "Cookie &amp; data choices" in the
+        footer; withdrawing is as easy as giving consent. We keep a record of each choice (the
+        categories, the policy version and the time, linked to a random identifier stored in your
+        browser, not to your name or IP address) so that we can show consent was given.
+      </p>
+      <p>
+        You can also control or disable cookies through your browser settings, although some features
+        may not function correctly as a result.
       </p>
     </Section>
 
@@ -254,10 +266,10 @@ const PrivacyPolicy = () => (
         provide reasonable notice through the Service, website, or email.
       </p>
       <p>For questions, privacy requests, or complaints, contact:</p>
-      <p className="text-neutral-400">
+      <p className="text-graphite">
         ManagerXP Private Limited
         <br />
-        Email: <a className="text-red-400 hover:text-red-300 underline" href="mailto:managerxp2026@gmail.com">managerxp2026@gmail.com</a>
+        Email: <a className="underline underline-offset-4 hover:text-signal" href="mailto:managerxp2026@gmail.com">managerxp2026@gmail.com</a>
         <br />
         Address: 8-2-644/1/205 F205, Hiline Complex, Road No.12, Banjara Hills, Hyderabad- 500034.
         <br />

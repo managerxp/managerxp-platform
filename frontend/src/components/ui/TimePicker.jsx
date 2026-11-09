@@ -80,7 +80,7 @@ const TimePicker = ({ value, onChange, min, max, step = 30, disabled = false, id
       {open && !disabled && (
         <div
           ref={listRef}
-          className="absolute z-50 mt-2 max-h-56 w-40 overflow-y-auto rounded-xl border border-white/10 bg-neutral-950/95 p-1.5 shadow-[0_0_40px_-15px_rgba(220,38,38,0.35)] backdrop-blur-xl"
+          className="absolute z-50 mt-2 max-h-56 w-40 overflow-y-auto rounded-xl border border-white/10 bg-neutral-950/95 p-1.5"
         >
           {options.length === 0 && (
             <p className="px-2 py-2 text-xs text-neutral-500">No times available.</p>

@@ -28,7 +28,7 @@ const layerVariants = (depth = 0) => ({
 });
 
 const STATION_STATES = {
-  active: { label: 'Active', dot: 'bg-red-500', text: 'text-red-400', ring: 'border-red-500/45', glow: 'shadow-[0_0_16px_-4px_rgba(220,38,38,0.7)]' },
+  active: { label: 'Active', dot: 'bg-red-500', text: 'text-red-400', ring: 'border-red-500/45', glow: '' },
   available: { label: 'Available', dot: 'bg-emerald-400', text: 'text-emerald-400/90', ring: 'border-emerald-400/25', glow: '' },
   paused: { label: 'Paused', dot: 'bg-amber-400', text: 'text-amber-400/90', ring: 'border-amber-400/25', glow: '' }
 };
@@ -66,8 +66,6 @@ const CommandCenter = () => {
   const nearY = useTransform(springY, [-0.5, 0.5], [-30, 30]);
   const midX = useTransform(springX, [-0.5, 0.5], [-26, 26]);
   const midY = useTransform(springY, [-0.5, 0.5], [-18, 18]);
-  const farX = useTransform(springX, [-0.5, 0.5], [-9, 9]);
-  const farY = useTransform(springY, [-0.5, 0.5], [-6, 6]);
 
   useEffect(() => {
     if (!supportsPointerParallax()) return;
@@ -171,16 +169,6 @@ const CommandCenter = () => {
       {/* Perspective viewport */}
       <div className="relative mx-auto w-full max-w-4xl" style={{ perspective: '1500px', perspectiveOrigin: '50% 40%' }}>
 
-        {/* Layer 1-2: environment grid + ambient red glow, sitting behind the panel */}
-        <Motion.div
-          aria-hidden="true"
-          style={{ x: farX, y: farY }}
-          className="pointer-events-none absolute -inset-x-10 -inset-y-14"
-        >
-          <div className="absolute inset-0 opacity-[0.09] bg-[length:44px_44px] [background-image:linear-gradient(to_right,rgba(255,255,255,0.5)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.5)_1px,transparent_1px)] [mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,black,transparent)]" />
-          <div className="absolute inset-0 [background:radial-gradient(ellipse_50%_45%_at_50%_55%,rgba(220,38,38,0.28),transparent_70%)] blur-2xl" />
-        </Motion.div>
-
         {/* The 3D stage */}
         <Motion.div
           variants={stageVariants}
@@ -193,7 +181,7 @@ const CommandCenter = () => {
           {/* Layer 3: main dashboard panel */}
           <Motion.div
             variants={layerVariants(0)}
-            className="relative rounded-2xl border border-white/10 bg-neutral-950/80 backdrop-blur-xl overflow-hidden shadow-[0_40px_90px_-40px_rgba(220,38,38,0.55),0_0_0_1px_rgba(255,255,255,0.03)]"
+            className="relative rounded-2xl border border-white/10 bg-neutral-950/80 overflow-hidden"
             style={{ transformStyle: 'preserve-3d' }}
           >
             {/* Panel header */}
@@ -204,8 +192,8 @@ const CommandCenter = () => {
                   Live Cafe Control
                 </span>
               </div>
-              <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-red-400 shrink-0">
-                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+              <span className="flex items-center gap-1.5 text-[12px] text-red-400 shrink-0">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
                 Live
               </span>
             </div>
@@ -214,7 +202,7 @@ const CommandCenter = () => {
 
               {/* Station grid */}
               <div className="md:col-span-3">
-                <p className="text-[10px] font-mono uppercase tracking-wider text-neutral-500 mb-2.5">
+                <p className="text-[12px] text-neutral-400 mb-2.5">
                   Stations
                 </p>
                 <div className="grid grid-cols-3 gap-2 sm:gap-2.5">
@@ -226,11 +214,11 @@ const CommandCenter = () => {
                         className={`rounded-lg border bg-white/[0.03] p-2.5 transition-all duration-500 ${s.ring} ${s.glow}`}
                       >
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="font-mono text-[10px] text-neutral-300">{station.id}</span>
+                          <span className="font-mono text-[12px] text-neutral-300">{station.id}</span>
                           <span className={`h-1.5 w-1.5 rounded-full transition-colors duration-500 ${s.dot}`} />
                         </div>
                         <Monitor className={`w-4 h-4 mb-1.5 transition-colors duration-500 ${s.text}`} />
-                        <p className={`font-mono text-[9px] transition-colors duration-500 ${s.text}`}>
+                        <p className={`font-mono text-[11px] transition-colors duration-500 ${s.text}`}>
                           {station.state === 'available' ? s.label : `${station.mins}m`}
                         </p>
                       </div>
@@ -241,14 +229,14 @@ const CommandCenter = () => {
 
               {/* KPI rail */}
               <div className="md:col-span-2 space-y-2.5">
-                <p className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+                <p className="text-[12px] text-neutral-400">
                   Today
                 </p>
 
                 <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                   <div className="flex items-center gap-2 text-red-500 mb-1.5">
                     <IndianRupee className="w-3.5 h-3.5" />
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Takings</span>
+                    <span className="text-[12px] text-neutral-400">Takings</span>
                   </div>
                   <p className="text-lg font-semibold text-white tabular-nums leading-none">
                     {revenue.toLocaleString('en-IN')}
@@ -259,23 +247,23 @@ const CommandCenter = () => {
                   <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                     <Activity className="w-3.5 h-3.5 text-red-500 mb-1.5" />
                     <p className="text-base font-semibold text-white tabular-nums leading-none">{activeCount}</p>
-                    <p className="text-[9px] font-mono uppercase tracking-wider text-neutral-500 mt-1">Active</p>
+                    <p className="text-[12px] text-neutral-400 mt-1">Active</p>
                   </div>
                   <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                     <Monitor className="w-3.5 h-3.5 text-emerald-400/80 mb-1.5" />
                     <p className="text-base font-semibold text-white tabular-nums leading-none">{availableCount}</p>
-                    <p className="text-[9px] font-mono uppercase tracking-wider text-neutral-500 mt-1">Free</p>
+                    <p className="text-[12px] text-neutral-400 mt-1">Free</p>
                   </div>
                 </div>
 
                 <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">Utilisation</span>
-                    <span className="text-[10px] font-mono text-white tabular-nums">{utilisation}%</span>
+                    <span className="text-[12px] text-neutral-400">Utilisation</span>
+                    <span className="text-[12px] font-mono text-white tabular-nums">{utilisation}%</span>
                   </div>
                   <div className="h-1 w-full rounded-full bg-white/10 overflow-hidden">
                     <div
-                      className="cc-fill h-full rounded-full bg-gradient-to-r from-red-600 to-red-400 transition-[width] duration-700 ease-out"
+                      className="cc-fill h-full rounded-full bg-[#e5322d] transition-[width] duration-700 ease-out"
                       data-fill={`${utilisation}%`}
                       style={{ width: `${utilisation}%` }}
                     />
@@ -291,14 +279,14 @@ const CommandCenter = () => {
             style={{ x: midX, y: midY }}
             className="absolute -bottom-10 w-[260px] hidden lg:block
                        lg:-left-6 xl:-left-16
-                       rounded-xl border border-white/10 bg-neutral-950/90 backdrop-blur-xl p-4
+                       rounded-xl border border-white/10 bg-neutral-950/90 p-4
                        shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)]"
           >
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+              <span className="text-[12px] text-neutral-400">
                 Sessions by hour
               </span>
-              <span className="text-[10px] font-mono text-red-400 tabular-nums">
+              <span className="text-[12px] font-mono text-red-400 tabular-nums">
                 {hoveredBar !== null ? chartBars[hoveredBar] : '—'}
               </span>
             </div>
@@ -322,8 +310,8 @@ const CommandCenter = () => {
                     transition={{ duration: 0.7, delay: 0.5 + i * 0.04, ease: EASE_MOTION }}
                     className={`w-full rounded-t origin-bottom transition-colors duration-300 ${
                       hoveredBar === i
-                        ? 'bg-gradient-to-t from-red-500 to-red-300 shadow-[0_0_14px_rgba(239,68,68,0.75)]'
-                        : 'bg-gradient-to-t from-red-800/70 to-red-500/70'
+                        ? 'bg-[#e5322d]'
+                        : 'bg-[#e5322d]/30'
                     }`}
                     style={{ height: `${h}%` }}
                   />
@@ -332,7 +320,7 @@ const CommandCenter = () => {
 
               {hoveredBar !== null && (
                 <span
-                  className="pointer-events-none absolute -top-1 z-10 rounded-md border border-white/15 bg-black/90 px-1.5 py-0.5 text-[9px] font-mono text-white whitespace-nowrap"
+                  className="pointer-events-none absolute -top-1 z-10 rounded-md border border-white/15 bg-black/90 px-1.5 py-0.5 text-[11px] font-mono text-white whitespace-nowrap"
                   style={{ left: `${(hoveredBar / chartBars.length) * 100}%` }}
                 >
                   {chartHours[hoveredBar]} · {chartBars[hoveredBar]}
@@ -347,12 +335,12 @@ const CommandCenter = () => {
             style={{ x: nearX, y: nearY }}
             className="absolute -top-8 w-[190px] hidden lg:block
                        lg:-right-5 xl:-right-14
-                       rounded-xl border border-white/10 bg-neutral-950/90 backdrop-blur-xl p-3.5
+                       rounded-xl border border-white/10 bg-neutral-950/90 p-3.5
                        shadow-[0_30px_60px_-30px_rgba(0,0,0,0.9)]"
           >
             <div className="flex items-center gap-2 mb-2.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-[12px] text-neutral-400">
                 Systems
               </span>
             </div>
@@ -361,8 +349,8 @@ const CommandCenter = () => {
               { label: 'Billing', value: 'Auto' },
               { label: 'Telemetry', value: 'On' }
             ].map((row) => (
-              <div key={row.label} className="flex items-center justify-between py-1 text-[10px] font-mono">
-                <span className="text-neutral-500">{row.label}</span>
+              <div key={row.label} className="flex items-center justify-between py-1 text-[12px] font-mono">
+                <span className="font-sans text-neutral-400">{row.label}</span>
                 <span className="text-neutral-200">{row.value}</span>
               </div>
             ))}
@@ -374,9 +362,9 @@ const CommandCenter = () => {
             className="absolute -bottom-4 right-2 sm:right-6 hidden lg:block"
           >
             {notice && (
-              <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-black/90 px-3 py-1.5 shadow-[0_0_24px_-6px_rgba(220,38,38,0.8)]">
+              <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-black/90 px-3 py-1.5">
                 <Bell className="w-3 h-3 text-red-400" />
-                <span className="text-[10px] font-mono text-neutral-200 whitespace-nowrap">{notice}</span>
+                <span className="text-[12px] font-mono text-neutral-200 whitespace-nowrap">{notice}</span>
               </div>
             )}
           </Motion.div>

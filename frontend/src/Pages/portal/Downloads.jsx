@@ -18,9 +18,9 @@ import { portalApi } from '../../lib/portalApi';
  */
 const DOWNLOAD_BUTTON_CLASS =
   'mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 ' +
-  'bg-gradient-to-br from-red-700 to-red-900 px-4 py-2 text-sm font-semibold text-white ' +
-  'shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] transition-all duration-300 ' +
-  'hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)] active:scale-[0.99]';
+  'bg-[#e5322d] px-4 py-2 text-sm font-semibold text-white ' +
+  ' transition-all duration-300 ' +
+  'hover: active:scale-[0.99]';
 
 const STEPS = [
   { title: 'Download CafeXP Server', body: 'Install it on the machine at your counter — the one that will run the café.' },

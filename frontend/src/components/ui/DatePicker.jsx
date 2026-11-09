@@ -87,7 +87,7 @@ const DatePicker = ({ value, onChange, min, max, disabled = false, id, placehold
       </button>
 
       {open && !disabled && (
-        <div className="absolute z-50 mt-2 w-72 rounded-xl border border-white/10 bg-neutral-950/95 p-3 shadow-[0_0_40px_-15px_rgba(220,38,38,0.35)] backdrop-blur-xl">
+        <div className="absolute z-50 mt-2 w-72 rounded-xl border border-white/10 bg-neutral-950/95 p-3">
           <div className="flex items-center justify-between px-1 pb-2">
             <button
               type="button"

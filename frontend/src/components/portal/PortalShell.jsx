@@ -4,7 +4,6 @@ import { ArrowLeft, LogOut, Menu } from 'lucide-react';
 import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Banner, Button, Select, surface } from './ui';
 import CreateBusiness from './CreateBusiness';
-import ShellBackground from '../ShellBackground';
 import logo from '../../assets/whitelogo-sm.png';
 
 /*
@@ -147,7 +146,6 @@ const PortalShell = ({ children }) => {
   if (error) {
     return (
       <div className="relative flex min-h-screen items-center justify-center bg-black px-4">
-        <ShellBackground />
         <div className={`relative z-10 max-w-md ${surface} p-8 text-center`}>
           <p className="text-sm text-neutral-300">{error}</p>
           <Button className="mt-5" onClick={() => { portalAuth.signOut(); window.location.href = '/login'; }}>
@@ -179,14 +177,13 @@ const PortalShell = ({ children }) => {
   return (
     <PortalContext.Provider value={value}>
       <div className="relative min-h-screen bg-black text-white antialiased">
-        <ShellBackground />
 
         <div className="relative z-10 mx-auto flex max-w-[1400px]">
 
           {/* ── sidebar ── */}
           <aside
             className={`fixed inset-y-0 left-0 z-40 w-64 shrink-0 overflow-y-auto border-r border-white/10
-                        bg-neutral-950/80 px-4 py-6 backdrop-blur-xl transition-transform
+                        bg-neutral-950/80 px-4 py-6 transition-transform
                         lg:sticky lg:top-0 lg:h-screen lg:translate-x-0
                         ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
           >
@@ -243,7 +240,7 @@ const PortalShell = ({ children }) => {
                           aria-current={active ? 'page' : undefined}
                           className={`block rounded-lg border px-3 py-2 text-sm font-medium transition ${
                             active
-                              ? 'border-red-500/25 bg-gradient-to-r from-red-500/15 to-transparent text-white'
+                              ? 'border-red-500/25 bg-[#e5322d]/30 text-white'
                               : 'border-transparent text-neutral-400 hover:bg-white/[0.04] hover:text-white'
                           }`}
                         >
@@ -277,7 +274,7 @@ const PortalShell = ({ children }) => {
 
           {/* ── main ── */}
           <div className="min-w-0 flex-1">
-            <header className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/80 px-4 py-3 backdrop-blur-xl sm:px-6">
+            <header className="sticky top-0 z-20 flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/80 px-4 py-3 sm:px-6">
               <button
                 type="button"
                 onClick={() => setNavOpen(true)}
@@ -286,13 +283,6 @@ const PortalShell = ({ children }) => {
               >
                 <Menu className="h-4 w-4" />
               </button>
-
-              {/* The same three lights as the login card's strip. */}
-              <div aria-hidden="true" className="hidden items-center gap-1.5 sm:flex">
-                <div className="h-2.5 w-2.5 rounded-full bg-red-500" />
-                <div className="h-2.5 w-2.5 rounded-full bg-yellow-500" />
-                <div className="h-2.5 w-2.5 rounded-full bg-green-500" />
-              </div>
 
               {/* The branch selector. "All branches" only offered when there
                   is more than one — a single-branch café should never have to

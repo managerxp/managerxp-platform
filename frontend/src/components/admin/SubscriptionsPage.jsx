@@ -194,7 +194,7 @@ const SubscriptionsPage = () => {
       <section>
         <h3 className="mb-3 text-sm font-semibold text-white">Current subscriptions</h3>
         {loading ? (
-          <div className="h-24 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/40" />
+          <div className="h-24 rounded-xl border border-neutral-800 bg-neutral-900/40" />
         ) : subs.length === 0 ? (
           <div className="rounded-xl border border-neutral-800 bg-neutral-900/40 p-6 text-center text-sm text-neutral-400">
             Nothing sold yet.

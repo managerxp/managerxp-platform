@@ -296,9 +296,8 @@ const BookSlot = () => {
             type="submit"
             disabled={booking || !name.trim() || !consent || (avail ? !avail.available || (avail.total - avail.booked) < quantity : false)}
             className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
-                       bg-gradient-to-br from-red-700 to-red-900 border border-white/10
-                       py-2.5 text-sm font-semibold text-white
-                       shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
+                       bg-[#e5322d] border border-white/10
+                       py-2.5 text-sm font-semibold text-white hover:
                        transition-all duration-300 active:scale-[0.99]
                        disabled:opacity-60 disabled:cursor-not-allowed"
           >

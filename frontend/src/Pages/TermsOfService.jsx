@@ -121,7 +121,7 @@ const TermsOfService = () => (
       </p>
       <p>
         Our handling of personal information is described in the{' '}
-        <a className="text-red-400 hover:text-red-300 underline" href="/privacy-policy">
+        <a className="underline underline-offset-4 hover:text-signal" href="/privacy-policy">
           ManagerXP Privacy Policy
         </a>
         .
@@ -247,10 +247,10 @@ const TermsOfService = () => (
         subject to the jurisdiction of the courts located in Hyderabad, Telangana, India.
       </p>
       <p>If you have questions about these Terms, contact us at:</p>
-      <p className="text-neutral-400">
+      <p className="text-graphite">
         ManagerXP Private Limited
         <br />
-        Email: <a className="text-red-400 hover:text-red-300 underline" href="mailto:managerxp2026@gmail.com">managerxp2026@gmail.com</a>
+        Email: <a className="underline underline-offset-4 hover:text-signal" href="mailto:managerxp2026@gmail.com">managerxp2026@gmail.com</a>
         <br />
         Address: 8-2-644/1/205 F205, Hiline Complex, Road No.12, Banjara Hills, Hyderabad- 500034.
         <br />

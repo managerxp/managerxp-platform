@@ -48,7 +48,7 @@ const FnbInventory = () => {
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
 
       {/* Sales */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-sm">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
         <div className="mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2 text-sm font-semibold text-white">
             <Utensils className="h-4 w-4 text-red-500" />
@@ -70,7 +70,7 @@ const FnbInventory = () => {
                   whileInView={{ width: `${(s.qty / max) * 100}%` }}
                   viewport={VIEWPORT}
                   transition={{ duration: 0.8, delay: i * 0.08, ease: EASE_MOTION }}
-                  className="h-full rounded-full bg-gradient-to-r from-red-700 to-red-400"
+                  className="h-full rounded-full bg-[#e5322d]"
                 />
               </div>
             </div>
@@ -79,7 +79,7 @@ const FnbInventory = () => {
       </div>
 
       {/* Stock */}
-      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-sm">
+      <div className="rounded-2xl border border-white/10 bg-white/[0.02] p-5">
         <div className="mb-4 flex items-center justify-between">
           <span className="flex items-center gap-2 text-sm font-semibold text-white">
             <Boxes className="h-4 w-4 text-red-500" />

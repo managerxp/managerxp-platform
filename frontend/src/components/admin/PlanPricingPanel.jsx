@@ -57,7 +57,7 @@ const PlanPricingPanel = () => {
   };
 
   if (loading) {
-    return <div className="mb-6 h-28 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/40" />;
+    return <div className="mb-6 h-28 rounded-xl border border-neutral-800 bg-neutral-900/40" />;
   }
 
   return (

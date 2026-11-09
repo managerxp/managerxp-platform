@@ -1,194 +1,122 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import logo from '../assets/logo.png';
-import startupIndiaBadge from '../assets/startupIndiaBadge.png';
-import { Mail, Phone, MapPin } from 'lucide-react';
+import { ArrowUpRight } from 'lucide-react';
 import { FaLinkedin, FaInstagram } from 'react-icons/fa6';
+import logo from '../assets/whitelogo-sm.png';
+import startupIndiaBadge from '../assets/startupIndiaBadge.png';
+import { PRODUCTS } from '../lib/products';
+import ProductLink from './site/ProductLink';
+import { openConsentSettings } from '../lib/consent';
 
-// Explicit paths: deriving them from the label produced dead routes (/ourproducts).
-const navLinks = [
-  { label: 'Home', to: '/' },
-  { label: 'Our Products', to: '/products' },
-  { label: 'About Us', to: '/about' },
-  { label: 'Contact Us', to: '/contact' },
-  { label: 'Book a Demo', to: '/demo' },
+const company = [
+  { label: 'About ManagerXP', to: '/about' },
+  { label: 'Custom Solutions', to: '/solutions#custom' },
+  { label: 'Contact', to: '/contact' },
 ];
 
-// No separate Cookie Policy — with only session cookies and no analytics or
-// ad trackers, it would just duplicate the Privacy Policy's own "Cookies and
-// Similar Technologies" section rather than say anything new.
-const legalLinks = [
-  { label: 'Privacy_Policy', to: '/privacy-policy' },
-  { label: 'Terms_of_Service', to: '/terms-of-service' },
+// No separate Cookie Policy: with only session cookies it would repeat the
+// Privacy Policy's own cookies section.
+const resources = [
+  { label: 'Privacy Policy', to: '/privacy-policy' },
+  { label: 'Terms & Conditions', to: '/terms-of-service' },
 ];
 
-const socialLinks = [
+const socials = [
   { label: 'ManagerXP on LinkedIn', href: 'https://linkedin.com/company/managerxp', Icon: FaLinkedin },
   { label: 'ManagerXP on Instagram', href: 'https://www.instagram.com/manager.xp', Icon: FaInstagram },
 ];
 
-const Footer = () => {
-  // The primary logo is dark artwork, so it is inverted to sit on the black footer.
-  const logoStyle = {
-    filter: 'brightness(0) invert(1)',
-  };
+const Heading = ({ children }) => <h2 className="mb-4 text-[15px] text-sheet/50">{children}</h2>;
+const linkClass = 'text-[17px] text-sheet hover:text-signal';
 
-  return (
-    <footer className="relative bg-black text-white overflow-hidden border-t border-white/10">
-
-      {/* --- Background Layers --- */}
-
-      {/* 1. Tech Grid Pattern */}
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 z-0 opacity-[0.03]
-                   bg-[length:40px_40px]
-                   [background-image:linear-gradient(to_right,rgba(255,255,255,0.1)_1px,transparent_1px),
-                                      linear-gradient(to_top,rgba(255,255,255,0.1)_1px,transparent_1px)]"
-      />
-
-      {/* 2. Ambient Red Glow - Top Center */}
-      <div
-        aria-hidden="true"
-        className="absolute top-0 left-1/2 -translate-x-1/2 w-1/2 h-64 z-0
-                   bg-[radial-gradient(ellipse_at_center,rgba(220,38,38,0.15),transparent_70%)]"
-      />
-
-      {/* 3. Racer Light Streaks (slower drift than page sections) */}
-      <div aria-hidden="true" className="absolute top-0 left-0 w-full h-[1px] z-[2] overflow-hidden">
-        <div className="w-1/3 h-full bg-gradient-to-r from-transparent via-red-600/40 to-transparent absolute animate-racer-drift blur-[1px]" />
-      </div>
-      <div aria-hidden="true" className="absolute bottom-0 left-0 w-full h-[1px] z-[2] overflow-hidden">
-        <div className="w-1/4 h-full bg-gradient-to-r from-transparent via-red-500/20 to-transparent absolute animate-racer-drift-slow blur-[1px]" />
-      </div>
-
-      {/* --- Main Content --- */}
-      <div className="relative z-10 max-w-7xl mx-auto px-5 sm:px-6 lg:px-8 py-16 sm:py-20">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-10 lg:gap-16">
-
-          {/* Company Info */}
-          <div className="space-y-6 sm:col-span-2 md:col-span-1">
-            <Link to="/" className="flex items-center w-fit hover:opacity-80 transition-opacity">
-              <img
-                src={logo}
-                alt="ManagerXP"
-                width="359"
-                height="64"
-                className="h-8 w-auto object-contain"
-                style={logoStyle}
-              />
-            </Link>
-            <p className="text-neutral-400 text-sm leading-relaxed font-light max-w-sm">
-              Empowering businesses with innovative management solutions for the modern workplace.
-            </p>
-
-            {/* The badge's own artwork (the Ashoka emblem, "DPIIT") is black —
-                a colour this footer has no way to show, so it sits on a small
-                white chip of its own rather than the transparent black behind
-                everything else here. The caption beside it says in words what
-                the badge otherwise only shows as a logo. */}
-            <div className="flex items-center gap-3 w-fit">
-              <div className="inline-flex w-fit shrink-0 items-center rounded-lg bg-white px-3 py-2">
-                <img
-                  src={startupIndiaBadge}
-                  alt="Recognised by DPIIT, Government of India — Startup India"
-                  className="h-9 w-auto"
-                />
-              </div>
-              <span className="text-neutral-400 text-xs font-medium leading-snug max-w-[9rem]">
-                Startup India Recognised
-              </span>
-            </div>
-
-            <div className="flex space-x-3">
-              {socialLinks.map((social) => (
-                <a
-                  key={social.label}
-                  href={social.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={social.label}
-                  className="p-2.5 rounded-full border border-white/10 bg-white/5 text-neutral-400
-                             hover:bg-red-500/10 hover:border-red-500/50 hover:text-red-500
-                             transition-all duration-300 backdrop-blur-sm"
-                >
-                  <social.Icon className="w-4 h-4" />
-                </a>
-              ))}
-            </div>
+const Footer = () => (
+  <footer className="bg-carbon font-display text-sheet antialiased">
+    <div className="wrap border-t border-sheet/15 py-16 sm:py-20">
+      <div className="grid gap-12 lg:grid-cols-12">
+        <div className="lg:col-span-4">
+          <Link to="/" aria-label="ManagerXP home" className="inline-block hover:opacity-80">
+            <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
+          </Link>
+          <p className="mt-5 max-w-xs text-[17px] leading-snug text-sheet/70">
+            Software for businesses that never stop<span className="text-signal">.</span>
+          </p>
+          <div className="mt-8 flex items-center gap-3">
+            {/* The badge artwork is black, so it sits on its own white chip. */}
+            <span className="inline-flex shrink-0 items-center bg-white px-2.5 py-1.5">
+              <img src={startupIndiaBadge} alt="Startup India, recognised by DPIIT, Government of India" className="h-8 w-auto" />
+            </span>
+            <span className="max-w-[9rem] text-[13px] leading-snug text-sheet/60">Startup India recognised</span>
           </div>
+        </div>
 
-          {/* Quick Links */}
-          <nav aria-label="Footer navigation">
-            <h2 className="text-xs font-mono uppercase tracking-[0.2em] text-red-500 mb-6 sm:mb-8 flex items-center gap-3">
-              <span aria-hidden="true" className="w-8 h-[1px] bg-gradient-to-r from-red-500 to-transparent"></span>
-              Navigation
-            </h2>
-            <ul className="space-y-4">
-              {navLinks.map((item) => (
-                <li key={item.to}>
-                  <Link
-                    to={item.to}
-                    className="group flex items-center gap-2 text-neutral-300 hover:text-white transition-colors duration-300 text-sm w-fit"
-                  >
-                    <span aria-hidden="true" className="w-0 h-[1px] bg-red-500 group-hover:w-3 transition-all duration-300"></span>
-                    {item.label}
-                  </Link>
+        <nav aria-label="Footer" className="grid gap-10 sm:grid-cols-3 lg:col-span-5">
+          <div>
+            <Heading>Company</Heading>
+            <ul className="space-y-2.5">
+              {company.map((l) => (
+                <li key={l.to}><Link to={l.to} className={linkClass}>{l.label}</Link></li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <Heading>Products</Heading>
+            <ul className="space-y-2.5">
+              {PRODUCTS.map((p) => (
+                <li key={p.id}>
+                  <ProductLink product={p} className={`${linkClass} inline-flex items-center gap-1.5`}>
+                    {p.name}
+                    {p.external && <ArrowUpRight aria-hidden="true" className="h-4 w-4" />}
+                  </ProductLink>
                 </li>
               ))}
             </ul>
-          </nav>
-
-          {/* Contact Info */}
+          </div>
           <div>
-            <h2 className="text-xs font-mono uppercase tracking-[0.2em] text-red-500 mb-6 sm:mb-8 flex items-center gap-3">
-              <span aria-hidden="true" className="w-8 h-[1px] bg-gradient-to-r from-red-500 to-transparent"></span>
-              System Support
-            </h2>
-            <ul className="space-y-5 text-sm">
+            <Heading>Resources</Heading>
+            <ul className="space-y-2.5">
+              {resources.map((l) => (
+                <li key={l.to}><Link to={l.to} className={linkClass}>{l.label}</Link></li>
+              ))}
               <li>
-                <a href="mailto:managerxp2026@gmail.com" className="flex items-start gap-4 text-neutral-300 hover:text-white transition-colors group">
-                  <Mail className="w-4 h-4 mt-0.5 shrink-0 text-red-500/70 group-hover:text-red-500 transition-colors" />
-                  <span className="break-all">managerxp2026@gmail.com</span>
-                </a>
-              </li>
-              <li>
-                <a href="tel:+919679549136" className="flex items-start gap-4 text-neutral-300 hover:text-white transition-colors group">
-                  <Phone className="w-4 h-4 mt-0.5 shrink-0 text-red-500/70 group-hover:text-red-500 transition-colors" />
-                  <span>+91 9679549136</span>
-                </a>
-              </li>
-              <li className="flex items-start gap-4 text-neutral-300">
-                <MapPin className="w-4 h-4 mt-0.5 text-red-500/70 shrink-0" />
-                <span>8-2-644/1/205 F205, Hiline Complex, Road No.12, Banjara Hills, Hyderabad- 500034.</span>
+                <button type="button" onClick={openConsentSettings} className={`${linkClass} text-left`}>
+                  Cookie &amp; data choices
+                </button>
               </li>
             </ul>
           </div>
-        </div>
+        </nav>
 
-        {/* Bottom Bar */}
-        <div className="mt-14 sm:mt-14 sm:mt-16 pt-8 border-t border-white/5">
-          <div className="flex flex-col md:flex-row justify-between items-center gap-6">
-            <p className="text-neutral-600 text-xs font-mono tracking-wider flex items-center gap-2 text-center md:text-left">
-              <span aria-hidden="true" className="w-1.5 h-1.5 shrink-0 rounded-full bg-red-500 animate-pulse"></span>
-              &copy; {new Date().getFullYear()} MANAGERXP PRIVATE LIMITED. All rights reserved.
+        <div className="lg:col-span-3">
+          <Heading>Contact</Heading>
+          <address className="space-y-2.5 not-italic">
+            <a href="mailto:managerxp2026@gmail.com" className={`${linkClass} block break-all`}>managerxp2026@gmail.com</a>
+            <a href="tel:+919679549136" className={`${linkClass} block`}>+91 96795 49136</a>
+            <p className="text-[15px] leading-snug text-sheet/60">
+              8-2-644/1/205 F205, Hiline Complex, Road No. 12, Banjara Hills, Hyderabad 500034
             </p>
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 sm:gap-x-8">
-              {legalLinks.map((item) => (
-                <Link
-                  key={item.label}
-                  to={item.to}
-                  className="text-neutral-600 hover:text-red-500 text-xs font-mono transition-colors duration-300 uppercase tracking-wide"
-                >
-                  {item.label}
-                </Link>
-              ))}
-            </div>
+          </address>
+          <div className="mt-5 flex gap-2">
+            {socials.map((social) => (
+              <a
+                key={social.label}
+                href={social.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`${social.label} (opens in a new tab)`}
+                className="flex h-10 w-10 items-center justify-center border border-sheet/25 text-sheet hover:border-signal hover:bg-signal"
+              >
+                <social.Icon className="h-4 w-4" />
+              </a>
+            ))}
           </div>
         </div>
       </div>
-    </footer>
-  );
-};
+
+      <p className="mt-16 border-t border-sheet/15 pt-8 text-[14px] text-sheet/50">
+        &copy; {new Date().getFullYear()} ManagerXP Private Limited. All rights reserved.
+      </p>
+    </div>
+  </footer>
+);
 
 export default Footer;
