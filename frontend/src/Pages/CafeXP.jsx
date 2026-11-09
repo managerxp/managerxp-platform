@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import Seo from '../components/site/Seo';
 import ProductHeader from '../components/site/ProductHeader';
+import StationGrid from '../components/site/StationGrid';
 import CommandCenter from '../components/CommandCenter';
 import StationOps from '../components/StationOps';
 import BillingDesk from '../components/BillingDesk';
@@ -28,11 +29,11 @@ const Spinner = () => (
 
 /** A module of the product: a short statement on the left, the interface doing the talking. */
 const Module = ({ title, lead, children, side = false }) => (
-  <section className="border-t border-white/[0.08] py-16 sm:py-20">
+  <section className="border-t border-sheet/15 py-16 sm:py-24">
     <div className={side ? 'grid items-center gap-10 lg:grid-cols-12' : ''}>
       <div className={side ? 'lg:col-span-4' : 'mb-10 max-w-2xl'}>
-        <h2 className="font-display text-[clamp(1.75rem,3vw,2.5rem)] font-semibold leading-[1.1] text-paper text-balance">{title}</h2>
-        <p className="mt-3 max-w-[52ch] text-[16px] leading-relaxed text-mute text-pretty">{lead}</p>
+        <h2 className="poster-h text-[clamp(2rem,3.6vw,3.25rem)] leading-[0.98] text-sheet">{title}</h2>
+        <p className="mt-4 max-w-[52ch] text-lg leading-snug text-sheet/65">{lead}</p>
       </div>
       <Reveal className={side ? 'lg:col-span-8' : ''}>{children}</Reveal>
     </div>
@@ -40,7 +41,7 @@ const Module = ({ title, lead, children, side = false }) => (
 );
 
 const CafeXP = () => (
-  <div className="bg-ink font-sans text-paper antialiased">
+  <div className="bg-carbon font-display text-sheet antialiased">
     <Seo
       title="CafeXP | Gaming Café Management Software by ManagerXP"
       description="CafeXP runs gaming and internet cafés: PC sessions, billing against the live clock, F&B stock, staff, multi-branch control and AI analytics. Start a free trial."
@@ -49,21 +50,24 @@ const CafeXP = () => (
 
     <ProductHeader
       product={product}
-      title="Every machine, session, tab and shift on one screen."
+      title="Every machine, session, tab and shift on one screen"
       lead={product.description}
       actions={
         <>
-          <Link to="/signup" className="btn-primary">
+          <Link to="/signup" className="btn-light">
             Start free trial
             <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </Link>
-          <Link to="/demo" className="btn-secondary">Book a demo</Link>
+          <Link to="/demo" className="inline-flex min-h-[3.25rem] items-center px-2 font-semibold underline underline-offset-4 hover:text-signal">Book a demo</Link>
         </>
       }
+      visual={<StationGrid />}
     />
 
+    {/* The product UI is dark, so it lives on one black band. */}
+    <div className="border-t border-sheet/15">
     <div className="wrap">
-      <div className="pb-16 sm:pb-20">
+      <div className="py-16 sm:py-24">
         <CommandCenter />
       </div>
 
@@ -95,35 +99,36 @@ const CafeXP = () => (
         <CafeXPAI />
       </Module>
 
-      <section className="border-t border-white/[0.08] py-16 sm:py-20">
-        <div className="mb-10 max-w-2xl">
-          <h2 className="font-display text-[clamp(1.75rem,3vw,2.5rem)] font-semibold leading-[1.1] text-paper">Choose your level of CafeXP</h2>
-          <p className="mt-3 text-[16px] leading-relaxed text-mute text-pretty">
+      <section className="border-t border-sheet/15 py-16 sm:py-24">
+        <div className="mb-12 max-w-2xl">
+          <h2 className="poster-h text-[clamp(2rem,3.6vw,3.25rem)] leading-[0.98] text-sheet">Choose your level of CafeXP</h2>
+          <p className="mt-4 text-lg leading-snug text-sheet/65">
             Built around how many machines and branches you run, and how deep you want the monitoring to go.
           </p>
         </div>
         <PricingPlans />
       </section>
-
-      <div className="border-t border-white/[0.08] py-16 sm:py-20">
-        <FAQ />
-      </div>
-
-      <section className="border-t border-white/[0.08] py-16 sm:py-24">
-        <div className="grid gap-8 lg:grid-cols-12 lg:items-end">
-          <h2 className="font-display text-[clamp(2rem,4vw,3.25rem)] font-semibold leading-[1.08] text-paper text-balance lg:col-span-7">
-            Run your café on CafeXP.
-          </h2>
-          <div className="flex flex-col gap-3 sm:flex-row lg:col-span-5 lg:justify-end">
-            <Link to="/signup" className="btn-primary">
-              Start free trial
-              <ArrowRight aria-hidden="true" className="h-4 w-4" />
-            </Link>
-            <Link to="/contact" className="btn-secondary">Talk to us</Link>
-          </div>
-        </div>
-      </section>
     </div>
+    </div>
+
+    <div className="wrap border-t border-sheet/15 py-20 sm:py-28">
+      <FAQ dark />
+    </div>
+
+    <section className="border-t border-sheet/15">
+      <div className="wrap grid gap-8 py-20 sm:py-28 lg:grid-cols-12 lg:items-end">
+        <h2 className="poster-h text-[clamp(3rem,7vw,6.5rem)] lg:col-span-8">
+          Run your café on CafeXP<span className="text-signal">.</span>
+        </h2>
+        <div className="flex flex-wrap gap-3 lg:col-span-4 lg:justify-end">
+          <Link to="/signup" className="btn-light">
+            Start free trial
+            <ArrowRight aria-hidden="true" className="h-4 w-4" />
+          </Link>
+          <Link to="/contact" className="inline-flex min-h-[3.25rem] items-center px-2 font-semibold underline underline-offset-4 hover:text-signal">Talk to us</Link>
+        </div>
+      </div>
+    </section>
   </div>
 );
 

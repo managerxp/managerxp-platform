@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
 import { Menu, X, ChevronDown, ArrowUpRight, ArrowRight } from 'lucide-react';
-import logo from '../assets/whitelogo-sm.png';
+import logo from '../assets/logo.png';
+import logoLight from '../assets/whitelogo-sm.png';
 import { useAuth } from '../context/AuthContext';
 import { PRODUCTS } from '../lib/products';
 import ProductLink from './site/ProductLink';
-import ProductMark from './site/ProductMark';
 
 // `match` decides the active state; Solutions and Custom Development share a
 // page, so the hash tells them apart.
@@ -19,8 +19,8 @@ const navItems = [
   { label: 'Contact', to: '/contact', match: (p) => p.pathname === '/contact' },
 ];
 
-const linkBase = 'relative py-1 text-[14px] font-medium transition-colors';
-const activeBar = '';
+const linkBase = 'relative py-1 text-[15px] font-medium transition-colors';
+const activeBar = 'underline decoration-signal decoration-2 underline-offset-[7px]';
 
 /* ---------------------------------------------------------------- dropdown */
 
@@ -101,7 +101,7 @@ const ProductsMenu = ({ active }) => {
         aria-controls="products-menu"
         onClick={() => setOpen((v) => !v)}
         onKeyDown={onButtonKey}
-        className={`${linkBase} inline-flex items-center gap-1 ${active ? `text-paper ${activeBar}` : 'text-mute hover:text-paper'}`}
+        className={`${linkBase} inline-flex items-center gap-1 ${active ? `text-carbon ${activeBar}` : 'text-carbon/70 hover:text-carbon'}`}
       >
         Products
         <ChevronDown aria-hidden="true" className={`h-3.5 w-3.5 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
@@ -116,7 +116,7 @@ const ProductsMenu = ({ active }) => {
             exit={{ opacity: 0, y: -6 }}
             transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
             onKeyDown={onPanelKey}
-            className="absolute left-1/2 top-full z-50 mt-[22px] w-[28rem] -translate-x-1/2 overflow-hidden rounded-2xl border border-white/10 bg-ink-2/95 p-2 shadow-[0_24px_60px_-16px_rgba(0,0,0,0.8)] backdrop-blur-xl"
+            className="absolute left-1/2 top-full z-50 mt-[22px] w-[30rem] -translate-x-1/2 overflow-hidden border border-carbon bg-sheet shadow-[0_24px_48px_-24px_rgba(0,0,0,0.35)]"
           >
             <ul>
               {PRODUCTS.map((p) => (
@@ -125,20 +125,19 @@ const ProductsMenu = ({ active }) => {
                     product={p}
                     data-menu-item
                     onClick={() => setOpen(false)}
-                    className="group grid grid-cols-[2.25rem_1fr_auto] items-center gap-4 rounded-xl px-3 py-3 outline-offset-[-2px] hover:bg-white/[0.05] focus-visible:bg-white/[0.05]"
+                    className="group grid grid-cols-[1fr_auto] items-center gap-4 border-b border-carbon/15 px-5 py-4 outline-offset-[-2px] hover:bg-carbon/5 focus-visible:bg-carbon/5"
                   >
-                    <ProductMark product={p} />
                     <span>
                       <span className="flex items-baseline gap-2">
-                        <span className="text-[15px] font-semibold text-paper">{p.name}</span>
-                        {p.status === 'development' && <span className="rounded-full border border-white/10 px-2 py-0.5 text-[11px] text-mute">{p.statusLabel}</span>}
+                        <span className="poster-h text-[30px] text-carbon transition-colors group-hover:text-signal">{p.name}</span>
+                        {p.status === 'development' && <span className="text-[13px] text-graphite">in development</span>}
                       </span>
-                      <span className="mt-0.5 block text-[13px] text-mute">{p.category}</span>
+                      <span className="mt-1.5 block text-[14px] text-graphite">{p.category}</span>
                     </span>
                     {p.external ? (
-                      <ArrowUpRight aria-hidden="true" className="h-4 w-4 text-mute group-hover:text-paper" />
+                      <ArrowUpRight aria-hidden="true" className="h-4 w-4 text-graphite group-hover:text-carbon" />
                     ) : (
-                      <ArrowRight aria-hidden="true" className="h-4 w-4 text-mute transition-transform group-hover:translate-x-0.5 group-hover:text-paper" />
+                      <ArrowRight aria-hidden="true" className="h-4 w-4 text-graphite transition-transform group-hover:translate-x-0.5 group-hover:text-carbon" />
                     )}
                   </ProductLink>
                 </li>
@@ -148,7 +147,7 @@ const ProductsMenu = ({ active }) => {
               to="/products"
               data-menu-item
               onClick={() => setOpen(false)}
-              className="mt-1 flex items-center justify-between rounded-xl border-t border-white/[0.06] px-3 py-3 text-[13px] text-mute outline-offset-[-2px] hover:text-paper"
+              className="flex items-center justify-between px-5 py-3.5 text-[14px] font-semibold text-carbon outline-offset-[-2px] hover:text-signal"
             >
               View all products
               <ArrowRight aria-hidden="true" className="h-3.5 w-3.5" />
@@ -206,7 +205,7 @@ const Navbar = () => {
     const focusables = mobileMenuRef.current
       ? Array.from(mobileMenuRef.current.querySelectorAll('a[href], button:not([disabled])'))
       : [];
-    focusables[0]?.focus();
+    focusables[0]?.focus({ preventScroll: true });
 
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
@@ -232,19 +231,21 @@ const Navbar = () => {
     };
   }, [isMenuOpen]);
 
+  // Product pages are the dark, gaming side of the site; the bar follows.
+  const darkBar = location.pathname.startsWith('/products/');
   const avatarLabel = (user?.name || user?.email || 'U').charAt(0).toUpperCase();
   const accountLink = user?.role === 'admin' ? { to: '/admin', label: 'Admin console' } : { to: '/dashboard', label: 'Dashboard' };
 
   return (
     <nav
       aria-label="Main"
-      className={`fixed inset-x-0 top-0 z-50 border-b font-sans antialiased transition-colors duration-300 ${
-        isScrolled || isMenuOpen ? 'border-white/[0.06] bg-ink/80 backdrop-blur-xl backdrop-saturate-150' : 'border-transparent bg-transparent'
+      className={`font-display fixed inset-x-0 top-0 z-50 border-b antialiased transition-colors duration-300 ${darkBar ? 'nav-dark' : ''} ${
+        isScrolled || isMenuOpen ? 'border-carbon/15 bg-sheet' : 'border-transparent bg-sheet'
       }`}
     >
-      <div className="wrap flex h-16 items-center justify-between gap-6">
+      <div className="wrap flex h-[4.5rem] items-center justify-between gap-6">
         <Link to="/" className="shrink-0 hover:opacity-80" aria-label="ManagerXP home">
-          <img src={logo} alt="ManagerXP" width="294" height="56" className="h-6 w-auto" />
+          <img src={darkBar ? logoLight : logo} alt="ManagerXP" width="294" height="56" className="h-6 w-auto" />
         </Link>
 
         <ul className="hidden items-center gap-7 lg:flex">
@@ -258,7 +259,7 @@ const Navbar = () => {
                   <Link
                     to={item.to}
                     aria-current={active ? 'page' : undefined}
-                    className={`${linkBase} ${active ? `text-paper ${activeBar}` : 'text-mute hover:text-paper'}`}
+                    className={`${linkBase} ${active ? `text-carbon ${activeBar}` : 'text-carbon/70 hover:text-carbon'}`}
                   >
                     {item.label}
                   </Link>
@@ -274,7 +275,7 @@ const Navbar = () => {
               <button
                 type="button"
                 onClick={() => setIsProfileOpen((prev) => !prev)}
-                className="flex h-9 w-9 items-center justify-center rounded-full bg-paper text-sm font-semibold text-ink hover:bg-white"
+                className="flex h-9 w-9 items-center justify-center rounded-full bg-carbon text-sm font-semibold text-sheet hover:opacity-80"
                 aria-expanded={isProfileOpen}
                 aria-haspopup="menu"
                 aria-label="Account menu"
@@ -282,23 +283,23 @@ const Navbar = () => {
                 {avatarLabel}
               </button>
               {isProfileOpen && (
-                <div role="menu" className="absolute right-0 mt-3 w-48 rounded-xl border border-white/10 bg-ink-2 p-1.5 shadow-[0_24px_48px_-16px_rgba(0,0,0,0.7)]">
-                  <Link to={accountLink.to} role="menuitem" onClick={() => setIsProfileOpen(false)} className="block rounded-lg px-3 py-2 text-sm text-paper hover:bg-white/5">
+                <div role="menu" className="absolute right-0 mt-3 w-48 border border-carbon bg-sheet p-1.5 shadow-[0_24px_48px_-24px_rgba(0,0,0,0.35)]">
+                  <Link to={accountLink.to} role="menuitem" onClick={() => setIsProfileOpen(false)} className="block px-3 py-2 text-sm text-carbon hover:bg-carbon/5">
                     {accountLink.label}
                   </Link>
-                  <button type="button" role="menuitem" onClick={logout} className="w-full rounded-lg px-3 py-2 text-left text-sm text-paper hover:bg-white/5">
+                  <button type="button" role="menuitem" onClick={logout} className="w-full px-3 py-2 text-left text-sm text-carbon hover:bg-carbon/5">
                     Sign out
                   </button>
                 </div>
               )}
             </div>
           ) : (
-            <Link to="/login" className="text-[14px] font-medium text-mute hover:text-paper">
+            <Link to="/login" className="text-[14px] font-medium text-graphite hover:text-carbon">
               Sign in
             </Link>
           )}
-          <Link to="/contact" className="btn-primary !min-h-10 !px-5 !text-[14px]">
-            Let's Build Together
+          <Link to="/contact" className="link-arrow text-[15px]">
+            Let's build together
           </Link>
         </div>
 
@@ -306,7 +307,7 @@ const Navbar = () => {
           ref={menuButtonRef}
           onClick={() => setIsMenuOpen((prev) => !prev)}
           type="button"
-          className="-mr-2 inline-flex h-11 w-11 items-center justify-center text-paper lg:hidden"
+          className="-mr-2 inline-flex h-11 w-11 items-center justify-center text-carbon lg:hidden"
           aria-controls="mobile-menu"
           aria-expanded={isMenuOpen}
           aria-label={isMenuOpen ? 'Close main menu' : 'Open main menu'}
@@ -316,48 +317,54 @@ const Navbar = () => {
       </div>
 
       {/* Mobile menu: a full-height sheet under the bar. Products are listed
-          inline rather than behind a second toggle — three items do not need
-          a disclosure on a phone. */}
+          inline rather than behind a second toggle; three items do not need
+          a disclosure on a phone. It opens by animating grid rows (0fr to
+          1fr), which the browser can do without re-measuring the page every
+          frame the way a max-height animation forces it to. */}
       <div
         id="mobile-menu"
         ref={mobileMenuRef}
         inert={!isMenuOpen}
         // Any link chosen inside the sheet closes it.
         onClick={(e) => e.target.closest('a') && setIsMenuOpen(false)}
-        className={`overflow-y-auto border-t border-rule bg-ink transition-[max-height,opacity] duration-300 lg:hidden ${
-          isMenuOpen ? 'max-h-[calc(100dvh-4rem)] opacity-100' : 'max-h-0 border-transparent opacity-0'
+        // Visibility flips at once on open (so focus can move in) and only
+        // after the collapse on close.
+        className={`grid border-t bg-sheet duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] lg:hidden ${
+          isMenuOpen
+            ? 'visible grid-rows-[1fr] border-carbon/15 opacity-100 transition-[grid-template-rows,opacity]'
+            : 'invisible grid-rows-[0fr] border-transparent opacity-0 transition-[grid-template-rows,opacity,visibility]'
         }`}
       >
+        <div className="min-h-0 max-h-[calc(100dvh-4.5rem)] overflow-y-auto">
         <div className="wrap pb-8 pt-2">
           <ul>
             {navItems.map((item) =>
               item.products ? (
-                <li key={item.label} className="border-b border-rule py-4">
-                  <p className="pb-2 text-[15px] font-medium text-paper">Products</p>
+                <li key={item.label} className="border-b border-carbon/15 py-4">
+                  <p className="pb-2 text-[15px] font-medium text-carbon">Products</p>
                   <ul>
                     {PRODUCTS.map((p) => (
                       <li key={p.id}>
                         <ProductLink product={p} className="flex items-center gap-4 py-2.5">
-                          <ProductMark product={p} />
                           <span className="flex-1">
-                            <span className="block text-[15px] font-semibold text-paper">{p.name}</span>
-                            <span className="block text-[13px] text-mute">{p.category} · {p.statusLabel}</span>
+                            <span className="block text-[22px] font-bold tracking-[-0.03em] text-carbon">{p.name}</span>
+                            <span className="block text-[13px] text-graphite">{p.category} · {p.statusLabel}</span>
                           </span>
-                          {p.external && <ArrowUpRight aria-hidden="true" className="h-4 w-4 text-mute" />}
+                          {p.external && <ArrowUpRight aria-hidden="true" className="h-4 w-4 text-graphite" />}
                         </ProductLink>
                       </li>
                     ))}
                   </ul>
                 </li>
               ) : (
-                <li key={item.label} className="border-b border-rule">
+                <li key={item.label} className="border-b border-carbon/15">
                   <Link
                     to={item.to}
                     aria-current={item.match(location) ? 'page' : undefined}
-                    className={`flex items-center justify-between py-4 text-[15px] font-medium ${item.match(location) ? 'text-paper' : 'text-mute'}`}
+                    className={`poster-h flex items-center justify-between py-4 text-[2.25rem] ${item.match(location) ? 'text-carbon' : 'text-carbon/75'}`}
                   >
                     {item.label}
-                    {item.match(location) && <span aria-hidden="true" className="h-2 w-2 rounded-full bg-signal" />}
+                    {item.match(location) && <span aria-hidden="true" className="text-signal">.</span>}
                   </Link>
                 </li>
               )
@@ -365,16 +372,17 @@ const Navbar = () => {
           </ul>
 
           <div className="mt-6 grid gap-3">
-            <Link to="/contact" className="btn-primary w-full">Let's Build Together</Link>
+            <Link to="/contact" className="btn-primary w-full">Let's build together</Link>
             {isAuthenticated ? (
               <>
                 <Link to={accountLink.to} className="btn-secondary w-full">{accountLink.label}</Link>
-                <button type="button" onClick={logout} className="py-2 text-sm text-mute hover:text-paper">Sign out</button>
+                <button type="button" onClick={logout} className="py-2 text-sm text-graphite hover:text-carbon">Sign out</button>
               </>
             ) : (
               <Link to="/login" className="btn-secondary w-full">Sign in</Link>
             )}
           </div>
+        </div>
         </div>
       </div>
     </nav>

@@ -143,7 +143,7 @@ const AnalyticsPeak = () => {
               }`}
             >
               {metric === id && (
-                <Motion.span layoutId="metric-pill" transition={SPRING} className="absolute inset-0 -z-10 rounded-full bg-gradient-to-br from-red-700 to-red-900" />
+                <Motion.span layoutId="metric-pill" transition={SPRING} className="absolute inset-0 -z-10 rounded-full bg-[#e5322d]" />
               )}
               {s.icon}
               {s.label}
@@ -203,7 +203,7 @@ const AnalyticsPeak = () => {
         <div className="mt-4">
           <div ref={railRef} className="relative h-8 rounded-full border border-white/10 bg-white/[0.03]">
             <div
-              className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-red-900/40 to-red-600/30"
+              className="absolute inset-y-0 left-0 rounded-full bg-[#e5322d]/30"
               style={{ width: `${(index / (HOURS.length - 1)) * 100}%` }}
               aria-hidden="true"
             />
@@ -217,7 +217,7 @@ const AnalyticsPeak = () => {
               aria-valuenow={index}
               aria-valuetext={`${HOURS[index]}, ${fmt(value)}`}
               onKeyDown={onKey}
-              className="absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border border-red-400/60 bg-black shadow-[0_0_16px_-2px_rgba(239,68,68,0.9)] active:cursor-grabbing"
+              className="absolute top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 cursor-grab touch-none rounded-full border border-red-400/60 bg-black active:cursor-grabbing"
               style={prefersReducedMotion() ? { left: `${(index / (HOURS.length - 1)) * 100}%` } : { left: 0 }}
             >
               <span aria-hidden="true" className="absolute inset-[5px] rounded-full bg-red-500" />

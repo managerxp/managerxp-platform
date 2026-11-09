@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import ShellBackground from '../components/ShellBackground';
 import { glassPanel } from '../lib/ui';
 
 /*
@@ -41,13 +40,11 @@ const loadScript = (src) =>
  * The site's shared glass-panel shell (same token every other page pulls
  * from) instead of this page's own flat neutral-950 card — so a payment
  * link doesn't read as a different, less-finished product than the email
- * that pointed here. No PageBackground's particle canvas / racer streaks
- * though: ShellBackground is the same reduced treatment the signed-in
+ * that pointed here. A flat dark ground, the same as the signed-in
  * dashboards use, right for a single focused card, not a marketing page.
  */
 const Shell = ({ children }) => (
   <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black px-4 py-10">
-    <ShellBackground />
     <div className={`relative z-10 w-full max-w-md p-7 text-center ${glassPanel}`}>
       {children}
     </div>
@@ -244,9 +241,9 @@ const PayLink = () => {
                 type="button"
                 onClick={pay}
                 disabled={busy}
-                className="mt-7 w-full rounded-xl border border-white/10 bg-gradient-to-br from-red-700 to-red-900
-                           py-3 text-sm font-bold text-white shadow-glow transition-shadow
-                           hover:shadow-glow-hover disabled:opacity-50"
+                className="mt-7 w-full rounded-xl border border-white/10 bg-[#e5322d]
+                           py-3 text-sm font-bold text-white transition-shadow
+                           hover: disabled:opacity-50"
               >
                 {busy ? 'Opening…' : `Pay ${money(link.amount, link.currency)}`}
               </button>

@@ -47,7 +47,7 @@ const SKINS = {
     label: authLabelClasses,
     field: `${authFieldClasses} text-left`,
     fieldOff: `${authFieldClasses} text-left cursor-not-allowed opacity-50`,
-    panel: 'border-white/10 bg-neutral-950/95 backdrop-blur-xl',
+    panel: 'border-white/10 bg-neutral-950/95',
     search: 'w-full border-b border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-sm text-white placeholder-neutral-600 outline-none',
     option: 'text-neutral-300 hover:bg-white/[0.06]',
     optionOn: 'bg-red-500/15 text-white'

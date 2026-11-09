@@ -71,7 +71,7 @@ const CafeXPAI = () => {
           CafeXP AI
         </span>
         <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-red-400">
-          <span className="h-1.5 w-1.5 rounded-full bg-red-500 animate-pulse" />
+          <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
           Ready
         </span>
       </div>

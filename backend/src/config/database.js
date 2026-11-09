@@ -20,6 +20,7 @@ import { initializeGamePlatforms } from './schema.gamePlatforms.js';
 import { initializeSupport } from './schema.support.js';
 import { initializeReservations } from './schema.reservations.js';
 import { initializeCafeSlugs } from './schema.cafeSlugs.js';
+import { initializeConsent } from './schema.consent.js';
 
 const { Pool } = pg;
 
@@ -2534,6 +2535,9 @@ export const initializeDatabase = async () => {
 
     /* Depends on cafes. */
     await initializeCafeSlugs(client);
+
+    /* Standalone: website visitor consent log (DPDP s.6). */
+    await initializeConsent(client);
 
     /* Depends on cafes, pcs, customers and sessions. */
     await initializeReservations(client);

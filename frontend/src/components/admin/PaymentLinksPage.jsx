@@ -281,7 +281,7 @@ const PaymentLinksPage = ({ prefillCafe, onPrefillUsed }) => {
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-20 animate-pulse rounded-xl border border-neutral-800 bg-neutral-900/40" />
+            <div key={i} className="h-20 rounded-xl border border-neutral-800 bg-neutral-900/40" />
           ))}
         </div>
       ) : links.length === 0 ? (

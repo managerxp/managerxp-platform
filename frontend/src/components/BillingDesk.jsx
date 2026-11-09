@@ -70,7 +70,7 @@ const BillingDesk = () => {
     <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
 
       {/* Order side */}
-      <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-5 backdrop-blur-sm">
+      <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
         <p className="mb-3 font-mono text-[10px] uppercase tracking-wider text-neutral-500">Add to the tab</p>
         <div className="space-y-2">
           {MENU.map((m) => (
@@ -163,7 +163,7 @@ const BillingDesk = () => {
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.99 }}
             transition={SPRING}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-gradient-to-br from-red-700 to-red-900 py-3 text-sm font-semibold text-white shadow-[0_0_24px_-8px_rgba(220,38,38,0.8)]"
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-[#e5322d] py-3 text-sm font-semibold text-white"
           >
             {paid ? <CheckCircle2 className="h-4 w-4" /> : null}
             {paid ? 'Paid · receipt issued' : 'Take payment'}

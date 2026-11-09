@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
 import Seo from '../components/site/Seo';
 import SectionHeading from '../components/SectionHeading';
-import ProductMark from '../components/site/ProductMark';
 import ProductLink from '../components/site/ProductLink';
 import startupIndiaBadge from '../assets/startupIndiaBadge.png';
 import { PRODUCTS } from '../lib/products';
@@ -40,122 +39,110 @@ const principles = [
   ['One clear next step', 'Every conversation ends with a plan you can act on.'],
 ];
 
+const Dot = () => <span className="text-signal">.</span>;
+
 const About = () => (
-  <div className="bg-ink font-sans text-paper antialiased">
+  <div className="bg-sheet font-display text-carbon antialiased">
     <Seo
       title="About ManagerXP | AI-Powered Business Technology Company"
       description="ManagerXP Private Limited is a Hyderabad technology company building intelligent software products and custom solutions. Meet the founders and see what drives the work."
       path="/about"
     />
 
-    <div className="wrap pb-20 pt-12 sm:pt-16">
+    <header className="wrap pb-16 pt-10 sm:pt-16">
       <SectionHeading
         as="h1"
-        title="An engineering company that ships its own products."
-        description="ManagerXP builds intelligent software products and custom technology solutions that help businesses simplify operations, automate complex workflows, and scale with confidence."
+        title="An engineering company that ships its own products"
+        description="ManagerXP builds intelligent software products and custom technology that help businesses simplify operations, automate complex work and scale with confidence."
       />
+    </header>
 
-      {/* Who we are */}
-      <section aria-labelledby="who-title" className="mt-20 grid gap-10 border-t border-white/[0.08] pt-12 lg:grid-cols-12">
-        <h2 id="who-title" className="font-display text-[clamp(1.75rem,3vw,2.5rem)] font-semibold leading-[1.1] text-paper lg:col-span-4">
-          Who we are
-        </h2>
-        <div className="space-y-5 text-[17px] leading-relaxed text-mute lg:col-span-8">
-          <p className="max-w-[64ch]">
-            Founded in <span className="text-paper">2026</span> in Hyderabad, <span className="text-paper">ManagerXP Private Limited</span> is an AI-powered business technology company. We design and build software for operations where timing, money and people all move at once: live sessions billed against the clock, stock that changes with every sale, teams spread across branches.
-          </p>
-          <p className="max-w-[64ch]">
-            We started with gaming cafés, an environment that punishes slow or unreliable software. That work became CafeXP, then RaceXP for sim racing and FlowXP for billing and business management. The same engineering now goes into custom systems for businesses whose operations do not fit a template.
-          </p>
-          <ul className="flex flex-wrap gap-x-6 gap-y-3 pt-2 text-[14px]">
-            {PRODUCTS.map((p) => (
-              <li key={p.id}>
-                <ProductLink product={p} className="inline-flex items-center gap-2 text-paper hover:text-white">
-                  <ProductMark product={p} size="sm" />
-                  {p.name}
-                  <span className="text-mute">· {p.statusLabel}</span>
-                </ProductLink>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
+    {/* Who we are */}
+    <section aria-labelledby="who-title" className="wrap grid gap-8 border-t border-carbon py-14 md:grid-cols-12">
+      <h2 id="who-title" className="text-lg font-semibold md:col-span-4">Who we are</h2>
+      <div className="space-y-5 text-[clamp(1.25rem,1.8vw,1.6rem)] leading-snug tracking-[-0.01em] md:col-span-8">
+        <p className="max-w-[40ch]">
+          Founded in 2026 in Hyderabad, ManagerXP Private Limited designs and builds software for operations where timing, money and people move at once.
+        </p>
+        <p className="max-w-[40ch] text-graphite">
+          We started with gaming cafés, an environment that punishes slow or unreliable software. That work became CafeXP, then RaceXP for sim racing and FlowXP for billing and business management. The same engineering now goes into custom systems for other businesses.
+        </p>
+        <ul className="flex flex-wrap gap-x-8 gap-y-2 pt-2 text-lg font-semibold">
+          {PRODUCTS.map((p) => (
+            <li key={p.id}>
+              <ProductLink product={p} className="link-quiet">{p.name}</ProductLink>
+              {p.status === 'development' && <span className="font-normal text-graphite"> (in development)</span>}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
 
-      {/* Vision and mission */}
-      <section aria-label="Vision and mission" className="mt-20 grid gap-4 md:grid-cols-2">
-        <div className="surface p-8 sm:p-10">
-          <h2 className="text-[15px] font-semibold text-paper">Vision</h2>
-          <p className="mt-4 font-display text-[clamp(1.4rem,2.4vw,2rem)] font-semibold leading-snug text-paper">
-            To be the technology partner businesses trust with their most complex operations.
+    {/* Vision and mission */}
+    <section aria-label="Vision and mission" className="bg-carbon text-sheet">
+      <div className="wrap grid gap-14 py-20 sm:py-28 md:grid-cols-2">
+        <div>
+          <h2 className="text-lg text-sheet/60">Vision</h2>
+          <p className="poster-h mt-4 text-[clamp(2rem,3.6vw,3.25rem)] leading-[1]">
+            The technology partner businesses trust with their hardest operations<Dot />
           </p>
         </div>
-        <div className="surface p-8 sm:p-10">
-          <h2 className="text-[15px] font-semibold text-paper">Mission</h2>
-          <p className="mt-4 font-display text-[clamp(1.4rem,2.4vw,2rem)] font-semibold leading-snug text-paper">
-            To turn hard operational problems into intelligent software that simplifies work and helps businesses grow.
+        <div>
+          <h2 className="text-lg text-sheet/60">Mission</h2>
+          <p className="poster-h mt-4 text-[clamp(2rem,3.6vw,3.25rem)] leading-[1]">
+            Turn hard operational problems into software that simplifies work<Dot />
           </p>
         </div>
-      </section>
+      </div>
+    </section>
 
-      {/* Principles */}
-      <section aria-labelledby="principles-title" className="mt-20 grid gap-10 lg:grid-cols-12">
-        <h2 id="principles-title" className="font-display text-[clamp(1.75rem,3vw,2.5rem)] font-semibold leading-[1.1] text-paper lg:col-span-4">
-          How we work
-        </h2>
-        <dl className="grid gap-x-10 sm:grid-cols-2 lg:col-span-8">
-          {principles.map(([name, desc]) => (
-            <div key={name} className="border-t border-white/[0.08] py-6">
-              <dt className="text-[16px] font-semibold text-paper">{name}</dt>
-              <dd className="mt-2 text-[15px] leading-relaxed text-mute">{desc}</dd>
+    {/* Principles */}
+    <section aria-labelledby="principles-title" className="wrap grid gap-8 py-20 sm:py-28 md:grid-cols-12">
+      <h2 id="principles-title" className="text-lg font-semibold md:col-span-4">How we work</h2>
+      <dl className="border-b border-carbon md:col-span-8">
+        {principles.map(([name, desc]) => (
+          <div key={name} className="grid gap-1 border-t border-carbon py-6 sm:grid-cols-2 sm:gap-6">
+            <dt className="text-[22px] font-bold tracking-[-0.02em]">{name}</dt>
+            <dd className="text-lg leading-snug text-graphite">{desc}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+
+    {/* Founders */}
+    <section aria-labelledby="founders-title" className="wrap border-t border-carbon py-14">
+      <h2 id="founders-title" className="text-lg font-semibold">Founders</h2>
+      <div className="mt-10 grid gap-14 md:grid-cols-2 md:gap-12">
+        {founders.map((person) => (
+          <article key={person.name}>
+            <h3 className="poster-h text-[clamp(2.25rem,4vw,3.5rem)]">{person.name}</h3>
+            <p className="mt-2 text-lg text-graphite">{person.role}, {person.origin}</p>
+            <div className="mt-6 space-y-4">
+              {person.bio.map((paragraph, i) => (
+                <p key={i} className="max-w-[60ch] text-[17px] leading-relaxed text-carbon/80">{paragraph}</p>
+              ))}
             </div>
-          ))}
-        </dl>
-      </section>
+          </article>
+        ))}
+      </div>
+    </section>
 
-      {/* Founders */}
-      <section aria-labelledby="founders-title" className="mt-20 border-t border-white/[0.08] pt-12">
-        <h2 id="founders-title" className="font-display text-[clamp(1.75rem,3vw,2.5rem)] font-semibold leading-[1.1] text-paper">
-          Founders
-        </h2>
-        <div className="mt-10 grid gap-12 md:grid-cols-2 md:gap-10">
-          {founders.map((person) => (
-            <article key={person.name}>
-              <div className="flex items-center gap-4">
-                <span aria-hidden="true" className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/[0.05] text-lg font-semibold text-paper">
-                  {person.initials}
-                </span>
-                <div>
-                  <h3 className="font-display text-[22px] font-semibold text-paper">{person.name}</h3>
-                  <p className="text-[14px] text-mute">{person.role} · {person.origin}</p>
-                </div>
-              </div>
-              <div className="mt-5 space-y-3">
-                {person.bio.map((paragraph, i) => (
-                  <p key={i} className="max-w-[62ch] text-[15px] leading-relaxed text-mute">{paragraph}</p>
-                ))}
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      {/* Recognition + close */}
-      <section className="mt-20 grid gap-10 border-t border-white/[0.08] pt-12 lg:grid-cols-12 lg:items-center">
-        <div className="flex items-center gap-4 lg:col-span-5">
-          <span className="inline-flex shrink-0 items-center rounded-lg bg-white px-3 py-2">
+    {/* Recognition + close */}
+    <section className="bg-carbon text-sheet">
+      <div className="wrap grid gap-10 py-16 md:grid-cols-12 md:items-center">
+        <div className="flex items-center gap-4 md:col-span-6">
+          <span className="inline-flex shrink-0 items-center bg-white px-3 py-2">
             <img src={startupIndiaBadge} alt="Startup India, recognised by DPIIT, Government of India" className="h-10 w-auto" />
           </span>
-          <p className="text-[14px] leading-relaxed text-mute">Recognised by DPIIT, Government of India, under Startup India.</p>
+          <p className="max-w-[30ch] text-lg leading-snug text-sheet/70">Recognised by DPIIT, Government of India, under Startup India.</p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row lg:col-span-7 lg:justify-end">
-          <Link to="/contact" className="btn-primary">
-            Let's Build Together
-            <ArrowRight aria-hidden="true" className="h-4 w-4" />
+        <div className="md:col-span-6 md:text-right">
+          <Link to="/contact" className="btn-light">
+            Let's build together <ArrowRight aria-hidden="true" className="h-4 w-4" />
           </Link>
-          <Link to="/solutions" className="btn-secondary">Explore our solutions</Link>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </div>
 );
 

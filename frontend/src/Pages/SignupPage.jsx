@@ -40,7 +40,7 @@ const Field = ({ label, id, required, hint, children }) => (
       {label}{required && <span className="ml-1 text-red-400">*</span>}
     </label>
     {children}
-    {hint && <p className="mt-1.5 text-xs text-neutral-500">{hint}</p>}
+    {hint && <p className="mt-1.5 text-xs text-neutral-400">{hint}</p>}
   </div>
 );
 
@@ -201,7 +201,7 @@ const SignupPage = () => {
   return (
     <AuthLayout
       wide={step === 2}
-      title={step === 1 ? 'Create your account' : 'Tell us about your café'}
+      title={step === 1 ? 'Create your CafeXP account' : 'Tell us about your café'}
       subtitle={
         step === 1
           ? 'Full access to every CafeXP feature for 15 days. No card required.'
@@ -222,13 +222,13 @@ const SignupPage = () => {
     >
       {/* Progress, in the card's own mono idiom rather than numbered bubbles. */}
       <div className="mt-5">
-        <div className="flex items-center justify-between font-mono text-[10px] uppercase tracking-wider text-neutral-500">
-          <span className={step === 1 ? 'text-red-400' : ''}>01 · account</span>
-          <span className={step === 2 ? 'text-red-400' : ''}>02 · your café</span>
+        <div className="flex items-center justify-between text-sm text-neutral-400">
+          <span className={step === 1 ? 'text-red-400' : ''}>1. Account</span>
+          <span className={step === 2 ? 'text-red-400' : ''}>2. Your café</span>
         </div>
         <div className="mt-2 h-px w-full bg-white/10">
           <div
-            className="h-px bg-gradient-to-r from-red-600 to-red-400 transition-all duration-500"
+            className="h-px bg-[#e5322d] transition-all duration-500"
             style={{ width: step === 1 ? '50%' : '100%' }}
           />
         </div>
@@ -236,7 +236,7 @@ const SignupPage = () => {
 
       <div aria-live="polite">
         {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          <div className="mt-4 flex items-center gap-2 border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
             <AlertCircle className="h-4 w-4 shrink-0" />
             {error}
           </div>
@@ -308,7 +308,7 @@ const SignupPage = () => {
                   type="button"
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-500 transition-colors hover:text-white"
+                  className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 transition-colors hover:text-white"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -340,11 +340,10 @@ const SignupPage = () => {
           <button
             type="submit"
             disabled={!stepOneValid}
-            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
-                       border border-white/10 bg-gradient-to-br from-red-700 to-red-900
-                       py-2.5 text-sm font-semibold text-white
-                       shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
-                       transition-all duration-300 active:scale-[0.99]
+            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden
+                       bg-signal-deep hover:bg-signal-press
+                       py-3.5 text-[15px] font-semibold text-white
+                       transition-colors duration-150 active:translate-y-px
                        disabled:cursor-not-allowed disabled:opacity-60"
           >
             Continue
@@ -367,10 +366,8 @@ const SignupPage = () => {
 
           <div className="pt-1">
             <div className="mb-3 flex items-center gap-3">
-              <span className="font-mono text-[10px] uppercase tracking-wider text-red-500">
-                business_location
-              </span>
-              <span aria-hidden="true" className="h-px flex-1 bg-gradient-to-r from-red-500/40 to-transparent" />
+              <span className="text-sm font-semibold text-white">Business location</span>
+              <span aria-hidden="true" className="h-px flex-1 bg-white/15" />
             </div>
 
             <LocationSelector
@@ -421,7 +418,7 @@ const SignupPage = () => {
             <button
               type="button"
               onClick={() => setStep(1)}
-              className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold
+              className=" border border-white/10 bg-white/[0.03] px-4 py-2.5 text-sm font-semibold
                          text-neutral-300 transition-colors hover:border-white/20 hover:text-white"
             >
               Back
@@ -429,11 +426,10 @@ const SignupPage = () => {
             <button
               type="submit"
               disabled={saving}
-              className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden rounded-xl
-                         border border-white/10 bg-gradient-to-br from-red-700 to-red-900
-                         py-2.5 text-sm font-semibold text-white
-                         shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
-                         transition-all duration-300 active:scale-[0.99]
+              className="group relative flex flex-1 items-center justify-center gap-2 overflow-hidden
+                         bg-signal-deep hover:bg-signal-press
+                         py-3.5 text-[15px] font-semibold text-white
+                         transition-colors duration-150 active:translate-y-px
                          disabled:cursor-not-allowed disabled:opacity-60"
             >
               {saving ? (

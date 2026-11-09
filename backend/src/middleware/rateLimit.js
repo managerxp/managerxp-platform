@@ -117,3 +117,16 @@ export const contactFormLimiter = rateLimit({
   legacyHeaders: false,
   handler: refusal('Too many messages from here. Wait a few minutes and try again.')
 });
+
+/*
+ * Consent records. Each visitor decision is one small insert; a café's shared
+ * IP can carry many visitors, so the ceiling is generous. It only has to stop
+ * a script from filling the table.
+ */
+export const consentLimiter = rateLimit({
+  windowMs: minutes(15),
+  limit: 60,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  handler: refusal('Too many requests from here. Your choice is still saved in this browser.')
+});

@@ -20,6 +20,7 @@ const Contact = lazy(() => import('./Pages/Contact'))
 const PrivacyPolicy = lazy(() => import('./Pages/PrivacyPolicy'))
 const TermsOfService = lazy(() => import('./Pages/TermsOfService'))
 const BookDemoPage = lazy(() => import('./Pages/BookDemo'))
+const NotFound = lazy(() => import('./Pages/NotFound'))
 const Login = lazy(() => import('./Pages/Login'))
 const ForgotPassword = lazy(() => import('./Pages/ForgotPassword'))
 const GoogleCallback = lazy(() => import('./Pages/GoogleCallback'))
@@ -161,7 +162,7 @@ const AppLayout = () => {
   // Signed-in and auth surfaces carry their own chrome, so the marketing
   // navbar and footer would only get in the way.
   const hideNavAndFooter = ['/login', '/signup', '/cafexp-login', '/gamingxp-login', '/store-login', '/store',
-    '/start-trial', '/accept-invite', '/auth/google', '/privacy-policy', '/terms-of-service']
+    '/start-trial', '/accept-invite', '/auth/google', '/forgot-password']
     .includes(location.pathname)
     || location.pathname.startsWith('/pay/')
     || location.pathname.startsWith('/book/')
@@ -174,13 +175,13 @@ const AppLayout = () => {
   const hideFooter = hideNavAndFooter
 
   return (
-    <div className="flex flex-col min-h-screen bg-ink">
+    <div className={`flex flex-col min-h-screen ${hideNavAndFooter ? 'bg-ink' : 'bg-sheet'}`}>
       {/* First focusable element on every page, so a keyboard user is never
           forced through the nav (and, on marketing pages, past the whole
           hero) just to reach the actual content. */}
       <a
         href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-black"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:bg-white focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-black"
       >
         Skip to content
       </a>
@@ -190,7 +191,7 @@ const AppLayout = () => {
       {/* The nav is now a floating inset pill (its own top padding + height),
           taller than the old flush bar, so the clearance below it grows to
           match rather than letting page content sit under its edge. */}
-      <main id="main-content" tabIndex={-1} className={`flex-grow ${hideNavAndFooter ? '' : 'mt-16'}`}>
+      <main id="main-content" tabIndex={-1} className={`flex-grow ${hideNavAndFooter ? '' : 'mt-[4.5rem]'}`}>
         <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<Home />} />
@@ -362,6 +363,7 @@ const AppLayout = () => {
               </ProtectedRoute>
             )}
           />
+          <Route path="*" element={<NotFound />} />
         </Routes>
         </Suspense>
       </main>

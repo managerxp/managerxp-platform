@@ -7,11 +7,10 @@ import React from 'react';
  */
 const DemoBadge = ({ className = '' }) => (
   <span
-    className={`inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5
-                px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-neutral-400 ${className}`}
+    className={`inline-flex items-center gap-2 border border-white/15 px-2.5 py-1 text-[12px] text-neutral-300 ${className}`}
   >
-    <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-neutral-500" />
-    Sample data · interface preview
+    <span aria-hidden="true" className="h-1.5 w-1.5 bg-neutral-400" />
+    Sample data, interface preview
   </span>
 );
 

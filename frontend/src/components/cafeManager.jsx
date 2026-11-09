@@ -87,7 +87,7 @@ const CafeManager = () => {
       
       {/* Form Container */}
       <div className="w-full px-6 py-6 lg:px-8">
-        <div className="max-w-2xl mx-auto bg-gradient-to-br from-gray-900 to-black rounded-2xl border border-red-500/30 shadow-2xl p-6">
+        <div className="max-w-2xl mx-auto bg-white/[0.03] rounded-2xl border border-red-500/30 shadow-2xl p-6">
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Cafe Name */}
             <div>

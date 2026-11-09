@@ -3,6 +3,14 @@
 Status: approved direction, in implementation (2026-11-04)
 Scope: the public marketing site in `frontend/` (React 19 + Vite 7 + Tailwind v4 + framer-motion). Signed-in surfaces (`/dashboard`, `/admin`, `/store`, auth pages) are out of scope and keep their own chrome.
 
+> **Current direction (2026-11-09): "Swiss poster".** The user rejected the dark "premium product studio" build as looking AI-made and asked for minimal and catchy. Three live previews were built (Swiss poster, Red field, Quiet dark); the user chose **Swiss poster**. It supersedes sections C and D and the third-party components table below, which are kept as history.
+>
+> - **World:** light grey sheet `#f2f2f2`, carbon type `#0e0e0e`, graphite `#5c5c5c`, ManagerXP red `#e5322d` used only for the full stop that ends key headlines, primary-link underlines and hover. Square corners, 1px black rules, no cards, glows, gradients, icons or animation effects.
+> - **Type:** Schibsted Grotesk for the whole marketing surface (`.poster-h`: weight 850, tracking -0.055em, leading 0.92). The signed-in app keeps Geist.
+> - **Homepage:** poster hero ("Software for businesses that never stop."), products as giant typographic rows, a black band "The products are the proof." with the live CafeXP console, "What we build for you" as one big sentence, a black closing band "Let's build it." linking to contact.
+> - **Product UI** (CafeXP and RaceXP mockups, pricing) is dark, so it sits on solid black bands.
+> - **Removed:** ProductCards, ProductMark, SpotlightCard, BlurText, BorderBeam, the FlowXP screenshots.
+
 ---
 
 ## 0. Audit summary (Phase 1)

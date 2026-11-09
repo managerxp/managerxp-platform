@@ -33,7 +33,7 @@ const ContactPage = () => {
   };
 
   return (
-    <div className="bg-ink font-sans text-paper antialiased">
+    <div className="bg-sheet font-display text-carbon antialiased">
       <Seo
         title="Contact ManagerXP | Start a Conversation"
         description="Tell ManagerXP about your project, product question or partnership. Email managerxp2026@gmail.com or call +91 96795 49136. Banjara Hills, Hyderabad."
@@ -43,29 +43,29 @@ const ContactPage = () => {
       <div className="wrap pb-20 pt-12 sm:pb-28 sm:pt-16">
         <SectionHeading
           as="h1"
-          title="Let's build together."
+          title="Let's build together"
           description="Describe the problem you want solved, the product you are curious about, or the partnership you have in mind. A person from the team reads every message."
         />
 
-        <div className="mt-14 grid gap-14 border-t border-white/[0.08] pt-12 lg:grid-cols-12 lg:gap-12">
+        <div className="mt-14 grid gap-14 border-t border-carbon pt-12 lg:grid-cols-12 lg:gap-12">
           <aside className="space-y-10 lg:col-span-4">
             <div>
-              <h2 className="text-[13px] font-semibold text-paper">Email</h2>
-              <a href="mailto:managerxp2026@gmail.com" className="mt-2 block break-all font-display text-[22px] font-semibold text-paper hover:text-white">
+              <h2 className="text-[15px] text-graphite">Email</h2>
+              <a href="mailto:managerxp2026@gmail.com" className="mt-2 block break-all text-[26px] font-bold tracking-[-0.02em] hover:text-signal">
                 managerxp2026@gmail.com
               </a>
-              <p className="mt-1 text-[14px] text-mute">Replies usually within 24 hours.</p>
+              <p className="mt-1 text-[15px] text-graphite">Replies usually within 24 hours.</p>
             </div>
             <div>
-              <h2 className="text-[13px] font-semibold text-paper">Phone</h2>
-              <a href="tel:+919679549136" className="mt-2 block font-display text-[22px] font-semibold text-paper hover:text-white">
+              <h2 className="text-[15px] text-graphite">Phone</h2>
+              <a href="tel:+919679549136" className="mt-2 block text-[26px] font-bold tracking-[-0.02em] hover:text-signal">
                 +91 96795 49136
               </a>
-              <p className="mt-1 text-[14px] text-mute">Monday to Friday, 9 AM to 6 PM IST.</p>
+              <p className="mt-1 text-[15px] text-graphite">Monday to Friday, 9 AM to 6 PM IST.</p>
             </div>
             <div>
-              <h2 className="text-[13px] font-semibold text-paper">Office</h2>
-              <address className="mt-2 text-[15px] not-italic leading-relaxed text-mute">
+              <h2 className="text-[15px] text-graphite">Office</h2>
+              <address className="mt-2 text-lg not-italic leading-snug">
                 8-2-644/1/205 F205, Hiline Complex,<br />
                 Road No. 12, Banjara Hills,<br />
                 Hyderabad 500034, India
@@ -111,7 +111,7 @@ const ContactPage = () => {
               />
             </div>
 
-            <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+            <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[14rem]">
               {isSubmitting ? (
                 <>
                   <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />

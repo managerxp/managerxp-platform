@@ -1,85 +1,47 @@
 import React from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import Seo from '../site/Seo';
-import { ArrowLeft } from 'lucide-react';
-import logo from '../../assets/whitelogo-sm.png';
-import PageBackground from '../PageBackground';
 
 /*
- * Same visual language as AuthLayout (/login, /signup) — the HUD-strip card,
- * the ambient glow, the racer streaks — rather than a plain text page. Not
- * vertically centered like the auth card, since a 15-section document needs
- * to scroll, not sit in one viewport.
+ * Privacy Policy and Terms: reading pages, so they sit inside the normal site
+ * nav and footer on the light sheet, set for comfortable reading (one column,
+ * ~68 characters a line). `hudLabel` is accepted for older call sites.
  */
-export const LegalPage = ({ title, hudLabel, lastUpdated, effectiveDate, children }) => {
+export const LegalPage = ({ title, lastUpdated, effectiveDate, children }) => {
   const { pathname } = useLocation();
   return (
-  <section className="relative bg-black text-white overflow-hidden antialiased font-sans min-h-screen px-4 py-10 sm:py-14">
-    <Seo title={`${title} | ManagerXP`} description={`${title} for ManagerXP Private Limited and its products CafeXP, RaceXP and FlowXP.`} path={pathname} />
-    <PageBackground streakTop="top-1/4" streakBottom="bottom-1/3" />
+    <article className="bg-sheet font-display text-carbon antialiased">
+      <Seo title={`${title} | ManagerXP`} description={`${title} for ManagerXP Private Limited and its products CafeXP, RaceXP and FlowXP.`} path={pathname} />
+      <header className="wrap pb-12 pt-10 sm:pt-16">
+        <h1 className="poster-h text-[clamp(3rem,8vw,7rem)]">
+          {title}<span className="text-signal">.</span>
+        </h1>
+        <p className="mt-6 text-lg text-graphite">ManagerXP Private Limited · Last updated {lastUpdated}</p>
+      </header>
 
-    <div className="relative z-10 mx-auto w-full max-w-3xl">
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <Link to="/" className="flex items-center hover:opacity-80 transition-opacity">
-          <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
-        </Link>
-        <Link
-          to="/"
-          className="group inline-flex items-center gap-1.5 text-xs font-mono text-neutral-500 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-3 h-3 transition-transform group-hover:-translate-x-0.5" />
-          Back to site
-        </Link>
-      </div>
-
-      <div className="relative">
-        <div
-          aria-hidden="true"
-          className="absolute -inset-1 bg-gradient-to-r from-red-500/20 to-black rounded-2xl blur-xl opacity-30"
-        />
-
-        <div className="relative border border-white/10 rounded-2xl bg-neutral-950/70 backdrop-blur-xl shadow-[0_0_50px_-20px_rgba(220,38,38,0.25)] overflow-hidden">
-          <div className="flex items-center gap-1.5 px-4 py-3 border-b border-white/5 bg-white/[0.02]">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
-            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500" />
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
-            <span className="ml-2 text-[10px] font-mono text-neutral-600 uppercase tracking-wider">
-              {hudLabel}
-            </span>
-          </div>
-
-          <div className="p-6 sm:p-10">
-            <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white">{title}</h1>
-            <p className="mt-2 text-xs font-mono uppercase tracking-wide text-neutral-500">
-              Last updated: {lastUpdated}
-            </p>
-
-            <div className="mt-10 space-y-10 text-[15px] leading-relaxed text-neutral-300">
-              {children}
-            </div>
-
-            {effectiveDate && (
-              <p className="mt-16 border-t border-white/10 pt-6 text-xs font-mono text-neutral-600">
-                Effective date: {effectiveDate}
-              </p>
-            )}
-          </div>
+      <div className="wrap border-t border-carbon pb-24 pt-12">
+        <div className="max-w-[68ch] space-y-12 text-[17px] leading-relaxed text-carbon/85">
+          {children}
         </div>
+        {effectiveDate && (
+          <p className="mt-16 max-w-[68ch] border-t border-carbon/20 pt-6 text-[15px] text-graphite">
+            Effective date: {effectiveDate}
+          </p>
+        )}
       </div>
-    </div>
-  </section>
+    </article>
   );
 };
 
 export const Section = ({ id, title, children }) => (
   <section id={id} className="scroll-mt-24">
-    <h2 className="mb-3 text-lg font-semibold text-white">{title}</h2>
+    <h2 className="mb-4 text-[26px] font-bold leading-tight tracking-[-0.025em] text-carbon">{title}</h2>
     <div className="space-y-3">{children}</div>
   </section>
 );
 
 export const BulletList = ({ items }) => (
-  <ul className="list-disc list-inside space-y-1.5 marker:text-red-500">
+  <ul className="list-disc space-y-2 pl-5 marker:text-signal">
     {items.map((item) => (
       <li key={item}>{item}</li>
     ))}

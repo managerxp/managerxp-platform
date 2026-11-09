@@ -128,13 +128,13 @@ const ForgotPassword = () => {
     >
       <div aria-live="polite">
         {notice && !error && (
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          <div className="mt-4 flex items-start gap-2 border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             {notice}
           </div>
         )}
         {error && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
+          <div className="mt-4 flex items-center gap-2 border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
             {error}
           </div>
@@ -143,7 +143,7 @@ const ForgotPassword = () => {
             an operator setting this up for the first time is not locked out
             of their own console over a missing SMTP setting. */}
         {devCode && (
-          <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 font-mono">
+          <div className="mt-3 border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200 font-mono">
             Email is not configured on this server. Your code: <strong>{devCode}</strong>
           </div>
         )}
@@ -168,11 +168,10 @@ const ForgotPassword = () => {
           <button
             type="submit"
             disabled={busy}
-            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
-                       bg-gradient-to-br from-red-700 to-red-900 border border-white/10
-                       py-2.5 text-sm font-semibold text-white
-                       shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
-                       transition-all duration-300 active:scale-[0.99]
+            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden
+                       bg-signal-deep hover:bg-signal-press
+                       py-3.5 text-[15px] font-semibold text-white
+                       transition-colors duration-150 active:translate-y-px
                        disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Sending…</> : <><KeyRound className="w-4 h-4" /> Send reset code</>}
@@ -216,7 +215,7 @@ const ForgotPassword = () => {
                 type="button"
                 onClick={() => setShowPassword((p) => !p)}
                 aria-label={showPassword ? 'Hide password' : 'Show password'}
-                className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-500 hover:text-white transition-colors"
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 hover:text-white transition-colors"
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -239,11 +238,10 @@ const ForgotPassword = () => {
           <button
             type="submit"
             disabled={busy}
-            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
-                       bg-gradient-to-br from-red-700 to-red-900 border border-white/10
-                       py-2.5 text-sm font-semibold text-white
-                       shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
-                       transition-all duration-300 active:scale-[0.99]
+            className="group relative flex w-full items-center justify-center gap-2 overflow-hidden
+                       bg-signal-deep hover:bg-signal-press
+                       py-3.5 text-[15px] font-semibold text-white
+                       transition-colors duration-150 active:translate-y-px
                        disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {busy ? <><Loader2 className="w-4 h-4 animate-spin" /> Changing…</> : 'Change password'}
@@ -253,7 +251,7 @@ const ForgotPassword = () => {
             type="button"
             onClick={resend}
             disabled={busy}
-            className="w-full text-center text-xs text-neutral-500 hover:text-white transition-colors disabled:opacity-50"
+            className="w-full text-center text-xs text-neutral-400 hover:text-white transition-colors disabled:opacity-50"
           >
             Didn't get a code? Send another
           </button>
@@ -261,7 +259,7 @@ const ForgotPassword = () => {
       )}
 
       {step === 'done' && (
-        <div className="mt-5 flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+        <div className="mt-5 flex items-center gap-2 border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
           <CheckCircle2 className="h-4 w-4 shrink-0" />
           Password changed. Redirecting to sign in…
         </div>

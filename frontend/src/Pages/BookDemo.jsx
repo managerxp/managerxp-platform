@@ -41,7 +41,7 @@ const BookDemoPage = () => {
   };
 
   return (
-    <div className="bg-ink font-sans text-paper antialiased">
+    <div className="bg-sheet font-display text-carbon antialiased">
       <Seo
         title="Book a CafeXP Demo | ManagerXP"
         description="Schedule a live CafeXP walkthrough against your own café floor plan: sessions, billing, stock, staff and analytics."
@@ -51,12 +51,12 @@ const BookDemoPage = () => {
       <div className="wrap max-w-4xl pb-20 pt-12 sm:pb-28 sm:pt-16">
         <SectionHeading
           as="h1"
-          title="Book a CafeXP demo."
+          title="Book a CafeXP demo"
           description="A live walkthrough with the team, run against your own floor plan. Tell us a little about your café and we will schedule a time."
           className="mb-12"
         />
 
-        <div className="border-t border-white/[0.08] pt-10">
+        <div className="border-t border-carbon pt-10">
               <form ref={formRef} onSubmit={sendEmail} className="space-y-6">
 
                 <FormStatus status={status} />
@@ -130,8 +130,8 @@ const BookDemoPage = () => {
                       return (
                         <label
                           key={option.value}
-                          className={`relative flex items-center gap-4 rounded-xl border p-4 focus-within:outline focus-within:outline-2 focus-within:outline-signal
-                                      ${isSelected ? 'border-paper' : 'border-white/[0.08] hover:border-mute'}`}
+                          className={`relative flex items-center gap-4 border p-4 focus-within:outline focus-within:outline-2 focus-within:outline-signal
+                                      ${isSelected ? 'border-carbon bg-white' : 'border-carbon/30 hover:border-carbon'}`}
                         >
                           <input
                             type="radio"
@@ -142,10 +142,10 @@ const BookDemoPage = () => {
                             onChange={(e) => setSelectedSoftware(e.target.value)}
                             required
                           />
-                          <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[3px] ${isSelected ? 'border-signal' : 'border-mute'}`} />
+                          <span aria-hidden="true" className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-[3px] ${isSelected ? 'border-signal' : 'border-carbon/40'}`} />
                           <div className="min-w-0">
-                            <span className="block text-[15px] font-medium text-paper">{option.label}</span>
-                            <span className="text-[13px] text-mute">{option.description}</span>
+                            <span className="block text-[15px] font-medium text-carbon">{option.label}</span>
+                            <span className="text-[13px] text-graphite">{option.description}</span>
                           </div>
                         </label>
                       );
@@ -181,7 +181,7 @@ const BookDemoPage = () => {
 
                 {/* Submit Button */}
                 <div className="pt-2 sm:pt-4">
-                  <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto">
+                  <button type="submit" disabled={isSubmitting} className="btn-primary w-full disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto sm:min-w-[14rem]">
                     {isSubmitting ? (
                       <>
                         <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />

@@ -125,8 +125,8 @@ const Login = () => {
 
   return (
     <AuthLayout
-      title="Login"
-      subtitle="Sign in to your ManagerXP account"
+      title="Sign in to CafeXP"
+      subtitle="For café owners and managers. ManagerXP admins sign in here too."
       footer={
         <>
           Don&apos;t have an account?{' '}
@@ -138,13 +138,13 @@ const Login = () => {
     >
       <div aria-live="polite">
         {notice && !error && (
-          <div className="mt-4 flex items-start gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
+          <div className="mt-4 flex items-start gap-2 border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-200">
             <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
             {notice}
           </div>
         )}
         {(error || googleError) && (
-          <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
+          <div className="mt-4 flex items-center gap-2 border border-red-500/30 bg-red-500/10 text-red-300 px-3 py-2 text-sm">
             <AlertCircle className="w-4 h-4 shrink-0" />
             {error || googleError}
           </div>
@@ -176,7 +176,7 @@ const Login = () => {
             </label>
             <Link
               to="/forgot-password"
-              className="text-xs text-neutral-500 hover:text-red-400 underline underline-offset-4 transition-colors"
+              className="text-xs text-neutral-400 hover:text-red-400 underline underline-offset-4 transition-colors"
             >
               Forgot password?
             </Link>
@@ -197,7 +197,7 @@ const Login = () => {
               type="button"
               onClick={() => setShowPassword((prev) => !prev)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
-              className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-500 hover:text-white transition-colors"
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-neutral-400 hover:text-white transition-colors"
             >
               {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </button>
@@ -207,11 +207,10 @@ const Login = () => {
         <button
           type="submit"
           disabled={isLoading}
-          className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-xl
-                     bg-gradient-to-br from-red-700 to-red-900 border border-white/10
-                     py-2.5 text-sm font-semibold text-white
-                     shadow-[0_0_20px_-5px_rgba(220,38,38,0.4)] hover:shadow-[0_0_28px_-5px_rgba(220,38,38,0.6)]
-                     transition-all duration-300 active:scale-[0.99]
+          className="group relative flex w-full items-center justify-center gap-2 overflow-hidden
+                     bg-signal-deep hover:bg-signal-press
+                     py-3.5 text-[15px] font-semibold text-white
+                     transition-colors duration-150 active:translate-y-px
                      disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {isLoading ? (
@@ -222,7 +221,7 @@ const Login = () => {
           ) : (
             <>
               <LogIn className="w-4 h-4" />
-              Login
+              Sign in
             </>
           )}
         </button>
@@ -232,12 +231,12 @@ const Login = () => {
           navigation to Google and back, so the browser must actually leave. */}
       <div className="relative my-5 flex items-center">
         <div className="flex-grow border-t border-white/10" />
-        <span className="mx-3 text-[11px] font-medium uppercase tracking-wider text-neutral-500">or</span>
+        <span className="mx-3 text-[11px] font-medium uppercase tracking-wider text-neutral-400">or</span>
         <div className="flex-grow border-t border-white/10" />
       </div>
       <a
         href={googleUrl}
-        className="flex w-full items-center justify-center gap-2.5 rounded-xl border border-white/10 bg-white/[0.03]
+        className="flex w-full items-center justify-center gap-2.5 border border-white/10 bg-white/[0.03]
                    py-2.5 text-sm font-semibold text-neutral-200 transition-colors
                    hover:border-white/20 hover:bg-white/[0.06] active:scale-[0.99]"
       >

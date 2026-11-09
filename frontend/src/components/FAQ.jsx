@@ -50,22 +50,22 @@ const faqs = [
   }
 ];
 
-const FAQ = () => {
+const FAQ = ({ dark = false }) => {
   const [openIndex, setOpenIndex] = useState(0);
 
   return (
-    <section className="text-paper">
+    <section className={dark ? 'text-sheet' : 'text-carbon'}>
       <div className="grid gap-10 lg:grid-cols-12">
-        <SectionHeading title="Before you get started." className="lg:col-span-4" />
+        <SectionHeading title="Before you get started." tone={dark ? 'dark' : 'light'} className="lg:col-span-4" />
 
-        <div className="border-b border-white/[0.08] lg:col-span-8">
+        <div className={`border-b ${dark ? 'border-sheet/20' : 'border-carbon'} lg:col-span-8`}>
           {faqs.map((faq, index) => {
             const isOpen = openIndex === index;
             const panelId = `faq-panel-${index}`;
             const buttonId = `faq-button-${index}`;
 
             return (
-              <div key={faq.q} className="border-t border-white/[0.08]">
+              <div key={faq.q} className={`border-t ${dark ? 'border-sheet/20' : 'border-carbon'}`}>
                   <h3>
                     <button
                       type="button"
@@ -75,14 +75,14 @@ const FAQ = () => {
                       onClick={() => setOpenIndex(isOpen ? -1 : index)}
                       className="flex w-full items-center justify-between gap-4 py-5 text-left"
                     >
-                      <span className={`text-[16px] font-medium transition-colors ${isOpen ? 'text-paper' : 'text-paper/80 hover:text-paper'}`}>
+                      <span className={`text-[19px] font-semibold tracking-[-0.01em] transition-colors ${isOpen ? '' : 'opacity-80 hover:opacity-100'}`}>
                         {faq.q}
                       </span>
                       <Motion.span
                         aria-hidden="true"
                         animate={{ rotate: isOpen ? 45 : 0 }}
                         transition={{ duration: 0.3, ease: EASE_MOTION }}
-                        className={`shrink-0 ${isOpen ? 'text-paper' : 'text-mute'}`}
+                        className={`shrink-0 ${isOpen ? 'text-signal' : ''}`}
                       >
                         <Plus className="w-4 h-4" />
                       </Motion.span>
@@ -102,7 +102,7 @@ const FAQ = () => {
                         transition={{ duration: 0.32, ease: EASE_MOTION }}
                         className="overflow-hidden"
                       >
-                        <p className="max-w-[64ch] pb-6 text-[15px] leading-relaxed text-mute text-pretty">
+                        <p className={`max-w-[64ch] pb-6 text-[17px] leading-relaxed text-pretty ${dark ? 'text-sheet/65' : 'text-graphite'}`}>
                           {faq.a}
                         </p>
                       </Motion.div>
