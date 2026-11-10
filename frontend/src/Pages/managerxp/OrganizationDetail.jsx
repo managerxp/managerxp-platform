@@ -161,7 +161,7 @@ const OrganizationDetail = () => {
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Panel className="!p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Package</div>
+          <div className="text-[12px] font-semibold text-neutral-500">Package</div>
           <div className="mt-1 text-lg font-semibold text-white">{sub?.plan_name || '—'}</div>
           <div className="mt-0.5 text-[11px] text-neutral-500">
             {sub?.net_price != null
@@ -170,7 +170,7 @@ const OrganizationDetail = () => {
           </div>
         </Panel>
         <Panel className="!p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Subscription</div>
+          <div className="text-[12px] font-semibold text-neutral-500">Subscription</div>
           <div className="mt-1.5">
             <Pill tone={
               sub?.status === 'ACTIVE' || sub?.status === 'TRIAL' ? 'good'
@@ -186,12 +186,12 @@ const OrganizationDetail = () => {
           </div>
         </Panel>
         <Panel className="!p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Started</div>
+          <div className="text-[12px] font-semibold text-neutral-500">Started</div>
           <div className="mt-1 text-lg font-semibold text-white">{shortDate(sub?.started_at)}</div>
           <div className="mt-0.5 text-[11px] text-neutral-500">renews {shortDate(sub?.expires_at)}</div>
         </Panel>
         <Panel className="!p-4">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Discount</div>
+          <div className="text-[12px] font-semibold text-neutral-500">Discount</div>
           <div className="mt-1 text-lg font-semibold text-white">
             {sub?.discount_type && sub.discount_type !== 'NO_DISCOUNT'
               ? (sub.discount_type === 'PERCENTAGE' ? `${sub.discount_value}%` : money(sub.discount_value, sub.currency))
@@ -239,7 +239,7 @@ const OrganizationDetail = () => {
               ['Customer since', shortDate(org.created_at)]
             ].map(([k, v]) => (
               <div key={k}>
-                <dt className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{k}</dt>
+                <dt className="text-[12px] font-semibold text-neutral-500">{k}</dt>
                 <dd className="mt-0.5 text-sm text-neutral-300">{v || '—'}</dd>
               </div>
             ))}
@@ -259,7 +259,7 @@ const OrganizationDetail = () => {
               <tr key={f.feature_key} className="hover:bg-white/[0.03]">
                 <td className="px-4 py-2">
                   <div className="text-sm text-neutral-200">{f.label}</div>
-                  <div className="text-[10px] uppercase tracking-wider text-neutral-600">
+                  <div className="text-[12px] text-neutral-600">
                     {f.module_label}{f.is_core ? ' · core' : ''}
                   </div>
                 </td>

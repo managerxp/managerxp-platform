@@ -41,7 +41,7 @@ const Module = ({ title, lead, children, side = false }) => (
 );
 
 const CafeXP = () => (
-  <div className="bg-carbon font-display text-sheet antialiased">
+  <div className="tone-dark bg-carbon font-display text-sheet antialiased">
     <Seo
       title="CafeXP | Gaming Café Management Software by ManagerXP"
       description="CafeXP runs gaming and internet cafés: PC sessions, billing against the live clock, F&B stock, staff, multi-branch control and AI analytics. Start a free trial."
@@ -111,12 +111,12 @@ const CafeXP = () => (
     </div>
     </div>
 
-    <div className="wrap border-t border-sheet/15 py-20 sm:py-28">
+    <div className="wrap border-t border-sheet/15 py-16 sm:py-28">
       <FAQ dark />
     </div>
 
     <section className="border-t border-sheet/15">
-      <div className="wrap grid gap-8 py-20 sm:py-28 lg:grid-cols-12 lg:items-end">
+      <div className="wrap grid gap-8 py-16 sm:py-28 lg:grid-cols-12 lg:items-end">
         <h2 className="poster-h text-[clamp(3rem,7vw,6.5rem)] lg:col-span-8">
           Run your café on CafeXP<span className="text-signal">.</span>
         </h2>

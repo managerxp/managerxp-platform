@@ -151,7 +151,7 @@ const Combo = ({
                   }`}
                 >
                   <span>{getLabel(o)}</span>
-                  {getSub && <span className="ml-2 text-[10px] text-neutral-600">{getSub(o)}</span>}
+                  {getSub && <span className="ml-2 text-[12px] text-neutral-600">{getSub(o)}</span>}
                 </button>
               );
             })}

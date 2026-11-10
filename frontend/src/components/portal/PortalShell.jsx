@@ -4,7 +4,10 @@ import { ArrowLeft, LogOut, Menu } from 'lucide-react';
 import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Banner, Button, Select, surface } from './ui';
 import CreateBusiness from './CreateBusiness';
-import logo from '../../assets/whitelogo-sm.png';
+import logoLight from '../../assets/whitelogo-sm.png';
+import logoDark from '../../assets/logo.png';
+import { useDashTheme } from '../../lib/dashTheme';
+import DashThemeToggle from '../shared/DashThemeToggle';
 
 /*
  * The portal shell: navigation, the org and branch switchers, and the trial
@@ -68,6 +71,7 @@ const PortalShell = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [theme, toggleTheme] = useDashTheme();
 
   const [orgId, setOrgId] = useState(portalAuth.organization());
   const [branchId, setBranchId] = useState(portalAuth.branch());
@@ -137,15 +141,15 @@ const PortalShell = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-red-500" />
+      <div className="dash flex min-h-screen items-center justify-center bg-black" data-theme={theme}>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-white/10 border-t-white" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center bg-black px-4">
+      <div className="dash relative flex min-h-screen items-center justify-center bg-black px-4" data-theme={theme}>
         <div className={`relative z-10 max-w-md ${surface} p-8 text-center`}>
           <p className="text-sm text-neutral-300">{error}</p>
           <Button className="mt-5" onClick={() => { portalAuth.signOut(); window.location.href = '/login'; }}>
@@ -164,10 +168,12 @@ const PortalShell = ({ children }) => {
      between them and their dashboard. */
   if (me && me.organizations.length === 0) {
     return (
-      <CreateBusiness
-        name={me.user?.name}
-        onDone={() => window.location.reload()}
-      />
+      <div className="dash" data-theme={theme}>
+        <CreateBusiness
+          name={me.user?.name}
+          onDone={() => window.location.reload()}
+        />
+      </div>
     );
   }
 
@@ -176,7 +182,7 @@ const PortalShell = ({ children }) => {
 
   return (
     <PortalContext.Provider value={value}>
-      <div className="relative min-h-screen bg-black text-white antialiased">
+      <div className="dash relative min-h-screen bg-black text-white antialiased" data-theme={theme}>
 
         <div className="relative z-10 mx-auto flex max-w-[1400px]">
 
@@ -188,17 +194,15 @@ const PortalShell = ({ children }) => {
                         ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
           >
             <Link to="/dashboard" className="flex items-center px-2 transition-opacity hover:opacity-80">
-              <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
+              <img src={theme === 'light' ? logoDark : logoLight} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
             </Link>
-            <p className="mt-2 px-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
-              cafexp_portal
-            </p>
+            <p className="mt-2 px-2 text-[13px] text-neutral-500">CafeXP portal</p>
 
             {/* The way out. The dashboard had no route back to the public site
                 short of editing the address bar. */}
             <Link
               to="/"
-              className="group mt-4 flex items-center gap-1.5 px-2 font-mono text-[11px] text-neutral-500 transition-colors hover:text-white"
+              className="group mt-4 flex items-center gap-1.5 px-2 text-[13px] text-neutral-500 transition-colors hover:text-white"
             >
               <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
               Back to site
@@ -223,7 +227,7 @@ const PortalShell = ({ children }) => {
               {NAV.map((group, i) => (
                 <div key={group.label || i}>
                   {group.label && (
-                    <div className="mb-1.5 px-3 font-mono text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+                    <div className="mb-1.5 px-3 text-[12px] font-semibold text-neutral-500">
                       {group.label}
                     </div>
                   )}
@@ -238,10 +242,10 @@ const PortalShell = ({ children }) => {
                           to={item.to}
                           onClick={() => setNavOpen(false)}
                           aria-current={active ? 'page' : undefined}
-                          className={`block rounded-lg border px-3 py-2 text-sm font-medium transition ${
+                          className={`block rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
                             active
-                              ? 'border-red-500/25 bg-[#e5322d]/30 text-white'
-                              : 'border-transparent text-neutral-400 hover:bg-white/[0.04] hover:text-white'
+                              ? 'border-white bg-white text-black'
+                              : 'border-transparent text-neutral-400 hover:bg-white/[0.06] hover:text-white'
                           }`}
                         >
                           {item.label}
@@ -256,7 +260,7 @@ const PortalShell = ({ children }) => {
             <button
               type="button"
               onClick={() => { portalAuth.signOut(); window.location.href = '/login'; }}
-              className="mt-8 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-neutral-400 transition-colors hover:border-red-500/40 hover:text-white"
+              className="mt-8 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm font-semibold text-neutral-400 transition-colors hover:border-white/40 hover:text-white"
             >
               <LogOut className="h-3.5 w-3.5" />
               Sign out
@@ -302,15 +306,16 @@ const PortalShell = ({ children }) => {
               )}
 
               <div className="ml-auto flex items-center gap-3">
+                <DashThemeToggle theme={theme} onToggle={toggleTheme} />
                 {sub && (
-                  <span className="hidden font-mono text-[11px] text-neutral-500 sm:inline">
+                  <span className="hidden text-[13px] text-neutral-500 sm:inline">
                     {sub.is_trial ? 'Trial' : 'Subscription'} ·{' '}
                     <span className={sub.status === 'ACTIVE' ? 'text-neutral-300' : 'text-red-300'}>
                       {sub.status === 'ACTIVE' ? `${sub.days_remaining} days left` : sub.status.toLowerCase()}
                     </span>
                   </span>
                 )}
-                <span className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-xs font-bold">
+                <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-xs font-bold text-black">
                   {(me?.user?.name || '?').slice(0, 1).toUpperCase()}
                 </span>
               </div>

@@ -71,13 +71,13 @@ const BillingDesk = () => {
 
       {/* Order side */}
       <div className="lg:col-span-2 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
-        <p className="mb-3 font-mono text-[10px] uppercase tracking-wider text-neutral-500">Add to the tab</p>
+        <p className="mb-3 text-[12px] text-neutral-400">Add to the tab</p>
         <div className="space-y-2">
           {MENU.map((m) => (
             <div key={m.id} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
               <div>
                 <p className="text-sm text-neutral-200">{m.name}</p>
-                <p className="font-mono text-[10px] text-neutral-500">₹{m.price}</p>
+                <p className="font-mono text-[12px] text-neutral-500">₹{m.price}</p>
               </div>
               <div className="flex items-center gap-2">
                 <Motion.button
@@ -119,7 +119,7 @@ const BillingDesk = () => {
           <div className="flex items-center justify-between border-b border-white/5 py-2.5">
             <div>
               <p className="text-sm text-neutral-200">Gaming session</p>
-              <p className="font-mono text-[10px] text-neutral-500 tabular-nums">
+              <p className="font-mono text-[12px] text-neutral-500 tabular-nums">
                 {hh}:{mm}:{ss} · ₹{RATE_PER_HOUR}/hr
               </p>
             </div>
@@ -141,7 +141,7 @@ const BillingDesk = () => {
               >
                 <div className="flex items-center justify-between border-b border-white/5 py-2.5">
                   <p className="text-sm text-neutral-300">
-                    {l.name} <span className="font-mono text-[10px] text-neutral-500">×{l.qty}</span>
+                    {l.name} <span className="font-mono text-[12px] text-neutral-500">×{l.qty}</span>
                   </p>
                   <span className="font-mono text-sm tabular-nums text-neutral-300">₹{l.sum.toLocaleString('en-IN')}</span>
                 </div>
@@ -163,7 +163,7 @@ const BillingDesk = () => {
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.99 }}
             transition={SPRING}
-            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-[#e5322d] py-3 text-sm font-semibold text-white"
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-signal-deep py-3 text-sm font-semibold text-white"
           >
             {paid ? <CheckCircle2 className="h-4 w-4" /> : null}
             {paid ? 'Paid · receipt issued' : 'Take payment'}
@@ -175,7 +175,7 @@ const BillingDesk = () => {
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0 }}
-                className="mt-3 text-center font-mono text-[10px] text-neutral-500"
+                className="mt-3 text-center font-mono text-[12px] text-neutral-500"
               >
                 Session closed · added to customer history
               </Motion.p>

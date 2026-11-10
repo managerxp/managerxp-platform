@@ -12,7 +12,7 @@ const RaceXPPreview = lazy(() => import('../components/RaceXPPreview'));
 const product = PRODUCTS.find((p) => p.id === 'racexp');
 
 const RaceXP = () => (
-  <div className="bg-carbon font-display text-sheet antialiased">
+  <div className="tone-dark bg-carbon font-display text-sheet antialiased">
     <Seo
       title="RaceXP | Sim Racing Technology by ManagerXP (In Development)"
       description="RaceXP is ManagerXP's sim racing platform in development: telemetry insights, race session control, lap timing and venue operations for sim racing centres."

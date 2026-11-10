@@ -3,7 +3,10 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, LogOut, Menu } from 'lucide-react';
 import { adminApi, adminAuth } from '../../lib/adminApi';
 import { Button, surface } from '../admin/ui';
-import logo from '../../assets/whitelogo-sm.png';
+import logoLight from '../../assets/whitelogo-sm.png';
+import logoDark from '../../assets/logo.png';
+import { useDashTheme } from '../../lib/dashTheme';
+import DashThemeToggle from '../shared/DashThemeToggle';
 
 /*
  * The ManagerXP admin shell — sidebar, header, and the guard in front of both.
@@ -94,6 +97,7 @@ const ManagerXpShell = ({ children }) => {
   const [loading, setLoading] = useState(!adminAuth.admin());
   const [error, setError] = useState(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [theme, toggleTheme] = useDashTheme();
 
   /* Revalidate against the server on mount. The cached copy paints the sidebar
      immediately; this confirms the session is still real and the permissions
@@ -145,8 +149,8 @@ const ManagerXpShell = ({ children }) => {
 
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-black">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-800 border-t-red-500" />
+      <div className="dash flex min-h-screen items-center justify-center bg-black" data-theme={theme}>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-neutral-800 border-t-white" />
       </div>
     );
   }
@@ -155,7 +159,7 @@ const ManagerXpShell = ({ children }) => {
 
   if (error) {
     return (
-      <div className="relative flex min-h-screen items-center justify-center bg-black px-4">
+      <div className="dash relative flex min-h-screen items-center justify-center bg-black px-4" data-theme={theme}>
         <div className={`relative z-10 max-w-md ${surface} p-8 text-center`}>
           <p className="text-sm text-neutral-300">{error}</p>
           <Button className="mt-5" onClick={load}>Try again</Button>
@@ -166,7 +170,7 @@ const ManagerXpShell = ({ children }) => {
 
   return (
     <AdminContext.Provider value={value}>
-      <div className="relative min-h-screen bg-black text-white antialiased">
+      <div className="dash relative min-h-screen bg-black text-white antialiased" data-theme={theme}>
 
         <div className="relative z-10 mx-auto flex max-w-[1600px]">
 
@@ -177,18 +181,16 @@ const ManagerXpShell = ({ children }) => {
                         ${navOpen ? 'translate-x-0' : '-translate-x-full'}`}
           >
             <Link to="/admin" className="flex items-center px-2 transition-opacity hover:opacity-80">
-              <img src={logo} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
+              <img src={theme === 'light' ? logoDark : logoLight} alt="ManagerXP" width="294" height="56" className="h-7 w-auto" />
             </Link>
-            <p className="mt-2 px-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">
-              control_plane
-            </p>
+            <p className="mt-2 px-2 text-[13px] text-neutral-500">Admin console</p>
 
             {/* The way out. Every other page on the site has this; the console
                 had no route back to the public site short of editing the
                 address bar, which is not a thing to make anyone do. */}
             <Link
               to="/"
-              className="group mt-4 flex items-center gap-1.5 px-2 font-mono text-[11px] text-neutral-500 transition-colors hover:text-white"
+              className="group mt-4 flex items-center gap-1.5 px-2 text-[13px] text-neutral-500 transition-colors hover:text-white"
             >
               <ArrowLeft className="h-3 w-3 transition-transform group-hover:-translate-x-0.5" />
               Back to site
@@ -198,7 +200,7 @@ const ManagerXpShell = ({ children }) => {
               {nav.map((group, i) => (
                 <div key={group.label || i}>
                   {group.label && (
-                    <div className="mb-1.5 px-3 font-mono text-[10px] font-semibold uppercase tracking-wider text-neutral-600">
+                    <div className="mb-1.5 px-3 text-[12px] font-semibold text-neutral-500">
                       {group.label}
                     </div>
                   )}
@@ -213,18 +215,18 @@ const ManagerXpShell = ({ children }) => {
                           to={item.to}
                           onClick={() => setNavOpen(false)}
                           aria-current={active ? 'page' : undefined}
-                          className={`flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium transition ${
+                          className={`flex items-center justify-between gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium transition-colors ${
                             active
-                              ? 'border border-red-500/25 bg-[#e5322d]/30 text-white'
+                              ? 'border border-white bg-white text-black'
                               : item.soon
-                                ? 'border border-transparent text-neutral-600 hover:bg-white/[0.04] hover:text-neutral-400'
-                                : 'border border-transparent text-neutral-400 hover:bg-white/[0.04] hover:text-white'
+                                ? 'border border-transparent text-neutral-500 hover:bg-white/[0.06] hover:text-neutral-300'
+                                : 'border border-transparent text-neutral-400 hover:bg-white/[0.06] hover:text-white'
                           }`}
                         >
                           <span>{item.label}</span>
                           {item.soon && (
-                            <span className="rounded border border-white/10 bg-white/[0.06] px-1 py-0.5 font-mono text-[9px] uppercase tracking-wide text-neutral-500">
-                              soon
+                            <span className="border border-white/15 px-1.5 py-0.5 text-[11px] text-neutral-500">
+                              Soon
                             </span>
                           )}
                         </Link>
@@ -259,16 +261,17 @@ const ManagerXpShell = ({ children }) => {
               <Breadcrumbs />
 
               <div className="ml-auto flex items-center gap-3">
+                <DashThemeToggle theme={theme} onToggle={toggleTheme} />
                 <div className="hidden text-right sm:block">
                   <div className="text-xs font-medium text-neutral-300">{admin.name}</div>
-                  <div className="font-mono text-[10px] uppercase tracking-wider text-neutral-600">
+                  <div className="text-[12px] text-neutral-500">
                     {admin.role_label || admin.role}
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={signOut}
-                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-neutral-400 transition-colors hover:border-red-500/40 hover:text-white"
+                  className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs font-semibold text-neutral-400 transition-colors hover:border-white/40 hover:text-white"
                 >
                   <LogOut className="h-3.5 w-3.5" />
                   Sign out
@@ -300,7 +303,7 @@ const Breadcrumbs = () => {
   const { pathname } = useLocation();
   const parts = pathname.split('/').filter(Boolean);
   return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 font-mono text-xs text-neutral-500">
+    <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-[13px] text-neutral-500">
       {parts.map((part, i) => {
         const to = '/' + parts.slice(0, i + 1).join('/');
         const last = i === parts.length - 1;

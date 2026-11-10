@@ -22,14 +22,14 @@ const Stat = ({ label, value, sub, tone = 'default', to }) => {
   };
   const body = (
     <>
-      <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+      <div className="text-[13px] text-neutral-500">{label}</div>
       <div className={`mt-1.5 text-2xl font-semibold tabular-nums ${tones[tone]}`}>{value}</div>
-      {sub && <div className="mt-0.5 text-[11px] text-neutral-500">{sub}</div>}
+      {sub && <div className="mt-0.5 text-[12px] text-neutral-500">{sub}</div>}
     </>
   );
-  const className = 'rounded-xl border border-white/10 bg-white/[0.03] p-4';
+  const className = 'rounded-xl border border-white/10 bg-neutral-950 p-4';
   return to
-    ? <Link to={to} className={`${className} block transition hover:border-red-500/40`}>{body}</Link>
+    ? <Link to={to} className={`${className} block transition-colors hover:border-white/40`}>{body}</Link>
     : <div className={className}>{body}</div>;
 };
 
@@ -70,7 +70,7 @@ const Dashboard = () => {
       )}
 
       <div>
-        <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Customers</h3>
+        <h3 className="mb-2.5 text-[12px] font-semibold text-neutral-500">Customers</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Cafe owners" value={s.cafe_owners} to="/admin/cafe-owners" />
           <Stat label="Organizations" value={s.organizations}
@@ -86,7 +86,7 @@ const Dashboard = () => {
       </div>
 
       <div>
-        <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Revenue</h3>
+        <h3 className="mb-2.5 text-[12px] font-semibold text-neutral-500">Revenue</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat
             label="Monthly recurring"
@@ -112,7 +112,7 @@ const Dashboard = () => {
       </div>
 
       <div>
-        <h3 className="mb-2.5 text-[11px] font-semibold uppercase tracking-wider text-neutral-500">Estate</h3>
+        <h3 className="mb-2.5 text-[12px] font-semibold text-neutral-500">Estate</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Stat label="Gaming PCs" value={s.gaming_pcs} />
           <Stat label="Installations" value={s.installations} sub="CafeXP servers running" />
@@ -133,7 +133,7 @@ const Dashboard = () => {
             <li key={t.organization_id}>
               <Link
                 to={`/admin/organizations/${t.organization_id}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm transition hover:border-red-500/40"
+                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm transition hover:border-white/40"
               >
                 <span className="truncate text-neutral-300">{t.name}</span>
                 <Pill tone={t.days_left <= 1 ? 'bad' : t.days_left <= 3 ? 'warn' : 'info'}>
@@ -153,7 +153,7 @@ const Dashboard = () => {
             <li key={u.organization_id}>
               <Link
                 to={`/admin/organizations/${u.organization_id}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm transition hover:border-red-500/40"
+                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm transition hover:border-white/40"
               >
                 <span className="truncate text-neutral-300">{u.name}</span>
                 <Pill tone={u.used >= u.max ? 'bad' : 'warn'}>{u.used} / {u.max} PCs</Pill>
@@ -188,7 +188,7 @@ const Dashboard = () => {
             <li key={c.organization_id}>
               <Link
                 to={`/admin/organizations/${c.organization_id}`}
-                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm transition hover:border-red-500/40"
+                className="flex items-center justify-between gap-3 rounded-lg border border-white/10 px-3 py-2 text-sm transition hover:border-white/40"
               >
                 <span className="truncate text-neutral-300">{c.name}</span>
                 <span className="shrink-0 text-[11px] text-neutral-600">{shortDate(c.created_at)}</span>

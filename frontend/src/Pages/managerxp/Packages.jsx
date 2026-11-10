@@ -356,7 +356,7 @@ export const PackageEditor = () => {
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {modules.map((m) => (
             <div key={m.module_key} className="rounded-lg border border-white/10 p-3">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+              <div className="mb-2 text-[12px] font-semibold text-neutral-500">
                 {m.label}
               </div>
               <div className="space-y-1.5">
@@ -376,7 +376,7 @@ export const PackageEditor = () => {
                         setFeatures((s) => ({ ...s, [f.feature_key]: e.target.checked }))}
                     />
                     <span>{f.label}</span>
-                    {f.is_core && <span className="text-[9px] uppercase text-neutral-700">core</span>}
+                    {f.is_core && <span className="text-[11px] text-neutral-700">core</span>}
                   </label>
                 ))}
               </div>

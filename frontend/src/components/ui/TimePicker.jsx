@@ -94,7 +94,7 @@ const TimePicker = ({ value, onChange, min, max, step = 30, disabled = false, id
                 data-selected={isSelected}
                 onClick={() => { onChange(t); setOpen(false); }}
                 className={`block w-full rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
-                  isSelected ? 'bg-red-600 text-white' : 'text-neutral-300 hover:bg-white/10'
+                  isSelected ? 'bg-white text-black' : 'text-neutral-300 hover:bg-white/10'
                 }`}
               >
                 {format12h(t)}

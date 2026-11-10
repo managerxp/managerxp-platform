@@ -130,7 +130,7 @@ const DatePicker = ({ value, onChange, min, max, disabled = false, id, placehold
                     'aspect-square rounded-lg text-xs transition-colors',
                     blocked ? 'cursor-not-allowed text-neutral-800' :
                       outOfMonth ? 'text-neutral-700 hover:bg-white/5' : 'text-neutral-200 hover:bg-white/10',
-                    isSelected ? 'bg-red-600 text-white hover:bg-red-600' : '',
+                    isSelected ? 'bg-white text-black hover:bg-white' : '',
                     !isSelected && isToday ? 'ring-1 ring-inset ring-red-500/50' : '',
                   ].join(' ')}
                 >

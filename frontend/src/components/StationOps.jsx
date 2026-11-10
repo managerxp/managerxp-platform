@@ -102,7 +102,7 @@ const StationOps = () => {
             </button>
           ))}
         </div>
-        <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+        <span className=" text-[12px] text-neutral-400">
           {busy} of {stations.length} in play
         </span>
       </div>
@@ -137,7 +137,7 @@ const StationOps = () => {
                       <span className={`h-1.5 w-1.5 rounded-full transition-colors duration-500 ${cfg.dot}`} />
                     </div>
                     <Monitor className={`mb-1.5 h-4 w-4 transition-colors duration-500 ${cfg.text}`} />
-                    <p className={`font-mono text-[10px] tabular-nums transition-colors duration-500 ${cfg.text}`}>
+                    <p className={`font-mono text-[12px] tabular-nums transition-colors duration-500 ${cfg.text}`}>
                       {s.state === 'gaming' ? clock(s.secs) : cfg.label}
                     </p>
                   </Motion.button>
@@ -148,7 +148,7 @@ const StationOps = () => {
 
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-white/5 pt-3">
             {Object.entries(STATE).map(([k, v]) => (
-              <span key={k} className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+              <span key={k} className="flex items-center gap-1.5 text-[12px] text-neutral-400">
                 <span className={`h-1.5 w-1.5 rounded-full ${v.dot}`} />
                 {v.label}
               </span>
@@ -160,7 +160,7 @@ const StationOps = () => {
         <div className="lg:col-span-2 p-4 sm:p-5">
           <div className="mb-3 flex items-center justify-between">
             <span className="font-mono text-sm text-white">{selected.id}</span>
-            <span className={`flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${st.text}`}>
+            <span className={`flex items-center gap-1.5 text-[12px] ${st.text}`}>
               <span className={`h-1.5 w-1.5 rounded-full ${st.dot}`} />
               {st.label}
             </span>
@@ -173,7 +173,7 @@ const StationOps = () => {
             ].map((m) => (
               <div key={m.label} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                 <div className="mb-2 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                  <span className="flex items-center gap-1.5 text-[12px] text-neutral-400">
                     <span className="text-red-500">{m.icon}</span>
                     {m.label}
                   </span>
@@ -191,7 +191,7 @@ const StationOps = () => {
 
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
               <div className="flex items-center justify-between">
-                <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+                <span className="flex items-center gap-1.5 text-[12px] text-neutral-400">
                   <Wifi className="h-3.5 w-3.5 text-red-500" />
                   Session
                 </span>

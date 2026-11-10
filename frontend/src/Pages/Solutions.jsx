@@ -42,7 +42,7 @@ const Solutions = () => (
 
     {/* Custom development */}
     <section id="custom" aria-labelledby="custom-title" className="scroll-mt-20 bg-carbon text-sheet">
-      <div className="wrap py-20 sm:py-28">
+      <div className="wrap py-16 sm:py-28">
         <h2 id="custom-title" className="poster-h max-w-[14ch] text-[clamp(2.75rem,6.5vw,6rem)]">
           Your challenge. Our engineering<Dot />
         </h2>
@@ -77,7 +77,7 @@ const Solutions = () => (
     </section>
 
     {/* Industries */}
-    <section aria-labelledby="industries-title" className="wrap py-20 sm:py-28">
+    <section aria-labelledby="industries-title" className="wrap py-16 sm:py-28">
       <h2 id="industries-title" className="text-lg font-semibold">Environments we build for</h2>
       <p className="mt-6 max-w-[24ch] text-[clamp(2rem,4.5vw,4.25rem)] font-[750] leading-[1.04] tracking-[-0.045em]">
         {industries.join(', ')}<Dot />
@@ -89,7 +89,7 @@ const Solutions = () => (
 
     {/* Close */}
     <section className="bg-carbon text-sheet">
-      <div className="wrap py-20 sm:py-28">
+      <div className="wrap py-16 sm:py-28">
         <p className="text-lg text-sheet/70">Have a complex challenge?</p>
         <h2 className="mt-4">
           <Link to="/contact" className="poster-h group inline-flex flex-wrap items-center gap-x-6 text-[clamp(3rem,8vw,8rem)] hover:text-signal">

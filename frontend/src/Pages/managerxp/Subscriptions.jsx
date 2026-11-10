@@ -238,7 +238,7 @@ export const SubscriptionEditor = () => {
           ['Renews', shortDate(s.trial_ends_at || s.end_date)]
         ].map(([label, v]) => (
           <Panel key={label} className="!p-4">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+            <div className="text-[12px] font-semibold text-neutral-500">{label}</div>
             <div className="mt-1 text-lg font-semibold text-white">{v}</div>
           </Panel>
         ))}
@@ -283,7 +283,7 @@ export const SubscriptionEditor = () => {
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-3 rounded-lg border border-white/10 bg-black/40 px-4 py-3">
-          <span className="text-[11px] uppercase tracking-wider text-neutral-500">Customer pays</span>
+          <span className="text-[11px] text-neutral-500">Customer pays</span>
           <span className="text-xl font-semibold text-white">{money(preview, s.currency)}</span>
           <span className="text-xs text-neutral-500">
             / {value('billing_period', 'monthly').replace('_', '-')}

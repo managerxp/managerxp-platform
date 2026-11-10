@@ -375,7 +375,7 @@ export const Roles = () => {
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   {data.permissions.map((group) => (
                     <div key={group.resource} className="rounded-lg border border-white/10 p-3">
-                      <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                      <div className="mb-2 text-[12px] font-semibold text-neutral-500">
                         {group.resource}
                       </div>
                       <div className="space-y-1.5">

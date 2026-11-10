@@ -48,7 +48,7 @@ const PoolPanel = ({ pool }) => {
           ['Branches', pool.branches.length, '']
         ].map(([label, value, sub]) => (
           <div key={label} className="rounded-lg border border-white/10 p-3">
-            <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+            <div className="text-[12px] font-semibold text-neutral-500">{label}</div>
             <div className="mt-1 text-xl font-semibold tabular-nums text-white">{value}</div>
             {sub && <div className="mt-0.5 text-[11px] text-neutral-600">{sub}</div>}
           </div>
