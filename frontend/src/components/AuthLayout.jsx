@@ -68,7 +68,7 @@ const AuthLayout = ({ title, subtitle, children, footer, wide = false, brand = '
 
         <div>
           {isCafe && <p className="text-lg text-sheet/55">by ManagerXP</p>}
-          <p className="poster-h mt-2 text-[clamp(4.5rem,9vw,8.5rem)]">
+          <p className="poster-h mt-2 text-[clamp(3.5rem,6vw,6rem)]">
             {b.name}<span className="text-signal">.</span>
           </p>
           <p className="mt-5 max-w-[34ch] text-xl leading-snug text-sheet/70">{b.line}</p>

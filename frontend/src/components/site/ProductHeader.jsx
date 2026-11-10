@@ -23,7 +23,7 @@ const ProductHeader = ({ product, title, lead, actions, visual }) => (
             {product.name} · {product.category}
             {product.status === 'development' && <span className="text-sheet/50"> · in development</span>}
           </p>
-          <h1 className="poster-h mt-4 text-[clamp(2.9rem,6vw,5.75rem)]">
+          <h1 className="poster-h mt-4 text-[clamp(2.6rem,5vw,4.75rem)]">
             {title}<span className="text-signal">.</span>
           </h1>
           <p className="mt-8 max-w-[48ch] text-lg leading-snug text-sheet/70">{lead}</p>

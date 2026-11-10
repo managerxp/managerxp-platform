@@ -14,7 +14,7 @@ const Products = () => (
       path="/products"
     />
 
-    <div className="wrap pb-20 pt-10 sm:pb-28 sm:pt-16">
+    <div className="wrap pb-20 pt-10 sm:pb-20 sm:pt-16">
       <SectionHeading
         as="h1"
         title="Three products, one team"

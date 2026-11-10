@@ -42,8 +42,8 @@ const Solutions = () => (
 
     {/* Custom development */}
     <section id="custom" aria-labelledby="custom-title" className="scroll-mt-20 bg-carbon text-sheet">
-      <div className="wrap py-16 sm:py-28">
-        <h2 id="custom-title" className="poster-h max-w-[14ch] text-[clamp(2.75rem,6.5vw,6rem)]">
+      <div className="wrap py-16 sm:py-20">
+        <h2 id="custom-title" className="poster-h max-w-[14ch] text-[clamp(2.25rem,4.4vw,4rem)]">
           Your challenge. Our engineering<Dot />
         </h2>
         <p className="mt-6 max-w-[50ch] text-lg leading-snug text-sheet/70">
@@ -77,9 +77,9 @@ const Solutions = () => (
     </section>
 
     {/* Industries */}
-    <section aria-labelledby="industries-title" className="wrap py-16 sm:py-28">
+    <section aria-labelledby="industries-title" className="wrap py-16 sm:py-20">
       <h2 id="industries-title" className="text-lg font-semibold">Environments we build for</h2>
-      <p className="mt-6 max-w-[24ch] text-[clamp(2rem,4.5vw,4.25rem)] font-[750] leading-[1.04] tracking-[-0.045em]">
+      <p className="mt-6 max-w-[24ch] text-[clamp(2rem,3.6vw,3.5rem)] font-[750] leading-[1.04] tracking-[-0.045em]">
         {industries.join(', ')}<Dot />
       </p>
       <p className="mt-6 max-w-[56ch] text-lg text-graphite">
@@ -89,10 +89,10 @@ const Solutions = () => (
 
     {/* Close */}
     <section className="bg-carbon text-sheet">
-      <div className="wrap py-16 sm:py-28">
+      <div className="wrap py-16 sm:py-20">
         <p className="text-lg text-sheet/70">Have a complex challenge?</p>
         <h2 className="mt-4">
-          <Link to="/contact" className="poster-h group inline-flex flex-wrap items-center gap-x-6 text-[clamp(3rem,8vw,8rem)] hover:text-signal">
+          <Link to="/contact" className="poster-h group inline-flex flex-wrap items-center gap-x-6 text-[clamp(2.75rem,5.8vw,5.75rem)] hover:text-signal">
             <span>Let's engineer it<Dot /></span>
             <ArrowRight aria-hidden="true" className="h-[0.55em] w-[0.55em] transition-transform group-hover:translate-x-3" strokeWidth={2.25} />
           </Link>

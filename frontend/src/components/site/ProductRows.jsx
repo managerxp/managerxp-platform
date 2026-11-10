@@ -15,13 +15,14 @@ const ProductRows = ({ headingLevel = 'h3' }) => {
       {PRODUCTS.map((p) => (
         <li key={p.id} className="border-t border-carbon">
           <ProductLink product={p} className="group grid items-baseline gap-x-6 gap-y-2 py-7 sm:py-9 md:grid-cols-12">
-            <H className="poster-h text-[clamp(2.75rem,7vw,6.5rem)] transition-colors duration-200 group-hover:text-signal md:col-span-6">
+            <H className="poster-h text-[clamp(2.5rem,5vw,4.5rem)] transition-colors duration-200 group-hover:text-signal md:col-span-5 lg:col-span-4">
               {p.name}
             </H>
-            <span className="text-lg leading-snug md:col-span-5">
-              {p.category}
+            <span className="text-lg leading-snug md:col-span-6 lg:col-span-7">
+              <span className="font-semibold">{p.category}</span>
               {p.status === 'development' && <span className="text-graphite"> · in development</span>}
               {p.external && <span className="text-graphite"> · flowxp.in</span>}
+              <span className="mt-2 hidden max-w-[60ch] text-[16px] text-graphite lg:block">{p.description}</span>
             </span>
             <span aria-hidden="true" className="hidden justify-end md:col-span-1 md:flex">
               {p.external ? (

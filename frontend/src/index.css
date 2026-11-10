@@ -423,3 +423,11 @@ html {
   --color-neutral-500: oklch(65% 0 0);
   --color-neutral-600: oklch(61% 0 0);
 }
+
+/* Hero 3D motion (components/site/ProductStack.jsx). Slow and continuous;
+   stopped for anyone who asks the OS for reduced motion. */
+@keyframes mx-spin-z { from { transform: rotateZ(0deg); } to { transform: rotateZ(360deg); } }
+.mx-spin-z { animation: mx-spin-z 30s linear infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .mx-spin-z { animation: none; }
+}

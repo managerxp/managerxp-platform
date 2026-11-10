@@ -80,7 +80,7 @@ const About = () => (
 
     {/* Vision and mission */}
     <section aria-label="Vision and mission" className="bg-carbon text-sheet">
-      <div className="wrap grid gap-14 py-16 sm:py-28 md:grid-cols-2">
+      <div className="wrap grid gap-14 py-16 sm:py-20 md:grid-cols-2">
         <div>
           <h2 className="text-lg text-sheet/60">Vision</h2>
           <p className="poster-h mt-4 text-[clamp(2rem,3.6vw,3.25rem)] leading-[1]">
@@ -97,7 +97,7 @@ const About = () => (
     </section>
 
     {/* Principles */}
-    <section aria-labelledby="principles-title" className="wrap grid gap-8 py-16 sm:py-28 md:grid-cols-12">
+    <section aria-labelledby="principles-title" className="wrap grid gap-8 py-16 sm:py-20 md:grid-cols-12">
       <h2 id="principles-title" className="text-lg font-semibold md:col-span-4">How we work</h2>
       <dl className="border-b border-carbon md:col-span-8">
         {principles.map(([name, desc]) => (

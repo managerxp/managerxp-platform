@@ -11,7 +11,7 @@ const NotFound = () => {
       <Seo title="Page not found | ManagerXP" description="This page does not exist on managerxp.com." path={pathname} />
       <div className="wrap pb-24 pt-16 sm:pb-32 sm:pt-24">
         <p className="text-[15px] text-graphite">404</p>
-        <h1 className="poster-h mt-4 text-[clamp(3rem,9vw,7.5rem)]">
+        <h1 className="poster-h mt-4 text-[clamp(2.75rem,5.8vw,5.75rem)]">
           Nothing here<span className="text-signal">.</span>
         </h1>
         <p className="mt-6 max-w-[48ch] text-[18px] leading-relaxed text-graphite">

@@ -13,7 +13,7 @@ export const LegalPage = ({ title, lastUpdated, effectiveDate, children }) => {
     <article className="bg-sheet font-display text-carbon antialiased">
       <Seo title={`${title} | ManagerXP`} description={`${title} for ManagerXP Private Limited and its products CafeXP, RaceXP and FlowXP.`} path={pathname} />
       <header className="wrap pb-12 pt-10 sm:pt-16">
-        <h1 className="poster-h text-[clamp(3rem,8vw,7rem)]">
+        <h1 className="poster-h text-[clamp(2.5rem,5vw,4.5rem)]">
           {title}<span className="text-signal">.</span>
         </h1>
         <p className="mt-6 text-lg text-graphite">ManagerXP Private Limited · Last updated {lastUpdated}</p>
