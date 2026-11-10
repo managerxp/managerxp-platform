@@ -423,15 +423,15 @@ export const Support = () => {
       <Card title="What we will see" description="Sent with your ticket so you do not have to find it.">
         <dl className="grid gap-3 text-sm sm:grid-cols-3">
           <div>
-            <dt className="text-xs uppercase tracking-wider text-neutral-500">Account</dt>
+            <dt className="text-xs text-neutral-500">Account</dt>
             <dd className="mt-0.5 text-neutral-300">{me?.user?.email}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wider text-neutral-500">Business</dt>
+            <dt className="text-xs text-neutral-500">Business</dt>
             <dd className="mt-0.5 text-neutral-300">{me?.organizations?.[0]?.name || '—'}</dd>
           </div>
           <div>
-            <dt className="text-xs uppercase tracking-wider text-neutral-500">Subscription</dt>
+            <dt className="text-xs text-neutral-500">Subscription</dt>
             <dd className="mt-0.5 text-neutral-300">
               {subscription?.subscription
                 ? `${subscription.subscription.type} · ${subscription.subscription.status}`

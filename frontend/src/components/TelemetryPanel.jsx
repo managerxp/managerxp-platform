@@ -214,24 +214,24 @@ const TelemetryPanel = () => {
               <Flag className="h-4 w-4 shrink-0 text-red-500" aria-hidden="true" />
               {track.name}
             </p>
-            <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+            <p className="mt-0.5 font-mono text-[12px] uppercase tracking-wider text-neutral-500">
               {track.lengthKm} km · {track.corners} corners · {track.elevationM} m elevation · “{track.nickname}”
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             <div>
-              <p className="font-mono text-[9px] uppercase tracking-wider text-neutral-600">Car</p>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">Car</p>
               <p className="text-xs font-medium text-neutral-200">{car.label}</p>
             </div>
             <div>
-              <p className="font-mono text-[9px] uppercase tracking-wider text-neutral-600">Driver</p>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-600">Driver</p>
               <p className="text-xs font-medium text-neutral-200">
                 <span className="text-red-400">#{driver.number}</span> {driver.name}
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 font-mono text-[10px] uppercase tracking-wider text-red-300">
+              <span className="flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-2.5 py-1 font-mono text-[12px] uppercase tracking-wider text-red-300">
                 <span className={`h-1.5 w-1.5 rounded-full bg-red-500 `} />
                 Lap {lapNumber}
               </span>
@@ -240,7 +240,7 @@ const TelemetryPanel = () => {
         </div>
 
         {/* Honest provenance: this is a simulation, not a live feed. */}
-        <p className="mt-2.5 font-mono text-[9px] uppercase tracking-[0.18em] text-neutral-600">
+        <p className="mt-2.5 font-mono text-[11px] uppercase tracking-[0.18em] text-neutral-600">
           Simulated live telemetry · {car.class} · time attack · not a live timing feed
         </p>
       </div>
@@ -250,8 +250,8 @@ const TelemetryPanel = () => {
         {/* Circuit */}
         <div className="lg:col-span-2 border-b lg:border-b-0 lg:border-r border-white/5 p-4 sm:p-5">
           <div className="mb-2 flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Circuit</span>
-            <span className="font-mono text-[10px] tabular-nums text-neutral-500">
+            <span className="font-mono text-[12px] uppercase tracking-wider text-neutral-500">Circuit</span>
+            <span className="font-mono text-[12px] tabular-nums text-neutral-500">
               {reading.distanceKm.toFixed(2)} / {track.lengthKm} km
             </span>
           </div>
@@ -267,7 +267,7 @@ const TelemetryPanel = () => {
 
           {/* Current corner */}
           <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/[0.07] px-3 py-2.5">
-            <p className="font-mono text-[9px] uppercase tracking-wider text-neutral-500">Current section</p>
+            <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">Current section</p>
             <AnimatePresence mode="popLayout">
               <Motion.p
                 key={reading.corner.name}
@@ -285,11 +285,11 @@ const TelemetryPanel = () => {
           {/* Lap + sectors */}
           <div className="mt-3 grid grid-cols-2 gap-2.5">
             <div className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
-              <p className="font-mono text-[9px] uppercase tracking-wider text-neutral-500">Lap time</p>
+              <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">Lap time</p>
               <p className="font-mono text-sm font-semibold tabular-nums text-white">{formatLap(reading.elapsed)}</p>
             </div>
             <div className={`rounded-lg border p-2.5 transition-colors ${newBest ? 'border-red-500/60 bg-red-500/15' : 'border-white/10 bg-white/[0.03]'}`}>
-              <p className="font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+              <p className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">
                 {newBest ? 'New best' : 'Best lap'}
               </p>
               <p className="font-mono text-sm font-semibold tabular-nums text-red-400">{formatLap(bestLap)}</p>
@@ -304,7 +304,7 @@ const TelemetryPanel = () => {
                   activeSector === s.id ? 'border-red-500/50 bg-red-500/10' : 'border-white/10 bg-white/[0.03]'
                 }`}
               >
-                <p className={`font-mono text-[9px] uppercase tracking-wider ${activeSector === s.id ? 'text-red-400' : 'text-neutral-600'}`}>
+                <p className={`font-mono text-[11px] uppercase tracking-wider ${activeSector === s.id ? 'text-red-400' : 'text-neutral-600'}`}>
                   {s.id}
                 </p>
                 <p className="font-mono text-[11px] tabular-nums text-neutral-200">{formatSector(s.time)}</p>
@@ -316,8 +316,8 @@ const TelemetryPanel = () => {
         {/* Traces + readouts */}
         <div className="lg:col-span-3 p-4 sm:p-5">
           <div className="mb-1.5 flex items-center justify-between">
-            <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">Speed · lap vs reference</span>
-            <span className="flex items-center gap-3 font-mono text-[9px] uppercase tracking-wider">
+            <span className="font-mono text-[12px] uppercase tracking-wider text-neutral-500">Speed · lap vs reference</span>
+            <span className="flex items-center gap-3 font-mono text-[11px] uppercase tracking-wider">
               <span className="flex items-center gap-1 text-red-400"><span className="h-[2px] w-3 bg-red-500" /> Lap</span>
               <span className="flex items-center gap-1 text-neutral-500"><span className="h-[2px] w-3 bg-neutral-500" /> Reference</span>
             </span>
@@ -340,7 +340,7 @@ const TelemetryPanel = () => {
               { label: 'Brake', points: traces.brake, stroke: 'rgba(248,113,113,0.85)' }
             ].map((p, i) => (
               <div key={p.label}>
-                <span className="font-mono text-[9px] uppercase tracking-wider text-neutral-500">{p.label}</span>
+                <span className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">{p.label}</span>
                 <svg viewBox={`0 0 ${GRAPH_W} ${PEDAL_H}`} className="w-full h-9" aria-hidden="true">
                   <polyline points={p.points} fill="none" stroke={p.stroke} strokeWidth="1.5" />
                   <g ref={(el) => { pedalCursorRefs.current[i] = el; }}>
@@ -381,7 +381,7 @@ const TelemetryPanel = () => {
                 { label: 'S2', at: track.sectors[1].from },
                 { label: 'S3', at: track.sectors[2].from }
               ].map((s) => (
-                <span key={s.label} aria-hidden="true" className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 font-mono text-[8px] uppercase text-neutral-500" style={{ left: `${s.at * 100}%` }}>
+                <span key={s.label} aria-hidden="true" className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 font-mono text-[11px] uppercase text-neutral-500" style={{ left: `${s.at * 100}%` }}>
                   <span className="mx-auto mb-0.5 block h-2 w-px bg-white/20" />
                   {s.label}
                 </span>
@@ -414,17 +414,17 @@ const TelemetryPanel = () => {
               { label: 'Gear', value: `${reading.gear}`, unit: '' }
             ].map((c) => (
               <div key={c.label} className="rounded-lg border border-white/10 bg-white/[0.03] p-2.5">
-                <dt className="font-mono text-[9px] uppercase tracking-wider text-neutral-500">{c.label}</dt>
+                <dt className="font-mono text-[11px] uppercase tracking-wider text-neutral-500">{c.label}</dt>
                 <dd className="font-mono text-base font-semibold tabular-nums text-white">
                   {c.value}
-                  {c.unit && <span className="ml-0.5 text-[10px] font-normal text-neutral-500">{c.unit}</span>}
+                  {c.unit && <span className="ml-0.5 text-[12px] font-normal text-neutral-500">{c.unit}</span>}
                 </dd>
               </div>
             ))}
           </dl>
 
           <div className="mt-2.5 flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2.5">
-            <span className="flex items-center gap-1.5 font-mono text-[9px] uppercase tracking-wider text-neutral-500">
+            <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider text-neutral-500">
               <Gauge className="h-3.5 w-3.5 text-red-500" />
               Delta to reference
             </span>

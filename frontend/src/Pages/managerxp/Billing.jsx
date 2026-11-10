@@ -29,7 +29,7 @@ const Summary = ({ items }) => (
   <div className="grid gap-3 sm:grid-cols-3">
     {items.map(([label, value, tone]) => (
       <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] p-4">
-        <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+        <div className="text-[12px] font-semibold text-neutral-500">{label}</div>
         <div className={`mt-1 text-xl font-semibold tabular-nums ${
           tone === 'good' ? 'text-emerald-300' : tone === 'bad' ? 'text-red-300' : 'text-white'
         }`}>
@@ -343,7 +343,7 @@ export const Invoices = () => {
 
           {detail.payments.length > 0 && (
             <div className="mt-5">
-              <div className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-neutral-500">Payments</div>
+              <div className="mb-2 text-[12px] font-semibold text-neutral-500">Payments</div>
               {detail.payments.map((p) => (
                 <div key={p.payment_id}
                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-white/10 px-3 py-2 text-sm">

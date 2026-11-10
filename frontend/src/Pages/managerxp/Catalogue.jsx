@@ -113,7 +113,7 @@ export const Features = () => {
                     <Pill tone={f.usage?.packages_on > 0 ? 'good' : 'mute'}>
                       {f.usage ? `${f.usage.packages_on}/${f.usage.packages_total}` : '0/0'}
                     </Pill>
-                    <div className="mt-0.5 text-[9px] uppercase tracking-wider text-neutral-700">packages</div>
+                    <div className="mt-0.5 text-[11px] text-neutral-700">packages</div>
                   </div>
                 </div>
               ))}
@@ -274,7 +274,7 @@ export const Addons = () => {
                   <div className="grid gap-3 sm:grid-cols-2">
                     {moduleList.map((m) => (
                       <div key={m.module_key} className="rounded-lg border border-white/10 p-3">
-                        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">{m.label}</div>
+                        <div className="mb-2 text-[12px] font-semibold text-neutral-500">{m.label}</div>
                         <div className="flex flex-col gap-1.5">
                           {m.features.map((f) => (
                             <label key={f.feature_key} className="flex items-center gap-2 text-[12px] text-neutral-300">

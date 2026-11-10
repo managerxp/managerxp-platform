@@ -17,21 +17,25 @@ import { authFieldClasses, authLabelClasses } from '../AuthLayout';
  * how the two consoles feel, not drift, so each shell keeps its own.
  */
 
-/** Glass panel surface — the login card's treatment, reusable. */
-export const surface = 'rounded-lg border border-white/10 bg-[#121214]';
+/** A panel. Colours come from the `.dash` theme layer in index.css, so the
+    same classes give a near-black panel in dark mode and white in light. */
+export const surface = 'rounded-lg border border-white/10 bg-neutral-950';
 
-/** The gradient action button's own classes, for anything hand-rolled that isn't <Button>. */
+/* Black and white: the primary action is the one solid block on the page,
+   white on black in dark mode and black on white in light (the theme layer
+   swaps the two). Red is kept for problems: errors, expiry, danger. */
+const primaryTone = 'border border-white bg-white text-black hover:bg-neutral-200 hover:border-neutral-200';
+
+/** The primary button's classes, for anything hand-rolled that isn't <Button>. */
 export const primaryButtonClass =
-  'inline-flex items-center justify-center gap-1.5 rounded-xl border border-white/10 ' +
-  'bg-[#e5322d] px-4 py-2 text-sm font-semibold text-white ' +
-  ' hover: ' +
-  'transition-all duration-300 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60';
+  `inline-flex items-center justify-center gap-1.5 rounded-xl ${primaryTone} px-4 py-2 text-sm font-semibold ` +
+  'transition-colors active:translate-y-px disabled:cursor-not-allowed disabled:opacity-60';
 
 export const Page = ({ title, lede, actions, children }) => (
   <div className="space-y-7">
     <header className="flex flex-wrap items-start justify-between gap-4">
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-white">{title}</h1>
+        <h1 className="text-[26px] font-bold tracking-[-0.025em] text-white">{title}</h1>
         {lede && <p className="mt-1.5 max-w-2xl text-sm leading-relaxed text-neutral-400">{lede}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
@@ -63,10 +67,7 @@ export const Card = ({ title, description, actions, className = '', children }) 
 export const Button = ({ variant = 'primary', size = 'md', className = '', children, ...props }) => {
   const sizes = { sm: 'px-2.5 py-1 text-xs', md: 'px-4 py-2 text-sm' };
   const variants = {
-    primary:
-      'border border-white/10 bg-[#e5322d] text-white ' +
-      ' hover: ' +
-      'active:scale-[0.99] disabled:opacity-60',
+    primary: `${primaryTone} active:translate-y-px disabled:opacity-60`,
     ghost: 'border border-white/10 bg-white/[0.03] text-neutral-300 hover:border-white/20 hover:text-white disabled:opacity-50',
     danger: 'border border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20 disabled:opacity-50',
     quiet: 'text-neutral-400 hover:text-white disabled:opacity-50',
@@ -74,7 +75,7 @@ export const Button = ({ variant = 'primary', size = 'md', className = '', child
   };
   return (
     <button
-      className={`inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-all duration-300 disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
+      className={`inline-flex items-center justify-center gap-1.5 rounded-xl font-semibold transition-colors disabled:cursor-not-allowed ${variants[variant]} ${sizes[size]} ${className}`}
       {...props}
     >
       {children}
@@ -137,7 +138,7 @@ export const Skeleton = ({ rows = 3, height = 'h-24' }) => (
 export const Table = ({ columns, children }) => (
   <div className="overflow-x-auto rounded-2xl border border-white/10">
     <table className="w-full text-sm">
-      <thead className="bg-white/[0.04] text-left font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+      <thead className="bg-white/[0.04] text-left text-[12px] text-neutral-500">
         <tr>{columns.map((c) => (
           <th key={c} className="whitespace-nowrap px-4 py-3 font-semibold">{c}</th>
         ))}</tr>
@@ -165,7 +166,7 @@ export const CopySecret = ({ label, value, note }) => {
   };
   return (
     <div className="rounded-2xl border border-amber-500/25 bg-amber-500/5 p-4">
-      <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-amber-300">{label}</div>
+      <div className="text-[12px] font-semibold text-amber-300">{label}</div>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <code className="select-all break-all rounded-xl border border-white/10 bg-black/60 px-3 py-2 font-mono text-xs text-white">
           {value}
@@ -200,8 +201,8 @@ export const Stat = ({ label, value, sub, tone = 'default' }) => {
     bad: 'border-red-500/30'
   };
   return (
-    <div className={`rounded-2xl border ${rings[tone]} bg-white/[0.03] p-4`}>
-      <div className="font-mono text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+    <div className={`rounded-2xl border ${rings[tone]} bg-neutral-950 p-4`}>
+      <div className="text-[13px] text-neutral-500">{label}</div>
       <div className="mt-1.5 text-2xl font-bold tracking-tight text-white">{value}</div>
       {sub && <div className="mt-0.5 text-xs text-neutral-500">{sub}</div>}
     </div>

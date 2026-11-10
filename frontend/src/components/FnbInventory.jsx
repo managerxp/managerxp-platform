@@ -54,7 +54,7 @@ const FnbInventory = () => {
             <Utensils className="h-4 w-4 text-red-500" />
             Today's F&amp;B sales
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">units</span>
+          <span className=" text-[12px] text-neutral-400">units</span>
         </div>
 
         <div className="space-y-3">
@@ -105,7 +105,7 @@ const FnbInventory = () => {
                     <Motion.span
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-amber-400"
+                      className="flex items-center gap-1 text-[11px] text-amber-400"
                     >
                       <AlertTriangle className="h-3 w-3" />
                       low

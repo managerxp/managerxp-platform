@@ -84,7 +84,7 @@ const Dashboard = () => {
                 <li
                   key={step.key}
                   className={`flex items-center gap-3 rounded-lg px-3 py-2 transition ${
-                    isNext ? 'bg-red-500/5 ring-1 ring-red-500/20' : ''
+                    isNext ? 'bg-white/[0.05] ring-1 ring-white/30' : ''
                   }`}
                 >
                   <span

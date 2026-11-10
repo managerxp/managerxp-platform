@@ -126,14 +126,14 @@ const PricingPlans = () => {
                               : 'border-white/10 bg-white/[0.02] hover:border-white/25'}`}
               >
                 {plan.recommended && (
-                  <span className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-black px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-red-400">
+                  <span className="absolute -top-3 left-6 inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-black px-2.5 py-1 text-[12px] font-mono uppercase tracking-wider text-red-400">
                     <Sparkles className="w-3 h-3" aria-hidden="true" />
                     Recommended
                   </span>
                 )}
 
                 <h3 className="text-xl font-semibold text-white">{plan.name}</h3>
-                <p className="mt-1 text-xs font-mono uppercase tracking-wider text-red-500/80">
+                <p className="mt-1 text-[13px] text-red-400">
                   {plan.tagline}
                 </p>
 
@@ -152,7 +152,7 @@ const PricingPlans = () => {
                 <span
                   className={`mt-6 inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition-all duration-300
                               ${isSelected
-                                ? 'bg-[#e5322d] text-white border border-white/10'
+                                ? 'bg-signal-deep text-white border border-white/10'
                                 : 'bg-white/[0.05] text-neutral-200 border border-white/10 group-hover:bg-white/[0.08]'}`}
                 >
                   Talk to ManagerXP
@@ -168,10 +168,10 @@ const PricingPlans = () => {
       <Reveal>
         <div className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02]">
           <div className="flex items-center justify-between gap-3 border-b border-white/5 bg-white/[0.02] px-4 sm:px-5 py-3">
-            <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-500">
+            <span className="text-[12px] text-neutral-400">
               Package comparison
             </span>
-            <span className="text-[10px] font-mono uppercase tracking-wider text-red-400">
+            <span className="text-[12px] text-red-400">
               Viewing · {selectedPlan.name}
             </span>
           </div>
@@ -179,12 +179,12 @@ const PricingPlans = () => {
           {/* Mobile: selected column only. Desktop: full matrix. */}
           <div className="divide-y divide-white/5">
             <div className="hidden md:grid grid-cols-[1.6fr_repeat(3,0.8fr)] gap-3 px-5 py-3">
-              <span className="text-[10px] font-mono uppercase tracking-wider text-neutral-600">Capability</span>
+              <span className="text-[12px] text-neutral-400">Capability</span>
               {plans.map((p) => (
                 <span
                   key={p.id}
-                  className={`text-center text-[10px] font-mono uppercase tracking-wider transition-colors duration-300 ${
-                    selected === p.id ? 'text-red-400' : 'text-neutral-600'
+                  className={`text-center text-[12px] transition-colors duration-300 ${
+                    selected === p.id ? 'text-red-400' : 'text-neutral-400'
                   }`}
                 >
                   {p.name}

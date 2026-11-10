@@ -157,14 +157,14 @@ const AnalyticsPeak = () => {
         {/* Read-out */}
         <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+            <p className=" text-[12px] text-neutral-400">
               {HOURS[index]} · {series.label}
             </p>
             <p className="font-mono text-3xl font-semibold tabular-nums text-white">{fmt(value)}</p>
           </div>
           <div className="flex items-center gap-2 rounded-full border border-red-500/30 bg-red-500/10 px-3 py-1.5">
             <TrendingUp className="h-3.5 w-3.5 text-red-400" />
-            <span className="font-mono text-[10px] uppercase tracking-wider text-red-300">
+            <span className=" text-[12px] text-red-300">
               Peak {HOURS[peakIndex]}
             </span>
           </div>
@@ -223,7 +223,7 @@ const AnalyticsPeak = () => {
               <span aria-hidden="true" className="absolute inset-[5px] rounded-full bg-red-500" />
             </div>
           </div>
-          <div className="mt-2 flex justify-between font-mono text-[9px] text-neutral-600">
+          <div className="mt-2 flex justify-between font-mono text-[11px] text-neutral-600">
             <span>{HOURS[0]}</span>
             <span className="hidden sm:inline">Drag or use arrow keys</span>
             <span>{HOURS[HOURS.length - 1]}</span>

@@ -94,7 +94,7 @@ const PeopleOps = () => {
                 <thead>
                   <tr className="border-b border-white/5 text-left">
                     {['Name', 'Role', 'Shift', 'Handled', 'Status'].map((h) => (
-                      <th key={h} className="pb-2 font-mono text-[10px] font-normal uppercase tracking-wider text-neutral-600">{h}</th>
+                      <th key={h} className="pb-2 text-[12px] font-normal text-neutral-400">{h}</th>
                     ))}
                   </tr>
                 </thead>
@@ -112,7 +112,7 @@ const PeopleOps = () => {
                       <td className="py-3 font-mono text-xs text-neutral-500">{m.shift}</td>
                       <td className="py-3 font-mono text-xs tabular-nums text-neutral-300">{m.handled}</td>
                       <td className="py-3">
-                        <span className={`flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider ${m.tone}`}>
+                        <span className={`flex items-center gap-1.5 text-[12px] ${m.tone}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${m.dot}`} />
                           {m.status}
                         </span>
@@ -146,7 +146,7 @@ const PeopleOps = () => {
                   }`}
                 >
                   <span className="text-sm text-neutral-200">{c.name}</span>
-                  <span className="flex items-center gap-1 font-mono text-[9px] uppercase tracking-wider text-red-400">
+                  <span className="flex items-center gap-1 text-[11px] text-red-400">
                     <Crown className="h-3 w-3" />
                     {c.tier}
                   </span>
@@ -158,7 +158,7 @@ const PeopleOps = () => {
               <Motion.div key={customer.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.3 }}>
                 <div className="mb-4 flex items-baseline justify-between">
                   <h4 className="text-lg font-semibold text-white">{customer.name}</h4>
-                  <span className="font-mono text-[10px] text-neutral-500">Member since {customer.since}</span>
+                  <span className="font-mono text-[12px] text-neutral-500">Member since {customer.since}</span>
                 </div>
 
                 <div className="mb-4 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
@@ -166,12 +166,12 @@ const PeopleOps = () => {
                     <div key={s.label} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                       <span className="mb-1.5 inline-flex text-red-500">{s.icon}</span>
                       <p className="font-mono text-sm font-semibold tabular-nums text-white">{s.value}</p>
-                      <p className="font-mono text-[9px] uppercase tracking-wider text-neutral-500">{s.label}</p>
+                      <p className=" text-[11px] text-neutral-400">{s.label}</p>
                     </div>
                   ))}
                 </div>
 
-                <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-neutral-500">Recent activity</p>
+                <p className="mb-2 text-[12px] text-neutral-400">Recent activity</p>
                 <ul className="space-y-1.5">
                   {customer.recent.map((r) => (
                     <li key={r} className="flex items-center gap-2 font-mono text-xs text-neutral-400">

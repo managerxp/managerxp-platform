@@ -60,7 +60,7 @@ const Organizations = ({ lens = 'organization' }) => {
       <Panel>
         <form onSubmit={search} className="flex flex-wrap items-end gap-3">
           <div className="min-w-[240px] flex-1">
-            <label htmlFor="org-q" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+            <label htmlFor="org-q" className="mb-1.5 block text-[12px] font-semibold text-neutral-400">
               Search
             </label>
             <Input
@@ -71,7 +71,7 @@ const Organizations = ({ lens = 'organization' }) => {
             />
           </div>
           <div className="w-40">
-            <label htmlFor="org-status" className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+            <label htmlFor="org-status" className="mb-1.5 block text-[12px] font-semibold text-neutral-400">
               Status
             </label>
             <Select id="org-status" value={status} onChange={(e) => { setPage(1); setStatus(e.target.value); }}>

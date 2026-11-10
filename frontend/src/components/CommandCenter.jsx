@@ -29,7 +29,7 @@ const layerVariants = (depth = 0) => ({
 
 const STATION_STATES = {
   active: { label: 'Active', dot: 'bg-red-500', text: 'text-red-400', ring: 'border-red-500/45', glow: '' },
-  available: { label: 'Available', dot: 'bg-emerald-400', text: 'text-emerald-400/90', ring: 'border-emerald-400/25', glow: '' },
+  available: { label: 'Free', dot: 'bg-emerald-400', text: 'text-emerald-400/90', ring: 'border-emerald-400/25', glow: '' },
   paused: { label: 'Paused', dot: 'bg-amber-400', text: 'text-amber-400/90', ring: 'border-amber-400/25', glow: '' }
 };
 

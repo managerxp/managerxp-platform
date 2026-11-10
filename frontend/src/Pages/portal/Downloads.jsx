@@ -17,10 +17,9 @@ import { portalApi } from '../../lib/portalApi';
  * looked like rather than a broken page.
  */
 const DOWNLOAD_BUTTON_CLASS =
-  'mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white/10 ' +
-  'bg-[#e5322d] px-4 py-2 text-sm font-semibold text-white ' +
-  ' transition-all duration-300 ' +
-  'hover: active:scale-[0.99]';
+  'mt-5 inline-flex w-full items-center justify-center gap-1.5 rounded-xl border border-white bg-white ' +
+  'px-4 py-2 text-sm font-semibold text-black transition-colors hover:border-neutral-200 hover:bg-neutral-200 ' +
+  'active:translate-y-px';
 
 const STEPS = [
   { title: 'Download CafeXP Server', body: 'Install it on the machine at your counter — the one that will run the café.' },

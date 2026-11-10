@@ -112,7 +112,7 @@ const Support = () => {
             ['Urgent', data.counts.urgent, data.counts.urgent > 0 ? 'bad' : 'mute']
           ].map(([label, value, tone]) => (
             <div key={label} className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3">
-              <div className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">{label}</div>
+              <div className="text-[12px] font-semibold text-neutral-500">{label}</div>
               <div className="mt-1 flex items-center gap-2">
                 <span className="text-2xl font-bold tabular-nums text-white">{value}</span>
                 {value > 0 && tone !== 'mute' && <Pill tone={tone}>attention</Pill>}

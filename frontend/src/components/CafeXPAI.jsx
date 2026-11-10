@@ -70,7 +70,7 @@ const CafeXPAI = () => {
           <Sparkles className="h-4 w-4 text-red-500" />
           CafeXP AI
         </span>
-        <span className="flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-red-400">
+        <span className="flex items-center gap-1.5 text-[12px] text-red-400">
           <span className="h-1.5 w-1.5 rounded-full bg-red-500" />
           Ready
         </span>
@@ -78,7 +78,7 @@ const CafeXPAI = () => {
 
       <div className="p-4 sm:p-6">
         {/* Question chips */}
-        <p className="mb-2.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">Ask about your café</p>
+        <p className="mb-2.5 text-[12px] text-neutral-400">Ask about your café</p>
         <div className="mb-5 flex flex-wrap gap-2">
           {CONVERSATIONS.map((c, i) => (
             <Motion.button
@@ -137,7 +137,7 @@ const CafeXPAI = () => {
                     className="h-1.5 w-1.5 rounded-full bg-red-500"
                   />
                 ))}
-                <span className="ml-1 font-mono text-[10px] uppercase tracking-wider text-neutral-500">Analysing</span>
+                <span className="ml-1 text-[12px] text-neutral-400">Analysing</span>
               </Motion.div>
             ) : (
               <Motion.div
@@ -146,7 +146,7 @@ const CafeXPAI = () => {
                 animate="visible"
                 variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.13 } } }}
               >
-                <p className="mb-2.5 font-mono text-[10px] uppercase tracking-wider text-neutral-500">Analysis</p>
+                <p className="mb-2.5 text-[12px] text-neutral-400">Analysis</p>
                 <ul className="mb-4 space-y-2.5">
                   {convo.findings.map((f) => (
                     <Motion.li
@@ -170,7 +170,7 @@ const CafeXPAI = () => {
                   }}
                   className="rounded-xl border border-red-500/25 bg-red-500/[0.06] p-4"
                 >
-                  <p className="mb-1 font-mono text-[10px] uppercase tracking-wider text-red-400">Suggested next step</p>
+                  <p className="mb-1 text-[12px] text-red-400">Suggested next step</p>
                   <p className="text-sm leading-relaxed text-neutral-200">{convo.action}</p>
                 </Motion.div>
               </Motion.div>
@@ -178,7 +178,7 @@ const CafeXPAI = () => {
           </AnimatePresence>
         </div>
 
-        <p className="mt-4 border-t border-white/5 pt-3 font-mono text-[10px] leading-relaxed text-neutral-600">
+        <p className="mt-4 border-t border-white/5 pt-3 font-mono text-[12px] leading-relaxed text-neutral-600">
           Example answers shown for illustration — not generated from a live café.
         </p>
       </div>

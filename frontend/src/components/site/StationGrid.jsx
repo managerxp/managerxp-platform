@@ -89,7 +89,7 @@ const StationGrid = ({ count = 24, className = '' }) => {
         <span><span className="tabular-nums text-white">{playing}</span> playing</span>
         <span><span className="tabular-nums text-white">{free}</span> free</span>
         <span><span className="tabular-nums text-white">{paused}</span> paused</span>
-        <span className="text-white/35">Sample floor</span>
+        <span className="text-white/60">Sample floor</span>
       </figcaption>
     </figure>
   );

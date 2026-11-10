@@ -217,21 +217,21 @@ const Branches = () => {
 
                 <dl className="mt-4 grid grid-cols-3 gap-4 border-t border-white/10 pt-4">
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wider text-neutral-500">Gaming PCs</dt>
+                    <dt className="text-[11px] text-neutral-500">Gaming PCs</dt>
                     <dd className="mt-0.5 text-lg font-semibold text-white">{b.pc_count}</dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wider text-neutral-500">Team</dt>
+                    <dt className="text-[11px] text-neutral-500">Team</dt>
                     <dd className="mt-0.5 text-lg font-semibold text-white">{b.user_count}</dd>
                   </div>
                   <div>
-                    <dt className="text-[11px] uppercase tracking-wider text-neutral-500">Phone</dt>
+                    <dt className="text-[11px] text-neutral-500">Phone</dt>
                     <dd className="mt-0.5 text-sm text-neutral-300">{b.phone || '—'}</dd>
                   </div>
                 </dl>
 
                 <div className="mt-4 border-t border-white/10 pt-4">
-                  <p className="text-[11px] uppercase tracking-wider text-neutral-500">Store hours</p>
+                  <p className="text-[11px] text-neutral-500">Store hours</p>
                   <p className="mt-1 text-[11px] text-neutral-500">
                     Reservations can only be booked inside this window. Leave blank for open around the clock.
                   </p>

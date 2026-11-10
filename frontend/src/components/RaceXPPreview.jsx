@@ -61,11 +61,11 @@ const RaceXPPreview = ({ intro = true }) => {
       {intro && <Reveal>
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-6 sm:p-8">
           <div className="mb-4 flex flex-wrap items-center gap-3">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 font-mono text-[10px] uppercase tracking-wider text-red-400">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/40 bg-red-500/10 px-3 py-1 font-mono text-[12px] uppercase tracking-wider text-red-400">
               <Flag className="h-3 w-3" aria-hidden="true" />
               Phase 2 · In development
             </span>
-            <span className="font-mono text-[10px] uppercase tracking-wider text-neutral-500">
+            <span className="font-mono text-[12px] uppercase tracking-wider text-neutral-500">
               Not yet available
             </span>
           </div>
@@ -103,7 +103,7 @@ const RaceXPPreview = ({ intro = true }) => {
               For a gaming cafe that wants to add racing simulators alongside its existing floor —
               one operation, gaming and racing together.
             </p>
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">Planned areas</p>
+            <p className="mb-2 font-mono text-[12px] uppercase tracking-wider text-neutral-600">Planned areas</p>
             <ul className="space-y-2">
               {plannedAddOn.map((item) => (
                 <li key={item} className="flex items-center gap-2 text-sm text-neutral-300">
@@ -127,7 +127,7 @@ const RaceXPPreview = ({ intro = true }) => {
               For dedicated sim-racing centres and simulator venues that do not run a gaming cafe at all,
               eventually running as its own product.
             </p>
-            <p className="mb-2 font-mono text-[10px] uppercase tracking-wider text-neutral-600">Planned areas</p>
+            <p className="mb-2 font-mono text-[12px] uppercase tracking-wider text-neutral-600">Planned areas</p>
             <ul className="space-y-2">
               {plannedStandalone.map((item) => (
                 <li key={item} className="flex items-center gap-2 text-sm text-neutral-300">
