@@ -98,7 +98,7 @@ const PayLink = () => {
       // The money may well have left their account; never imply otherwise.
       setStatus({
         tone: 'warn',
-        text: 'Payment taken, but we could not confirm it here. It will be applied shortly — please do not pay again.'
+        text: 'Payment taken, but we could not confirm it here. It will be applied shortly. Please do not pay again.'
       });
     }
   }, [token]);
@@ -249,7 +249,7 @@ const PayLink = () => {
               </button>
               {link.mode === 'test' && (
                 <p className="mt-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-amber-300">
-                  Test mode — no real money moves
+                  Test mode: no real money moves
                 </p>
               )}
             </>

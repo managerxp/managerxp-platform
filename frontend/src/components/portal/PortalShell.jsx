@@ -4,8 +4,8 @@ import { ArrowLeft, LogOut, Menu } from 'lucide-react';
 import { portalApi, portalAuth } from '../../lib/portalApi';
 import { Banner, Button, Select, surface } from './ui';
 import CreateBusiness from './CreateBusiness';
-import logoLight from '../../assets/whitelogo-sm.png';
-import logoDark from '../../assets/logo.png';
+import logoLight from '../../assets/whitelogo-sm.webp';
+import logoDark from '../../assets/logo.webp';
 import { useDashTheme } from '../../lib/dashTheme';
 import DashThemeToggle from '../shared/DashThemeToggle';
 

@@ -111,13 +111,13 @@ const CafeXP = () => (
     </div>
     </div>
 
-    <div className="wrap border-t border-sheet/15 py-16 sm:py-28">
+    <div className="wrap border-t border-sheet/15 py-16 sm:py-20">
       <FAQ dark />
     </div>
 
     <section className="border-t border-sheet/15">
-      <div className="wrap grid gap-8 py-16 sm:py-28 lg:grid-cols-12 lg:items-end">
-        <h2 className="poster-h text-[clamp(3rem,7vw,6.5rem)] lg:col-span-8">
+      <div className="wrap grid gap-8 py-16 sm:py-20 lg:grid-cols-12 lg:items-end">
+        <h2 className="poster-h text-[clamp(2.5rem,5vw,4.5rem)] lg:col-span-8">
           Run your café on CafeXP<span className="text-signal">.</span>
         </h2>
         <div className="flex flex-wrap gap-3 lg:col-span-4 lg:justify-end">

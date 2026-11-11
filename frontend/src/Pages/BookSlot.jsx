@@ -166,15 +166,15 @@ const BookSlot = () => {
         </div>
         <p className="mt-4 text-xs text-neutral-500">
           {booked.length > 1
-            ? `Show up a few minutes early — the café will have all ${booked.length} stations ready together.`
-            : 'Show up a few minutes early — the café will have your station ready.'}
+            ? `Show up a few minutes early. The café will have all ${booked.length} stations ready together.`
+            : 'Show up a few minutes early. The café will have your station ready.'}
         </p>
       </AuthLayout>
     );
   }
 
   const hoursNote = cafe.opening_time && cafe.closing_time
-    ? `Open ${cafe.opening_time}–${cafe.closing_time}. Pick a time, and it's held for you.`
+    ? `Open ${cafe.opening_time}-${cafe.closing_time}. Pick a time, and it's held for you.`
     : "Pick a time, and it's held for you.";
 
   return (
@@ -226,7 +226,7 @@ const BookSlot = () => {
                 onChange={(e) => setQuantity(Number(e.target.value))}
               >
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
-                  <option key={n} value={n}>{n === 1 ? '1 (just me)' : `${n} — booked together`}</option>
+                  <option key={n} value={n}>{n === 1 ? '1 (just me)' : `${n}, booked together`}</option>
                 ))}
               </select>
             </div>
@@ -248,7 +248,7 @@ const BookSlot = () => {
                 if (free < quantity) {
                   return (
                     <span className="text-red-300">
-                      Only {free} of {avail.total} {avail.category} stations free then — not enough for a group of {quantity}.
+                      Only {free} of {avail.total} {avail.category} stations free then, not enough for a group of {quantity}.
                     </span>
                   );
                 }

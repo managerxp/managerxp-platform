@@ -115,7 +115,7 @@ const ForgotPassword = () => {
       }
       subtitle={
         step === 'email'
-          ? 'Enter the email on your account — café owner or customer, either works here.'
+          ? 'Enter the email on your account. Café owner or customer, either works here.'
         : step === 'reset'
           ? `Check ${email} for a 6-digit code, then choose a new password.`
         : 'Taking you to the sign-in page.'

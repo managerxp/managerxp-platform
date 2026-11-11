@@ -11,10 +11,10 @@ import { glassPanel } from '../lib/ui';
  */
 
 const team = [
-  { id: 't1', name: 'Rahul', role: 'Manager', status: 'Active', shift: '10:00 – 18:00', handled: 42, tone: 'text-emerald-400', dot: 'bg-emerald-400' },
-  { id: 't2', name: 'Arjun', role: 'Cashier', status: 'Active', shift: '12:00 – 20:00', handled: 68, tone: 'text-emerald-400', dot: 'bg-emerald-400' },
-  { id: 't3', name: 'Sara', role: 'F&B', status: 'Break', shift: '11:00 – 19:00', handled: 31, tone: 'text-amber-400', dot: 'bg-amber-400' },
-  { id: 't4', name: 'Imran', role: 'Technician', status: 'Offline', shift: '18:00 – 02:00', handled: 0, tone: 'text-neutral-500', dot: 'bg-neutral-600' }
+  { id: 't1', name: 'Rahul', role: 'Manager', status: 'Active', shift: '10:00-18:00', handled: 42, tone: 'text-emerald-400', dot: 'bg-emerald-400' },
+  { id: 't2', name: 'Arjun', role: 'Cashier', status: 'Active', shift: '12:00-20:00', handled: 68, tone: 'text-emerald-400', dot: 'bg-emerald-400' },
+  { id: 't3', name: 'Sara', role: 'F&B', status: 'Break', shift: '11:00-19:00', handled: 31, tone: 'text-amber-400', dot: 'bg-amber-400' },
+  { id: 't4', name: 'Imran', role: 'Technician', status: 'Offline', shift: '18:00-02:00', handled: 0, tone: 'text-neutral-500', dot: 'bg-neutral-600' }
 ];
 
 const customers = [

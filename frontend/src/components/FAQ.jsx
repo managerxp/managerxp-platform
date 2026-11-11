@@ -18,7 +18,7 @@ const faqs = [
   },
   {
     q: 'How do ManagerXP, CafeXP and RaceXP relate?',
-    a: 'ManagerXP is the technology company that builds them. CafeXP is the product you can run today for gaming and internet cafes, in three packages: Basic, Pro and Elite. RaceXP is a sim racing platform still in development. FlowXP, our billing and business management product, lives at flowxp.in.'
+    a: 'ManagerXP is the technology company that builds them. CafeXP is the product you can run today for gaming and internet cafes, in three packages: Basic, Pro and Elite. RaceXP is a sim racing platform still in development. FlowXP, our billing software for restaurants, lives at flowxp.in.'
   },
   {
     q: 'Which CafeXP package should I pick?',

@@ -4,31 +4,72 @@
     {
       "name": "frontend-dev",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
       "port": 5173
+    },
+    {
+      "name": "frontend-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "preview",
+        "--",
+        "--port",
+        "4173",
+        "--strictPort"
+      ],
+      "port": 4173
     },
     {
       "name": "backend-api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "backend", "run", "start"],
+      "runtimeArgs": [
+        "--prefix",
+        "backend",
+        "run",
+        "start"
+      ],
       "port": 5000
     },
     {
       "name": "flowxp-api",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "../flowxp/backend", "run", "start"],
+      "runtimeArgs": [
+        "--prefix",
+        "../flowxp/backend",
+        "run",
+        "start"
+      ],
       "port": 5100
     },
     {
       "name": "flowxp-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["--prefix", "../flowxp/frontend", "run", "dev"],
+      "runtimeArgs": [
+        "--prefix",
+        "../flowxp/frontend",
+        "run",
+        "dev"
+      ],
       "port": 5174
     },
     {
       "name": "server-app-static",
       "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "serve", "server-app", "-l", "4321"],
+      "runtimeArgs": [
+        "--yes",
+        "serve",
+        "server-app",
+        "-l",
+        "4321"
+      ],
       "port": 4321
     }
   ]

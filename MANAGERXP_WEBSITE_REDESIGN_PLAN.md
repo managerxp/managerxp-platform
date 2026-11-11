@@ -131,7 +131,7 @@ Mobile: every grid collapses to one column; the hero stacks headline, copy, full
 |---|---|---|---|---|
 | CafeXP: Gaming Café Management | Available | red-lit card | Sessions, Billing, Stations, F&B stock, Staff, Analytics, AI | `/products/cafexp` |
 | RaceXP: Sim Racing Technology | In development | dot-pattern card | Telemetry, Race sessions, Lap timing, Venue ops | `/products/racexp` |
-| FlowXP: AI-Powered Business Management | Available (external) | full-width card with real screenshot | Billing, Stock, GST, Payments, AI insights | `https://flowxp.in` (`target="_blank" rel="noopener noreferrer"`) |
+| FlowXP: Restaurant Billing Software | Available (external) | product row | Billing, GST invoices, Payments, Stock, Reports | `https://flowxp.in` (`target="_blank" rel="noopener noreferrer"`) |
 
 One data source (`src/lib/products.js`) feeds the nav dropdown, homepage cards, product hub and footer, so FlowXP is represented consistently and always as external.
 

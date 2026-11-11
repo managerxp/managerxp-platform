@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import Seo from '../components/site/Seo';
 import ProductRows from '../components/site/ProductRows';
 import CommandCenter from '../components/CommandCenter';
+import HeroScene from '../components/site/HeroScene';
 import { industries } from '../lib/company';
 
 const build = ['AI products', 'custom software', 'automation', 'integrations', 'data and dashboards', 'digital products'];
@@ -18,34 +19,36 @@ const Home = () => (
       path="/"
     />
 
-    {/* Hero: the poster. On large screens it fills the first screen, the
-        headline at the top and the intro on the bottom edge. On phones and
-        tablets it takes its natural height: stretched to a tall portrait
-        screen, the space between the two became an empty half page. */}
-    <section
-      aria-labelledby="hero-title"
-      className="wrap flex flex-col pb-12 pt-10 sm:pt-16 lg:min-h-[calc(100dvh-4.5rem)] lg:justify-between lg:pb-10 lg:pt-0"
-    >
-      <h1 id="hero-title" className="poster-h animate-enter-up max-w-[14ch] text-[clamp(3.1rem,9.6vw,10rem)] lg:mt-[7vh]">
-        Software for businesses that never stop<Dot />
-      </h1>
-      <div className="mt-12 grid gap-8 border-t border-carbon pt-6 sm:mt-16 md:grid-cols-12">
-        <p className="max-w-[44ch] text-lg leading-snug md:col-span-6">
-          ManagerXP designs and builds AI-powered products and custom systems for operations that run in real time.
-        </p>
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-4 text-lg md:col-span-6 md:justify-end">
-          <Link to="/contact" className="link-arrow">
-            Build with ManagerXP <ArrowRight aria-hidden="true" className="h-5 w-5" />
-          </Link>
-          <Link to="/solutions" className="inline-flex items-center gap-2 font-semibold hover:text-signal">
-            Explore solutions <ArrowRight aria-hidden="true" className="h-5 w-5" />
-          </Link>
+    {/* Hero: two columns on wide screens. Headline, rule, intro and CTAs on
+        the left; the India network scene fills the right and bleeds past the margin.
+        Sized to fit one 1366x768 screen. On phones and tablets the scene
+        comes after the CTAs, as a still, so it can never push them down. */}
+    <section aria-labelledby="hero-title" className="overflow-x-clip">
+      <div className="wrap grid items-center gap-y-6 pb-10 pt-8 sm:pt-12 lg:grid-cols-12 lg:gap-x-8 lg:py-10">
+        <div className="lg:col-span-7">
+          <h1 id="hero-title" className="poster-h animate-enter-up max-w-[14ch] text-[clamp(2.75rem,5.8vw,5.75rem)]">
+            Software for businesses that never stop<Dot />
+          </h1>
+          <div className="mt-8 border-t border-carbon pt-6 lg:mt-10">
+            <p className="max-w-[44ch] text-lg leading-snug">
+              ManagerXP designs and builds AI-powered products and custom systems for operations that run in real time.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 text-lg">
+              <Link to="/contact" className="link-arrow">
+                Build with ManagerXP <ArrowRight aria-hidden="true" className="h-5 w-5" />
+              </Link>
+              <Link to="/solutions" className="inline-flex items-center gap-2 font-semibold hover:text-signal">
+                Explore solutions <ArrowRight aria-hidden="true" className="h-5 w-5" />
+              </Link>
+            </div>
+          </div>
         </div>
+        <HeroScene className="mx-auto aspect-square w-full max-w-[22rem] lg:col-span-5 lg:mx-0 lg:aspect-[12/11] lg:w-[calc(100%+3vw)] lg:max-w-none" />
       </div>
     </section>
 
     {/* Products */}
-    <section aria-labelledby="built-title" className="wrap py-14 sm:py-28">
+    <section aria-labelledby="built-title" className="wrap py-14 sm:py-20">
       <h2 id="built-title" className="text-lg font-semibold">What we have built</h2>
       <div className="mt-6">
         <ProductRows />
@@ -54,9 +57,9 @@ const Home = () => (
 
     {/* Proof: the real product, live */}
     <section aria-labelledby="proof-title" className="bg-carbon text-sheet">
-      <div className="wrap py-16 sm:py-28">
+      <div className="wrap py-16 sm:py-20">
         <div className="grid gap-8 md:grid-cols-12 md:items-end">
-          <h2 id="proof-title" className="poster-h text-[clamp(2.75rem,6.5vw,6rem)] md:col-span-7">
+          <h2 id="proof-title" className="poster-h text-[clamp(2.25rem,4.4vw,4rem)] md:col-span-7">
             The products are the proof<Dot />
           </h2>
           <p className="max-w-[42ch] text-lg leading-snug text-sheet/70 md:col-span-5">
@@ -70,9 +73,9 @@ const Home = () => (
     </section>
 
     {/* What we build for you */}
-    <section aria-labelledby="build-title" className="wrap py-16 sm:py-28">
+    <section aria-labelledby="build-title" className="wrap py-16 sm:py-20">
       <h2 id="build-title" className="text-lg font-semibold">What we build for you</h2>
-      <p className="mt-6 max-w-[20ch] text-[clamp(2.25rem,5vw,4.75rem)] font-[750] leading-[1.02] tracking-[-0.045em]">
+      <p className="mt-6 max-w-[28ch] text-[clamp(2rem,3.6vw,3.5rem)] font-[750] leading-[1.02] tracking-[-0.045em]">
         {build.map((b, i) => (
           <React.Fragment key={b}>
             {i === 0 ? b.charAt(0).toUpperCase() + b.slice(1) : b}
@@ -95,10 +98,10 @@ const Home = () => (
 
     {/* Close */}
     <section aria-labelledby="close-title" className="bg-carbon text-sheet">
-      <div className="wrap py-16 sm:py-28">
+      <div className="wrap py-16 sm:py-20">
         <p className="text-lg text-sheet/70">Have a problem software should solve?</p>
         <h2 id="close-title" className="mt-4">
-          <Link to="/contact" className="poster-h group inline-flex flex-wrap items-center gap-x-6 text-[clamp(3rem,9vw,9rem)] hover:text-signal">
+          <Link to="/contact" className="poster-h group inline-flex flex-wrap items-center gap-x-6 text-[clamp(2.75rem,5.8vw,5.75rem)] hover:text-signal">
             <span>Let's build it<Dot /></span>
             <ArrowRight aria-hidden="true" className="h-[0.55em] w-[0.55em] transition-transform group-hover:translate-x-3" strokeWidth={2.25} />
           </Link>

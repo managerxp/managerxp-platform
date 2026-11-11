@@ -48,7 +48,7 @@ const BookDemoPage = () => {
         path="/demo"
       />
 
-      <div className="wrap max-w-4xl pb-20 pt-12 sm:pb-28 sm:pt-16">
+      <div className="wrap max-w-4xl pb-20 pt-12 sm:pb-20 sm:pt-16">
         <SectionHeading
           as="h1"
           title="Book a CafeXP demo"

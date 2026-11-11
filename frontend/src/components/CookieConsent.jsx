@@ -5,7 +5,7 @@ import { CATEGORIES, ALL, NONE, getConsent, saveConsent } from '../lib/consent';
 /*
  * The consent panel (DPDP Act 2023, s.6).
  *
- * - First visit: a bar with three equal choices, Accept all, Only necessary,
+ * - First visit: a bar with three equal choices, Accept all, Decline,
  *   or Choose. Saying no takes exactly as much effort as saying yes.
  * - Choose: one switch per optional category, each with its purpose in plain
  *   words. Strictly necessary is shown but cannot be switched off.
@@ -47,7 +47,7 @@ const CookieConsent = () => {
   const finish = (next, action) => {
     saveConsent(next, action);
     setChoices(next);
-    setSaved(action === 'accept_all' ? 'All categories allowed.' : action === 'custom' ? 'Your choices are saved.' : 'Only the necessary is kept.');
+    setSaved(action === 'accept_all' ? 'All categories allowed.' : action === 'custom' ? 'Your choices are saved.' : 'Declined. Only what the site needs to work is kept.');
     setTimeout(() => setOpen(false), 900);
   };
 
@@ -111,7 +111,7 @@ const CookieConsent = () => {
                 </button>
                 <button type="button" onClick={() => finish(ALL, 'accept_all')} className="consent-outline">Accept all</button>
                 <button type="button" onClick={() => finish(NONE, decided ? 'withdraw' : 'necessary_only')} className="consent-outline">
-                  {decided ? 'Withdraw all optional' : 'Only necessary'}
+                  {decided ? 'Withdraw all optional' : 'Decline'}
                 </button>
                 {decided && (
                   <button type="button" onClick={() => setOpen(false)} className="px-2 text-[15px] text-white/60 underline underline-offset-4 hover:text-white">
@@ -123,7 +123,7 @@ const CookieConsent = () => {
           ) : (
             <div className="flex flex-wrap items-center gap-3 lg:col-span-7 lg:justify-end">
               <button type="button" onClick={() => finish(ALL, 'accept_all')} className="btn-light">Accept all</button>
-              <button type="button" onClick={() => finish(NONE, 'necessary_only')} className="consent-outline">Only necessary</button>
+              <button type="button" onClick={() => finish(NONE, 'necessary_only')} className="consent-outline">Decline</button>
               <button type="button" onClick={() => setChoosing(true)} className="consent-outline">Choose</button>
             </div>
           )}

@@ -9,7 +9,7 @@
  * stored choice under an older version no longer counts, so people are asked
  * again.
  */
-export const CONSENT_VERSION = '2026-11-09';
+export const CONSENT_VERSION = '2026-11-11';
 const STORAGE_KEY = 'mx_consent';
 const LEGACY_KEY = 'cxp_cookie_consent';
 const API_BASE_URL = import.meta.env.VITE_API_URL;
@@ -24,7 +24,7 @@ export const CATEGORIES = [
   {
     id: 'preferences',
     name: 'Preferences',
-    purpose: 'Remembers optional display settings between visits. Off means the site starts from its defaults each time.',
+    purpose: 'Remembers your choices between visits, such as the dashboard light or dark mode and your best time in the RaceXP start-lights test. Off means the site forgets them when you close the tab.',
   },
   {
     id: 'analytics',

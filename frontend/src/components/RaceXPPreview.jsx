@@ -71,7 +71,7 @@ const RaceXPPreview = ({ intro = true }) => {
           </div>
 
           <h3 className="text-2xl sm:text-3xl font-semibold tracking-tight text-white text-balance">
-            RaceXP — the next generation of{' '}
+            RaceXP: the next generation of{' '}
             <span className="text-white">
               racing centre management.
             </span>
@@ -100,7 +100,7 @@ const RaceXPPreview = ({ intro = true }) => {
               <h4 className="text-lg font-semibold text-white">CafeXP + RaceXP add-on</h4>
             </div>
             <p className="mb-4 text-sm leading-relaxed text-neutral-400">
-              For a gaming cafe that wants to add racing simulators alongside its existing floor —
+              For a gaming cafe that wants to add racing simulators alongside its existing floor,
               one operation, gaming and racing together.
             </p>
             <p className="mb-2 font-mono text-[12px] uppercase tracking-wider text-neutral-600">Planned areas</p>

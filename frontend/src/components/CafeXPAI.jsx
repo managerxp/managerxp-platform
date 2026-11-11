@@ -20,7 +20,7 @@ const CONVERSATIONS = [
       { icon: <Clock className="h-3.5 w-3.5" />, text: 'PC occupancy dipped between 6 PM and 9 PM, normally the strongest block.' },
       { icon: <Utensils className="h-3.5 w-3.5" />, text: 'F&B held steady, so the shortfall sits with station time.' }
     ],
-    action: 'Look at evening station availability — the drop is concentrated in the peak window rather than spread across the day.'
+    action: 'Look at evening station availability. The drop is concentrated in the peak window rather than spread across the day.'
   },
   {
     q: 'When is the café busiest?',
@@ -179,7 +179,7 @@ const CafeXPAI = () => {
         </div>
 
         <p className="mt-4 border-t border-white/5 pt-3 font-mono text-[12px] leading-relaxed text-neutral-600">
-          Example answers shown for illustration — not generated from a live café.
+          Example answers shown for illustration, not generated from a live café.
         </p>
       </div>
     </div>

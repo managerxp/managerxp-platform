@@ -8,7 +8,7 @@ import React from 'react';
 const SectionHeading = ({ title, highlight, description, as = 'h2', align = 'left', tone = 'light', className = '' }) => {
   const dark = tone === 'dark';
   const Tag = as;
-  const size = as === 'h1' ? 'text-[clamp(3rem,8vw,8rem)]' : 'text-[clamp(2.25rem,5vw,4.5rem)]';
+  const size = as === 'h1' ? 'text-[clamp(2.75rem,5.8vw,5.75rem)]' : 'text-[clamp(2rem,3.6vw,3.5rem)]';
   const centered = align === 'center';
   const text = `${title}${highlight ? ` ${highlight}` : ''}`.replace(/[.]$/, '');
 

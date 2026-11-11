@@ -186,7 +186,7 @@ const SignupPage = () => {
       <AuthLayout
         title="Verify your email"
         subtitle="One more step and your café is ready"
-        footer={<>Your trial has already started — verifying just unlocks signing in.</>}
+        footer={<>Your trial has already started. Verifying just unlocks signing in.</>}
       >
         <VerifyEmailStep
           email={pendingVerification.email}
@@ -216,7 +216,7 @@ const SignupPage = () => {
             </Link>
           </>
         ) : (
-          <>Your trial includes every CafeXP feature — PC control, sessions, billing, POS, inventory, customers and reports.</>
+          <>Your trial includes every CafeXP feature: PC control, sessions, billing, POS, inventory, customers and reports.</>
         )
       }
     >
@@ -354,7 +354,7 @@ const SignupPage = () => {
         <form key="step-cafe" onSubmit={submit} className="mt-5 space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Business name" id="st-org" required
-                   hint="The company or group — you can add more branches later">
+                   hint="The company or group. You can add more branches later">
               <input id="st-org" value={form.organization_name} onChange={set('organization_name')}
                      className={authFieldClasses} placeholder="Riverside Gaming Group" autoFocus />
             </Field>
@@ -395,7 +395,7 @@ const SignupPage = () => {
                      className={authFieldClasses} placeholder="500034" autoComplete="postal-code" />
             </Field>
             <Field label="Number of gaming PCs" id="st-pcs"
-                   hint="Roughly is fine — you can change it later">
+                   hint="Roughly is fine. You can change it later">
               <input id="st-pcs" type="number" min="1" value={form.pc_count}
                      onChange={set('pc_count')} className={authFieldClasses} placeholder="20" />
             </Field>
