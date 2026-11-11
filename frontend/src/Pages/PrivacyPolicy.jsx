@@ -103,7 +103,7 @@ const PrivacyPolicy = () => (
       />
       <p>
         On your first visit we ask before using anything beyond what the site needs to work. You can
-        accept all categories, keep only the strictly necessary ones, or choose per category
+        accept all categories, decline them (keeping only the strictly necessary ones), or choose per category
         (Preferences, Analytics, Marketing). Strictly necessary cookies keep you signed in and the
         Service secure, and cannot be switched off.
       </p>
@@ -198,8 +198,8 @@ const PrivacyPolicy = () => (
       </p>
       <p>
         However, no online service can guarantee absolute security. You are responsible for keeping
-        your ManagerXP account credentials — including your password, which we cannot see or
-        recover on your behalf — secure.
+        your ManagerXP account credentials (including your password, which we cannot see or
+        recover on your behalf) secure.
       </p>
     </Section>
 

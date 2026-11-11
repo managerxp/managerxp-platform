@@ -10,7 +10,7 @@ const Products = () => (
   <div className="bg-sheet font-display text-carbon antialiased">
     <Seo
       title="Products | CafeXP, RaceXP and FlowXP by ManagerXP"
-      description="ManagerXP's software products: CafeXP for gaming café management, RaceXP for sim racing technology (in development), and FlowXP for AI-powered business management and billing."
+      description="ManagerXP's software products: CafeXP for gaming café management, RaceXP for sim racing technology (in development), and FlowXP, billing software for restaurants."
       path="/products"
     />
 

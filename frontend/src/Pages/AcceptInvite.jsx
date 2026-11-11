@@ -60,7 +60,7 @@ const AcceptInvite = () => {
               <h1 className="text-xl font-semibold tracking-tight text-white">This link is incomplete</h1>
               <p className="mt-2 text-sm leading-relaxed text-neutral-400">
                 The invitation code is missing from the address. Ask whoever invited you to send
-                the link again — copying the whole thing, including everything after the question mark.
+                the link again, copying the whole thing, including everything after the question mark.
               </p>
               <Link to="/login" className="mt-6 inline-block text-sm text-red-400 hover:text-red-300">
                 Sign in instead

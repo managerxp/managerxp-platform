@@ -26,7 +26,7 @@ A small engineering company that ships its own operational products in demanding
 - Contact and Book-a-Demo forms post to the backend SMTP mailer (`src/lib/contactEmail.js`); must keep working.
 - CafeXP: shipping product, 15-day trial on up to 5 PCs, no card (`/signup`). Packages Basic / Pro / Elite (`PricingPlans`).
 - RaceXP: sim-racing technology, **in development** (confirmed 2026-11-04) — gets its own page, always labelled In development.
-- FlowXP: AI-powered business management & billing platform, external site `https://flowxp.in`, always opens in a new tab.
+- FlowXP: restaurant billing software (restaurants only, not hotels or travel), external site `https://flowxp.in`, always opens in a new tab. Its AI module is not built yet, so the site does not claim AI features for it.
 
 ## Capabilities and Constraints
 

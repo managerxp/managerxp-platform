@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import Seo from '../components/site/Seo';
 import SectionHeading from '../components/SectionHeading';
 import ProductLink from '../components/site/ProductLink';
-import startupIndiaBadge from '../assets/startupIndiaBadge.png';
+import startupIndiaBadge from '../assets/startupIndiaBadge.webp';
 import { PRODUCTS } from '../lib/products';
 
 const founders = [
@@ -65,7 +65,7 @@ const About = () => (
           Founded in 2026 in Hyderabad, ManagerXP Private Limited designs and builds software for operations where timing, money and people move at once.
         </p>
         <p className="max-w-[40ch] text-graphite">
-          We started with gaming cafés, an environment that punishes slow or unreliable software. That work became CafeXP, then RaceXP for sim racing and FlowXP for billing and business management. The same engineering now goes into custom systems for other businesses.
+          We started with gaming cafés, an environment that punishes slow or unreliable software. That work became CafeXP, then RaceXP for sim racing and FlowXP for restaurant billing. The same engineering now goes into custom systems for other businesses.
         </p>
         <ul className="flex flex-wrap gap-x-8 gap-y-2 pt-2 text-lg font-semibold">
           {PRODUCTS.map((p) => (
@@ -132,7 +132,7 @@ const About = () => (
       <div className="wrap grid gap-10 py-16 md:grid-cols-12 md:items-center">
         <div className="flex items-center gap-4 md:col-span-6">
           <span className="inline-flex shrink-0 items-center bg-white px-3 py-2">
-            <img src={startupIndiaBadge} alt="Startup India, recognised by DPIIT, Government of India" className="h-10 w-auto" />
+            <img src={startupIndiaBadge} alt="Startup India, recognised by DPIIT, Government of India" width="303" height="128" loading="lazy" decoding="async" className="h-10 w-auto" />
           </span>
           <p className="max-w-[30ch] text-lg leading-snug text-sheet/70">Recognised by DPIIT, Government of India, under Startup India.</p>
         </div>

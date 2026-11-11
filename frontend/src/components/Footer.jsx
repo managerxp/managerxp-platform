@@ -2,8 +2,8 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowUpRight } from 'lucide-react';
 import { FaLinkedin, FaInstagram } from 'react-icons/fa6';
-import logo from '../assets/whitelogo-sm.png';
-import startupIndiaBadge from '../assets/startupIndiaBadge.png';
+import logo from '../assets/whitelogo-sm.webp';
+import startupIndiaBadge from '../assets/startupIndiaBadge.webp';
 import { PRODUCTS } from '../lib/products';
 import ProductLink from './site/ProductLink';
 import { openConsentSettings } from '../lib/consent';
@@ -43,7 +43,7 @@ const Footer = () => (
           <div className="mt-8 flex items-center gap-3">
             {/* The badge artwork is black, so it sits on its own white chip. */}
             <span className="inline-flex shrink-0 items-center bg-white px-2.5 py-1.5">
-              <img src={startupIndiaBadge} alt="Startup India, recognised by DPIIT, Government of India" className="h-8 w-auto" />
+              <img src={startupIndiaBadge} alt="Startup India, recognised by DPIIT, Government of India" width="303" height="128" loading="lazy" decoding="async" className="h-8 w-auto" />
             </span>
             <span className="max-w-[9rem] text-[13px] leading-snug text-sheet/60">Startup India recognised</span>
           </div>

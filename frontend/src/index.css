@@ -11,10 +11,10 @@
  */
 @theme {
   /* One face across the marketing site and the signed-in app. */
-  --font-sans: 'Schibsted Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-sans: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'Geist Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
   /* Marketing face (Swiss poster direction). The signed-in app keeps Geist. */
-  --font-display: 'Schibsted Grotesk', 'Geist', ui-sans-serif, system-ui, sans-serif;
+  --font-display: 'Schibsted Grotesk Variable', 'Schibsted Grotesk', ui-sans-serif, system-ui, sans-serif;
 
   /* Marketing site, "Swiss poster": light grey sheet, carbon type, one red
      full stop. Red marks the primary action and the period, nothing else. */
@@ -424,10 +424,13 @@ html {
   --color-neutral-600: oklch(61% 0 0);
 }
 
-/* Hero 3D motion (components/site/ProductStack.jsx). Slow and continuous;
-   stopped for anyone who asks the OS for reduced motion. */
-@keyframes mx-spin-z { from { transform: rotateZ(0deg); } to { transform: rotateZ(360deg); } }
-.mx-spin-z { animation: mx-spin-z 30s linear infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .mx-spin-z { animation: none; }
-}
+
+/* Red hover text. The brand red (#e5322d) is 3.9:1 on the sheet and 4.4:1
+   on carbon, under AA for normal-size text, so text that turns red on hover
+   uses a shade tuned to its background: deeper on light, brighter on dark.
+   Full stops, rules and fills keep the brand red. */
+:root { --signal-text: #c8271f; }
+.bg-carbon, footer, .tone-dark, .nav-dark { --signal-text: #f04a44; }
+.hover\:text-signal:hover,
+.group:hover .group-hover\:text-signal,
+.link-quiet:hover { color: var(--signal-text); }

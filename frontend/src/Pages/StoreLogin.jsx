@@ -42,7 +42,7 @@ const StoreLogin = () => {
   return (
     <AuthLayout
       title="Store sign in"
-      subtitle="For café staff — cashiers, attendants and managers"
+      subtitle="For café staff: cashiers, attendants and managers"
       footer={
         <>
           Own the account?{' '}

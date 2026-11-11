@@ -10,6 +10,9 @@ export default defineConfig({
     tailwindcss()
   ],
   build: {
+    // The hero's 3D chunk (three.js + GSAP, ~620 kB, 171 kB gzipped) is lazy:
+    // it loads after first paint and only on capable desktops. Limit set just above it.
+    chunkSizeWarningLimit: 640,
     rollupOptions: {
       output: {
         /*

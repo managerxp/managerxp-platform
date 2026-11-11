@@ -4,7 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import Seo from '../components/site/Seo';
 import ProductRows from '../components/site/ProductRows';
 import CommandCenter from '../components/CommandCenter';
-import ProductStack from '../components/site/ProductStack';
+import HeroScene from '../components/site/HeroScene';
 import { industries } from '../lib/company';
 
 const build = ['AI products', 'custom software', 'automation', 'integrations', 'data and dashboards', 'digital products'];
@@ -19,32 +19,31 @@ const Home = () => (
       path="/"
     />
 
-    {/* Hero: the poster, at its natural height. Stretching it to fill the
-        screen left a gap between headline and intro on tall phones and,
-        once the headline stopped growing with screen width, on desktops. */}
-    <section aria-labelledby="hero-title" className="wrap pb-12 pt-10 sm:pt-16 lg:pb-16 lg:pt-20">
-      <div className="lg:grid lg:grid-cols-12 lg:items-center lg:gap-10">
-        <h1 id="hero-title" className="poster-h animate-enter-up max-w-[14ch] text-[clamp(2.75rem,5.8vw,5.75rem)] lg:col-span-7">
-          Software for businesses that never stop<Dot />
-        </h1>
-        {/* The 3D product stack fills the right half on wide screens; phones
-            go straight from the headline to the intro. */}
-        <div className="hidden overflow-hidden lg:col-span-5 lg:block">
-          <ProductStack />
+    {/* Hero: two columns on wide screens. Headline, rule, intro and CTAs on
+        the left; the India network scene fills the right and bleeds past the margin.
+        Sized to fit one 1366x768 screen. On phones and tablets the scene
+        comes after the CTAs, as a still, so it can never push them down. */}
+    <section aria-labelledby="hero-title" className="overflow-x-clip">
+      <div className="wrap grid items-center gap-y-6 pb-10 pt-8 sm:pt-12 lg:grid-cols-12 lg:gap-x-8 lg:py-10">
+        <div className="lg:col-span-7">
+          <h1 id="hero-title" className="poster-h animate-enter-up max-w-[14ch] text-[clamp(2.75rem,5.8vw,5.75rem)]">
+            Software for businesses that never stop<Dot />
+          </h1>
+          <div className="mt-8 border-t border-carbon pt-6 lg:mt-10">
+            <p className="max-w-[44ch] text-lg leading-snug">
+              ManagerXP designs and builds AI-powered products and custom systems for operations that run in real time.
+            </p>
+            <div className="mt-6 flex flex-wrap items-center gap-x-8 gap-y-4 text-lg">
+              <Link to="/contact" className="link-arrow">
+                Build with ManagerXP <ArrowRight aria-hidden="true" className="h-5 w-5" />
+              </Link>
+              <Link to="/solutions" className="inline-flex items-center gap-2 font-semibold hover:text-signal">
+                Explore solutions <ArrowRight aria-hidden="true" className="h-5 w-5" />
+              </Link>
+            </div>
+          </div>
         </div>
-      </div>
-      <div className="mt-12 grid gap-8 border-t border-carbon pt-6 sm:mt-16 md:grid-cols-12">
-        <p className="max-w-[44ch] text-lg leading-snug md:col-span-6">
-          ManagerXP designs and builds AI-powered products and custom systems for operations that run in real time.
-        </p>
-        <div className="flex flex-wrap items-center gap-x-8 gap-y-4 text-lg md:col-span-6 md:justify-end">
-          <Link to="/contact" className="link-arrow">
-            Build with ManagerXP <ArrowRight aria-hidden="true" className="h-5 w-5" />
-          </Link>
-          <Link to="/solutions" className="inline-flex items-center gap-2 font-semibold hover:text-signal">
-            Explore solutions <ArrowRight aria-hidden="true" className="h-5 w-5" />
-          </Link>
-        </div>
+        <HeroScene className="mx-auto aspect-square w-full max-w-[22rem] lg:col-span-5 lg:mx-0 lg:aspect-[12/11] lg:w-[calc(100%+3vw)] lg:max-w-none" />
       </div>
     </section>
 

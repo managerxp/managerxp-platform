@@ -37,10 +37,10 @@ export const PRODUCTS = [
     id: 'flowxp',
     Icon: Sparkles,
     name: 'FlowXP',
-    category: 'AI-Powered Business Management',
+    category: 'Restaurant Billing Software',
     description:
-      'An intelligent business management and billing platform designed to simplify workflows, streamline operations, and support growing businesses.',
-    stations: ['Billing', 'Stock', 'GST', 'Payments', 'AI insights'],
+      'Billing software for restaurants: counter billing, GST invoices, payments and stock, with reports on every sale.',
+    stations: ['Billing', 'GST invoices', 'Payments', 'Stock', 'Reports'],
     status: 'available',
     statusLabel: 'Available',
     href: 'https://flowxp.in',

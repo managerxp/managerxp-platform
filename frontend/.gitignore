@@ -34,3 +34,7 @@ dist-ssr
 # Playwright output
 test-results
 playwright-report
+
+# Audit screenshots and Lighthouse data stay local; REPORT.md is committed
+audit/**/*.png
+audit/**/*.json

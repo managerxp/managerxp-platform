@@ -3,8 +3,8 @@ import { Link, Navigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, LogOut, Menu } from 'lucide-react';
 import { adminApi, adminAuth } from '../../lib/adminApi';
 import { Button, surface } from '../admin/ui';
-import logoLight from '../../assets/whitelogo-sm.png';
-import logoDark from '../../assets/logo.png';
+import logoLight from '../../assets/whitelogo-sm.webp';
+import logoDark from '../../assets/logo.webp';
 import { useDashTheme } from '../../lib/dashTheme';
 import DashThemeToggle from '../shared/DashThemeToggle';
 

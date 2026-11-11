@@ -2,8 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { AnimatePresence, motion as Motion } from 'framer-motion';
 import { Menu, X, ChevronDown, ArrowUpRight, ArrowRight } from 'lucide-react';
-import logo from '../assets/logo.png';
-import logoLight from '../assets/whitelogo-sm.png';
+import logo from '../assets/logo.webp';
+import logoLight from '../assets/whitelogo-sm.webp';
 import { useAuth } from '../context/AuthContext';
 import { PRODUCTS } from '../lib/products';
 import ProductLink from './site/ProductLink';
@@ -19,7 +19,8 @@ const navItems = [
   { label: 'Contact', to: '/contact', match: (p) => p.pathname === '/contact' },
 ];
 
-const linkBase = 'relative py-1 text-[15px] font-medium transition-colors';
+// whitespace-nowrap: at 1024px two-word labels used to wrap the bar onto two lines.
+const linkBase = 'relative whitespace-nowrap py-1 text-[15px] font-medium transition-colors';
 const activeBar = 'underline decoration-signal decoration-2 underline-offset-[7px]';
 
 /* ---------------------------------------------------------------- dropdown */
@@ -248,7 +249,7 @@ const Navbar = () => {
           <img src={darkBar ? logoLight : logo} alt="ManagerXP" width="294" height="56" className="h-6 w-auto" />
         </Link>
 
-        <ul className="hidden items-center gap-7 lg:flex">
+        <ul className="hidden items-center gap-5 lg:flex xl:gap-7">
           {navItems.map((item) => {
             const active = item.match(location);
             return (
@@ -269,7 +270,7 @@ const Navbar = () => {
           })}
         </ul>
 
-        <div className="hidden items-center gap-5 lg:flex">
+        <div className="hidden shrink-0 items-center gap-4 whitespace-nowrap lg:flex xl:gap-5">
           {isAuthenticated ? (
             <div className="relative" ref={profileRef}>
               <button
